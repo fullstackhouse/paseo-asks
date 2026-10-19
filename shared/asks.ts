@@ -1,0 +1,65 @@
+import { defineRpc } from "@getpaseo/plugin";
+import { z } from "zod";
+
+export const ASK_KINDS = ["decision", "review", "pr", "followup", "action", "question"] as const;
+export const ASK_STATUSES = ["open", "in_progress", "done", "dropped"] as const;
+export const ACTION_KINDS = ["send", "resolve", "open"] as const;
+
+export const ActionSchema = z.object({
+  id: z.string(),
+  label: z.string().min(1).max(60),
+  kind: z.enum(ACTION_KINDS),
+  prompt: z.string().optional(),
+  url: z.string().url().optional(),
+  recommended: z.boolean().optional(),
+});
+export type Action = z.infer<typeof ActionSchema>;
+
+export const LinkSchema = z.object({ label: z.string(), url: z.string().url() });
+
+export const OutcomeSchema = z.object({
+  actionId: z.string().optional(),
+  label: z.string().optional(),
+  note: z.string().optional(),
+  by: z.enum(["human", "agent"]),
+  at: z.string(),
+});
+
+export const AskSchema = z.object({
+  id: z.string(),
+  workspaceId: z.string(),
+  ownerAgentId: z.string(),
+  kind: z.enum(ASK_KINDS),
+  title: z.string(),
+  body: z.string().optional(),
+  actions: z.array(ActionSchema),
+  links: z.array(LinkSchema),
+  status: z.enum(ASK_STATUSES),
+  outcome: OutcomeSchema.optional(),
+  /** The owning agent is gone; nobody will hear about a resolution. */
+  orphaned: z.boolean().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type Ask = z.infer<typeof AskSchema>;
+
+export const OPEN_STATUSES: readonly Ask["status"][] = ["open", "in_progress"];
+
+export const listAsks = defineRpc({
+  name: "asks.list",
+  input: z.object({ workspaceId: z.string().optional(), includeClosed: z.boolean().optional() }),
+  output: z.object({ asks: z.array(AskSchema) }),
+});
+
+/** A human disposes of an ask: run one of its actions, mark it done, or drop it. */
+export const actOnAsk = defineRpc({
+  name: "asks.act",
+  input: z.object({
+    workspaceId: z.string(),
+    id: z.string(),
+    verb: z.enum(["action", "done", "drop", "reply"]),
+    actionId: z.string().optional(),
+    note: z.string().optional(),
+  }),
+  output: z.object({ ask: AskSchema, notified: z.boolean() }),
+});
