@@ -4,7 +4,7 @@ import { Icon, ScrollView, TextInput, useToast } from "@getpaseo/plugin/client/r
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import { actOnAsk, listAsks, type Action, type Ask } from "../shared/asks";
+import { actOnAsk, discussAsk, listAsks, type Action, type Ask, type PrState } from "../shared/asks";
 import { openExternal } from "./web";
 
 export const POLL_MS = 4000;
@@ -109,6 +109,7 @@ function AskRow(props: {
         <Text style={styles.title} numberOfLines={expanded ? undefined : 1}>
           {ask.title}
         </Text>
+        {ask.pr && <PrBadge pr={ask.pr} styles={styles} />}
         {ask.orphaned && <Text style={styles.orphaned}>orphaned</Text>}
         <Text style={styles.age}>{age(ask.updatedAt)}</Text>
       </Pressable>
@@ -132,6 +133,15 @@ function AskDetail({ ask, styles, openAgent }: { ask: Ask; styles: Styles; openA
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : String(error)),
   });
+  const startDiscussion = useRpc(discussAsk);
+  const discussion = useMutation({
+    mutationFn: () => startDiscussion({ workspaceId: ask.workspaceId, id: ask.id }),
+    onSuccess: ({ agentId }) => {
+      void queryClient.invalidateQueries({ queryKey: ["asks"] });
+      openAgent?.(agentId);
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : String(error)),
+  });
   const press = (action: Action) => {
     if (action.kind === "open" && action.url) return void openExternal(action.url);
     mutation.mutate({ verb: "action", actionId: action.id });
@@ -149,6 +159,7 @@ function AskDetail({ ask, styles, openAgent }: { ask: Ask; styles: Styles; openA
           <Text style={styles.link}>{link.label} ↗</Text>
         </Pressable>
       ))}
+      {ask.pr && <PrDetail pr={ask.pr} styles={styles} />}
       {ask.orphaned && (
         <Text style={styles.orphaned}>The agent that raised this is archived. Closing it here notifies nobody.</Text>
       )}
@@ -178,10 +189,42 @@ function AskDetail({ ask, styles, openAgent }: { ask: Ask; styles: Styles; openA
         <Button styles={styles} label="Reply" disabled={mutation.isPending || !note.trim()} onPress={() => mutation.mutate({ verb: "reply" })} />
         <Button styles={styles} label="Done" disabled={mutation.isPending} onPress={() => mutation.mutate({ verb: "done" })} />
         <Button styles={styles} label="Drop" disabled={mutation.isPending} onPress={() => mutation.mutate({ verb: "drop" })} />
+        {!ask.orphaned && (
+          <Button
+            styles={styles}
+            label={discussion.isPending ? "Opening…" : ask.discussionAgentId ? "Open discussion" : "Discuss"}
+            disabled={discussion.isPending}
+            onPress={() => discussion.mutate()}
+          />
+        )}
         {openAgent && <Button styles={styles} label="Open chat" onPress={() => openAgent(ask.ownerAgentId)} />}
       </View>
     </View>
   );
+}
+
+const PR_STATE: Record<PrState["state"], string> = { OPEN: "open", MERGED: "merged", CLOSED: "closed" };
+const CHECKS: Record<PrState["checks"], string> = { passing: "checks ✓", failing: "checks ✗", pending: "checks …", none: "" };
+
+function PrBadge({ pr, styles }: { pr: PrState; styles: Styles }) {
+  const tone =
+    pr.state === "CLOSED" || pr.checks === "failing"
+      ? styles.bad
+      : pr.state === "MERGED" || pr.checks === "passing"
+        ? styles.good
+        : styles.muted;
+  const label = pr.state === "OPEN" ? (pr.isDraft ? "draft" : CHECKS[pr.checks] || "open") : PR_STATE[pr.state];
+  return <Text style={[styles.badge, tone]}>{label}</Text>;
+}
+
+function PrDetail({ pr, styles }: { pr: PrState; styles: Styles }) {
+  const parts = [
+    `PR #${pr.number} ${pr.isDraft ? "draft" : PR_STATE[pr.state]}`,
+    CHECKS[pr.checks],
+    pr.reviewDecision ? pr.reviewDecision.toLowerCase().replace(/_/g, " ") : "no review decision",
+    pr.state === "OPEN" && pr.mergeable === "CONFLICTING" ? "has conflicts" : "",
+  ].filter(Boolean);
+  return <Text style={styles.prDetail}>{parts.join(" · ")}</Text>;
 }
 
 function Button(props: { styles: Styles; label: string; onPress(): void; primary?: boolean; disabled?: boolean }) {
@@ -262,6 +305,10 @@ function makeStyles(theme: PluginTheme, compact: boolean) {
       fontSize: 13,
     },
     placeholder: { color: colors.foregroundMuted },
+    badge: { fontSize: 11 },
+    good: { color: colors.statusSuccess },
+    bad: { color: colors.statusDanger },
+    prDetail: { color: colors.foregroundMuted, fontSize: 12 },
     muted: { color: colors.foregroundMuted },
     danger: { color: colors.statusDanger },
   };

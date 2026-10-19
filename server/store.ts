@@ -7,11 +7,13 @@ interface WorkspaceFile {
   asks: Ask[];
 }
 
-export type NewAsk = Pick<Ask, "workspaceId" | "ownerAgentId" | "kind" | "title" | "body" | "links"> & {
+export type NewAsk = Pick<Ask, "workspaceId" | "ownerAgentId" | "kind" | "title" | "body" | "links" | "subscribe"> & {
   actions: Omit<Action, "id">[];
 };
 
-export type AskPatch = Partial<Pick<Ask, "title" | "body" | "links" | "status" | "outcome" | "orphaned" | "ownerAgentId">> & {
+export type AskPatch = Partial<
+  Pick<Ask, "title" | "body" | "links" | "status" | "outcome" | "orphaned" | "ownerAgentId" | "subscribe" | "pr" | "discussionAgentId">
+> & {
   actions?: Omit<Action, "id">[];
 };
 
@@ -51,7 +53,8 @@ export class AskStore {
     });
   }
 
-  update(workspaceId: string, id: string, patch: AskPatch): Promise<Ask> {
+  /** `touch: false` for bookkeeping (a PR snapshot) that should not count as the ask changing. */
+  update(workspaceId: string, id: string, patch: AskPatch, { touch = true } = {}): Promise<Ask> {
     return this.mutate(workspaceId, (file) => {
       const index = file.asks.findIndex((ask) => ask.id === id);
       if (index < 0) throw new Error(`No ask ${id} in this workspace`);
@@ -60,7 +63,7 @@ export class AskStore {
         ...current,
         ...patch,
         actions: patch.actions ? withIds(patch.actions) : current.actions,
-        updatedAt: this.now().toISOString(),
+        updatedAt: touch ? this.now().toISOString() : current.updatedAt,
       };
       file.asks[index] = next;
       return next;

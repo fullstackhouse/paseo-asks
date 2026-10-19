@@ -1,15 +1,20 @@
 import type { PaseoApi } from "@getpaseo/client";
 import type { PluginServerContext } from "@getpaseo/plugin/server";
-import { actOnAsk, listAsks, OPEN_STATUSES } from "./shared/asks";
+import { actOnAsk, discussAsk, listAsks, OPEN_STATUSES } from "./shared/asks";
 import { AgentDirectory } from "./server/agents";
 import { installBridge } from "./server/bridge";
+import { discuss } from "./server/discuss";
+import { findGh, ghFetcher } from "./server/github";
+import { LastOutputs } from "./server/last-output";
 import { listen } from "./server/listener";
 import { Outbox, type Courier } from "./server/outbox";
 import { dataDir } from "./server/paths";
 import { AsksService, INSTRUCTIONS, TOOLS } from "./server/service";
 import { AskStore } from "./server/store";
+import { PrWatcher } from "./server/watcher";
 
 const FLUSH_EVERY_MS = 20_000;
+const PR_EVERY_MS = 120_000;
 
 export default function contribute(server: PluginServerContext) {
   const dir = dataDir();
@@ -48,6 +53,10 @@ export default function contribute(server: PluginServerContext) {
     }
   });
   const service = new AsksService(store, outbox, (agentId) => agents.workspaceOf(agentId));
+  const lastOutputs = new LastOutputs(dir);
+  const gh = findGh();
+  if (!gh) console.error("[asks] gh not found; PR asks will show no live status");
+  const watcher = gh ? new PrWatcher(store, service, ghFetcher(gh)) : null;
 
   server.before("agent.create", ({ request }, { paseo: api }) => {
     capture(api);
@@ -61,9 +70,17 @@ export default function contribute(server: PluginServerContext) {
     capture(api);
     if (agent.workspaceId) agents.remember(agent.id, agent.workspaceId);
   });
-  server.on("agent.turn_ended", ({ agent }, { paseo: api }) => {
+  server.on("agent.turn_ended", ({ agent, timeline }, { paseo: api }) => {
     capture(api);
+    lastOutputs.record(agent.id, timeline);
     void outbox.flush(agent.id);
+  });
+  // Plan mode (the side chat's read-only mode) prompts even for preapproved MCP tools. The asks
+  // tools only touch asks, so answer those prompts here instead of interrupting the human.
+  server.on("agent.permission_requested", async ({ agent, request }, { paseo: api }) => {
+    capture(api);
+    if (request.kind !== "tool" || !request.name.startsWith("mcp__asks__")) return;
+    await api.agents.ref(agent.id).respondToPermission({ requestId: request.id, response: { behavior: "allow" } });
   });
   server.on("agent.archived", ({ agent }, { paseo: api }) => {
     capture(api);
@@ -79,20 +96,41 @@ export default function contribute(server: PluginServerContext) {
     capture(api);
     return service.act(input);
   });
+  const startDiscussion = (api: PaseoApi, workspaceId: string, id: string) => {
+    const ask = store.get(workspaceId, id);
+    if (!ask) throw new Error(`No ask ${id} in this workspace`);
+    return discuss({ paseo: api, store, mcp, lastOutput: (agentId) => lastOutputs.get(agentId) }, ask);
+  };
+  server.handle(discussAsk, ({ workspaceId, id }, { paseo: api }) => {
+    capture(api);
+    return startDiscussion(api, workspaceId, id);
+  });
 
   const listening = listen(dir, {
     "/instructions": async () => ({ instructions: INSTRUCTIONS }),
     "/tools": async () => ({ tools: TOOLS }),
-    "/call": async ({ agentId, name, arguments: args }) => service.callTool(agentId ?? null, name, args),
+    "/call": async ({ agentId, name, arguments: args }) => {
+      const result = await service.callTool(agentId ?? null, name, args);
+      if (!result.isError && (name === "ask_create" || name === "ask_update")) void watcher?.refresh();
+      return result;
+    },
     // The same disposal the UI does, for scripts and terminal use.
     "/act": async (input) => service.act(actOnAsk.input.parse(input)),
+    "/discuss": async (input) => {
+      const { workspaceId, id } = discussAsk.input.parse(input);
+      return startDiscussion(requirePaseo(), workspaceId, id);
+    },
   });
   const timer = setInterval(() => {
     if (paseo && outbox.pending().length) void outbox.flush();
   }, FLUSH_EVERY_MS);
 
+  const prTimer = setInterval(() => void watcher?.refresh(), PR_EVERY_MS);
+  void watcher?.refresh();
+
   return async () => {
     clearInterval(timer);
+    clearInterval(prTimer);
     (await listening).close();
   };
 }

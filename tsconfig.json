@@ -25,6 +25,7 @@
     "index.server.ts",
     "server/**",
     "bin/**",
-    "test/**"
+    "test/**",
+    "preview/**"
   ]
 }

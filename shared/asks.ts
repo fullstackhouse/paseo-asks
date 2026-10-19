@@ -25,6 +25,18 @@ export const OutcomeSchema = z.object({
   at: z.string(),
 });
 
+export const PrStateSchema = z.object({
+  number: z.number(),
+  url: z.string(),
+  state: z.enum(["OPEN", "MERGED", "CLOSED"]),
+  isDraft: z.boolean(),
+  reviewDecision: z.string().nullable(),
+  checks: z.enum(["passing", "failing", "pending", "none"]),
+  mergeable: z.string(),
+  fetchedAt: z.string(),
+});
+export type PrState = z.infer<typeof PrStateSchema>;
+
 export const AskSchema = z.object({
   id: z.string(),
   workspaceId: z.string(),
@@ -38,6 +50,12 @@ export const AskSchema = z.object({
   outcome: OutcomeSchema.optional(),
   /** The owning agent is gone; nobody will hear about a resolution. */
   orphaned: z.boolean().optional(),
+  /** Tell the owner when the linked PR changes (merged, closed, checks, review). */
+  subscribe: z.boolean().optional(),
+  /** Live state of the first GitHub PR in links, refreshed by the plugin. */
+  pr: PrStateSchema.optional(),
+  /** The side chat opened to talk this ask through. */
+  discussionAgentId: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -63,3 +81,16 @@ export const actOnAsk = defineRpc({
   }),
   output: z.object({ ask: AskSchema, notified: z.boolean() }),
 });
+
+/** Open (or reopen) a read-only side chat about one ask. */
+export const discussAsk = defineRpc({
+  name: "asks.discuss",
+  input: z.object({ workspaceId: z.string(), id: z.string() }),
+  output: z.object({ agentId: z.string(), created: z.boolean() }),
+});
+
+const PR_URL = /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+/;
+
+export function prUrlOf(ask: Pick<Ask, "links">): string | undefined {
+  return ask.links.map((link) => link.url).find((url) => PR_URL.test(url))?.match(PR_URL)?.[0];
+}

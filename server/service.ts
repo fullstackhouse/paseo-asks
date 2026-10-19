@@ -6,7 +6,8 @@ import type { AskStore, NewAsk } from "./store";
 export const INSTRUCTIONS = `Asks are the human's list of what you need from them, shown in Paseo outside this chat, with buttons that answer you.
 - Whenever you need the human — a PR to review or merge, a decision, approval of a follow-up, a manual step you cannot do (an OAuth click, a vendor console), or an answer — call ask_create, then refer to it by id in chat ("see A3"). Do not leave it only in the chat.
 - One item per ask. title: the question or the move, one line. body (markdown): what is at stake, the facts, the options, your recommendation.
-- Decisions: one "resolve" action per option (2-4), mark one recommended. PRs and follow-ups: "send" actions whose prompt is the exact instruction you want back ("Merge PR #30 with squash"); put the PR URL in links.
+- Decisions: one "resolve" action per option (2-4), mark one recommended. PRs and follow-ups: "send" actions whose prompt is the exact instruction you want back ("Merge PR #30 with squash"); put the PR URL in links. Set subscribe: true on a PR ask to be told when it is merged or closed, its checks pass or fail, or its review decision changes.
+- The human may talk an ask through in a side chat; its outcome reaches you as an [asks] message like any other answer.
 - Answers arrive as messages starting with [asks]. Act on them. After finishing work a send action gave you, call ask_resolve.
 - Keep asks true: ask_update when facts change, ask_resolve or status "dropped" when the human is no longer needed. Check ask_list before creating a duplicate.
 - Your own to-do list stays in your task tool. Asks are only for things whose next move is the human's.`;
@@ -26,6 +27,7 @@ const CreateInput = z.object({
   body: z.string().optional(),
   actions: z.array(ActionInput).max(8).default([]),
   links: z.array(LinkInput).default([]),
+  subscribe: z.boolean().optional(),
 });
 const UpdateInput = z.object({
   id: z.string(),
@@ -34,6 +36,7 @@ const UpdateInput = z.object({
   actions: z.array(ActionInput).max(8).optional(),
   links: z.array(LinkInput).optional(),
   status: z.enum(ASK_STATUSES).optional(),
+  subscribe: z.boolean().optional(),
 });
 const ResolveInput = z.object({ id: z.string(), actionId: z.string().optional(), note: z.string().optional() });
 const ListInput = z.object({
@@ -86,16 +89,27 @@ export class AsksService {
           return render(await this.create(workspaceId, agentId, CreateInput.parse(args)));
         case "ask_update": {
           const { id, ...patch } = UpdateInput.parse(args);
-          this.require(workspaceId, id);
+          const ask = this.require(workspaceId, id);
           checkActions(patch.actions ?? []);
-          return render(await this.store.update(workspaceId, id, patch));
+          const updated = await this.store.update(workspaceId, id, patch);
+          if (agentId !== ask.ownerAgentId && !ask.orphaned && patch.status && patch.status !== ask.status) {
+            this.notify(ask, `[asks] ${ask.id} (${ask.title}) marked ${patch.status.replace("_", " ")} in a side chat.`);
+          }
+          return render(updated);
         }
         case "ask_resolve": {
           const { id, actionId, note } = ResolveInput.parse(args);
           const ask = this.require(workspaceId, id);
           const label = actionId ? ask.actions.find((action) => action.id === actionId)?.label : undefined;
           const outcome = { actionId, label, note, by: "agent" as const, at: new Date().toISOString() };
-          return render(await this.store.update(workspaceId, id, { status: "done", outcome }));
+          const resolved = await this.store.update(workspaceId, id, { status: "done", outcome });
+          // A side chat (or any other agent) closing someone else's ask: the owner must hear about it.
+          if (agentId !== ask.ownerAgentId && !ask.orphaned) {
+            const choice = label ? `: ${label}` : "";
+            const summary = note ? ` Summary: ${note}` : "";
+            this.notify(ask, `[asks] ${ask.id} (${ask.title}) resolved in a side chat${choice}.${summary}`);
+          }
+          return render(resolved);
         }
         case "ask_list": {
           const { status, scope } = ListInput.parse(args);
@@ -159,9 +173,14 @@ export class AsksService {
         break;
     }
     if (ask.orphaned) return { ask: next, notified: false };
-    this.outbox.enqueue({ agentId: ask.ownerAgentId, workspaceId: ask.workspaceId, askId: ask.id, text: message });
-    void this.outbox.flush(ask.ownerAgentId);
+    this.notify(ask, message);
     return { ask: next, notified: true };
+  }
+
+  /** Queue a message for the ask's owner; it goes out once the owner is between turns. */
+  notify(ask: Ask, text: string): void {
+    this.outbox.enqueue({ agentId: ask.ownerAgentId, workspaceId: ask.workspaceId, askId: ask.id, text });
+    void this.outbox.flush(ask.ownerAgentId);
   }
 
   private async create(workspaceId: string, agentId: string, input: z.output<typeof CreateInput>): Promise<Ask> {
