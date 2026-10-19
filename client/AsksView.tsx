@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { actOnAsk, discussAsk, listAsks, type Action, type Ask, type PrState } from "../shared/asks";
-import { openExternal } from "./web";
+import { Markdown, openLink } from "./Markdown";
 
 export const POLL_MS = 4000;
 
@@ -118,7 +118,17 @@ function AskRow(props: {
   );
 }
 
-function AskDetail({ ask, styles, openAgent }: { ask: Ask; styles: Styles; openAgent?: (agentId: string) => void }) {
+function AskDetail({
+  ask,
+  styles,
+  theme,
+  openAgent,
+}: {
+  ask: Ask;
+  styles: Styles;
+  theme: PluginTheme;
+  openAgent?: (agentId: string) => void;
+}) {
   const act = useRpc(actOnAsk);
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -143,19 +153,15 @@ function AskDetail({ ask, styles, openAgent }: { ask: Ask; styles: Styles; openA
     onError: (error) => toast.error(error instanceof Error ? error.message : String(error)),
   });
   const press = (action: Action) => {
-    if (action.kind === "open" && action.url) return void openExternal(action.url);
+    if (action.kind === "open" && action.url) return openLink(action.url);
     mutation.mutate({ verb: "action", actionId: action.id });
   };
 
   return (
     <View style={styles.detail}>
-      {ask.body ? (
-        <Text style={styles.body} selectable>
-          {ask.body}
-        </Text>
-      ) : null}
+      {ask.body ? <Markdown source={ask.body} theme={theme} /> : null}
       {ask.links.map((link) => (
-        <Pressable key={link.url} accessibilityRole="link" onPress={() => void openExternal(link.url)}>
+        <Pressable key={link.url} accessibilityRole="link" onPress={() => openLink(link.url)}>
           <Text style={styles.link}>{link.label} ↗</Text>
         </Pressable>
       ))}
@@ -280,7 +286,6 @@ function makeStyles(theme: PluginTheme, compact: boolean) {
     age: { color: colors.foregroundMuted, fontSize: 12 },
     orphaned: { color: colors.statusWarning, fontSize: 12 },
     detail: { paddingHorizontal: compact ? 12 : 10, paddingBottom: 12, gap: 10 },
-    body: { color: colors.foreground, fontSize: 13, lineHeight: 19 },
     link: { color: colors.accent, fontSize: 13 },
     buttons: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: 8 },
     button: {

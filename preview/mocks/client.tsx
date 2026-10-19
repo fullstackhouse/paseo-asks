@@ -16,3 +16,7 @@ export function useRpc(contract: Contract) {
 export function useWorkspace<T>(id: string, select: (workspace: { name: string; title: string | null }) => T): T {
   return select({ name: workspaces[id] ?? id, title: workspaces[id] ?? null });
 }
+
+export async function openExternalUrl(url: string) {
+  console.log("openExternalUrl", url);
+}
