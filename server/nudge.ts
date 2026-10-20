@@ -2,9 +2,9 @@ import { randomUUID } from "node:crypto";
 import type { PaseoAgentConfig, PaseoApi } from "@getpaseo/client";
 import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 
-/** Sent once when a turn ends on a question to the human that no ask records. */
+/** Sent once when a turn leaves something for the human that no ask records. Worded so "no ask" is not the easy way out. */
 export const NUDGE =
-  '[asks] Your last reply asks the human something, but no ask records it, so it is easy to miss. If you are waiting on them, call ask_create now (one per item) and reply with just the id. If you are not, reply "no ask" and nothing else.';
+  '[asks] A check found that your last reply leaves something for the human (a question, decision, approval, review or manual step), and no ask records it, so it is easy to miss. Call ask_create now, one per item, then reply with just the ids. Reply "no ask" only if your reply truly leaves nothing for the human to do or decide.';
 
 /** Sent when the human presses Refresh on an agent's asks. */
 export const REFRESH =
