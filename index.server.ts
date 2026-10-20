@@ -7,7 +7,7 @@ import { discuss } from "./server/discuss";
 import { findGh, ghFetcher } from "./server/github";
 import { LastOutputs } from "./server/last-output";
 import { listen } from "./server/listener";
-import { NUDGE, shouldNudge } from "./server/nudge";
+import { claudeClassifier, findClaude, NUDGE, shouldNudge } from "./server/nudge";
 import { Outbox, type Courier } from "./server/outbox";
 import { dataDir } from "./server/paths";
 import { AsksService, INSTRUCTIONS, TOOLS } from "./server/service";
@@ -58,6 +58,8 @@ export default function contribute(server: PluginServerContext) {
   const gh = findGh();
   if (!gh) console.error("[asks] gh not found; PR asks will show no live status");
   const watcher = gh ? new PrWatcher(store, service, ghFetcher(gh)) : null;
+  const claude = findClaude();
+  const classify = claude ? claudeClassifier(claude) : undefined;
 
   server.before("agent.create", ({ request }, { paseo: api }) => {
     capture(api);
@@ -74,12 +76,17 @@ export default function contribute(server: PluginServerContext) {
   server.on("agent.turn_ended", ({ agent, outcome, timeline }, { paseo: api }) => {
     capture(api);
     lastOutputs.record(agent.id, timeline);
+    void outbox.flush(agent.id);
     // Agents sometimes ask in chat and skip ask_create; one reminder per such turn. Side chats talk to the human directly.
     const sideChat = store.list(agent.workspaceId ?? undefined).some((ask) => ask.discussionAgentId === agent.id);
-    if (outcome.kind === "completed" && agent.workspaceId && !sideChat && shouldNudge(timeline)) {
-      service.message(agent.id, agent.workspaceId, NUDGE);
-    }
-    void outbox.flush(agent.id);
+    if (outcome.kind !== "completed" || !agent.workspaceId || sideChat) return;
+    const workspaceId = agent.workspaceId;
+    void shouldNudge(timeline, classify).then(async (nudge) => {
+      // The classifier takes a few seconds; a reminder after the human has moved on would be stale.
+      if (!nudge || (await courier.state(agent.id)) !== "idle") return;
+      service.message(agent.id, workspaceId, NUDGE);
+      await outbox.flush(agent.id);
+    }).catch(() => {});
   });
   // Plan mode (the side chat's read-only mode) prompts even for preapproved MCP tools. The asks
   // tools only touch asks, so answer those prompts here instead of interrupting the human.
