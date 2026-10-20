@@ -4,12 +4,14 @@ import type {
   PluginClientContext,
   PluginScreenProps,
   PluginSidebarItemProps,
+  PluginTimelineItemProps,
   PluginWorkspacePanelProps,
 } from "@getpaseo/plugin/client";
 import { SidebarRow } from "@getpaseo/plugin/client/ui";
 import { Text } from "react-native";
-import { AgentAsks, AsksView, POLL_MS, useAsks } from "./client/AsksView";
+import { AgentAsks, AskCard, AsksView, POLL_MS, useAsks } from "./client/AsksView";
 import { listAsks } from "./shared/asks";
+import { ASK_CARD, AskCardSchema, askCardFor, type AskCard as AskCardData } from "./shared/timeline";
 
 function WorkspacePanel({ theme, layout, workspaceId, navigation }: PluginWorkspacePanelProps) {
   return (
@@ -43,6 +45,10 @@ function SidebarItem({ theme, currentScreen, openScreen }: PluginSidebarItemProp
       trailing={waiting > 0 ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>{waiting}</Text> : undefined}
     />
   );
+}
+
+function TimelineCard({ theme, layout, agentId, item }: PluginTimelineItemProps<AskCardData>) {
+  return <AskCard theme={theme} compact={layout.compact} agentId={agentId} {...item.data} />;
 }
 
 function PillPopover({ theme, layout, workspaceId, ...context }: PluginButtonContentProps) {
@@ -137,5 +143,15 @@ export default function contribute(client: PluginClientContext) {
     keywords: ["asks", "decisions", "inbox"],
     onSelect: ({ openScreen }) => openScreen({ screenId: "asks" }),
   });
+  // An asks tool call in the chat becomes the ask itself, so it can be read and answered in place.
+  client.addTimelineTransformer({
+    id: "ask-cards",
+    query: { itemType: "tool_call" },
+    transform: ({ item }) => {
+      const data = askCardFor(item);
+      return data && { items: [{ type: "plugin", ...ASK_CARD, data }] };
+    },
+  });
+  client.addTimelineRenderer({ ...ASK_CARD, schema: AskCardSchema, Component: TimelineCard });
   return contributePills(client);
 }

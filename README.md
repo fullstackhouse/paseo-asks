@@ -6,6 +6,8 @@ Asks is a [Paseo](https://paseo.sh) plugin. It lifts what your agents need from 
 |---|---|
 | ![Asks panel in a workspace](docs/panel.png) | ![Asks across workspaces on a phone](docs/phone.png) |
 
+![An ask shown inline in the agent chat](docs/chat.png)
+
 <sub>The screenshots render the plugin's own React Native components with sample data, using react-native-web (`preview/`). Inside Paseo they sit in its panel and screen chrome.</sub>
 
 ## What you can do with an ask
@@ -22,6 +24,7 @@ PR asks show live status from `gh`: open, merged or closed, checks, review decis
 
 - an **Asks** panel in each workspace (also in ⌘K: "Open asks for this workspace");
 - an **Asks** screen in the sidebar, covering every workspace, with a count of what's waiting;
+- **inline in the agent's chat**, where it called `ask_create`, `ask_update` or `ask_resolve`: the tool row becomes the ask itself, live, open asks expanded with their buttons;
 - an **Asks · n** (or **No asks**) pill in every agent's composer. Pressing it lists that agent's asks, with a **Refresh asks** button that tells the agent to bring them up to date: create asks it skipped, and update or resolve stale ones.
 
 ## How it works

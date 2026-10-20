@@ -1,10 +1,11 @@
 import type { PluginTheme } from "@getpaseo/plugin";
-import { useRpc } from "@getpaseo/plugin/client";
+import { useAgent, useRpc } from "@getpaseo/plugin/client";
 import { Icon, ScrollView, TextInput, useToast } from "@getpaseo/plugin/client/react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { actOnAsk, discussAsk, listAsks, refreshAsks, type Action, type Ask, type PrState } from "../shared/asks";
+import type { AskCard as AskCardData } from "../shared/timeline";
 import { Markdown, openLink } from "./Markdown";
 
 export const POLL_MS = 4000;
@@ -28,11 +29,11 @@ interface ViewProps {
   openAgent?: (agentId: string) => void;
 }
 
-export function useAsks(workspaceId?: string) {
+export function useAsks(workspaceId?: string, includeClosed = false) {
   const list = useRpc(listAsks);
   return useQuery({
-    queryKey: ["asks", workspaceId ?? "*"],
-    queryFn: () => list({ workspaceId }),
+    queryKey: ["asks", workspaceId ?? "*", includeClosed ? "all" : "open"],
+    queryFn: () => list({ workspaceId, includeClosed }),
     refetchInterval: POLL_MS,
   });
 }
@@ -121,6 +122,31 @@ export function AgentAsks(props: { theme: PluginTheme; compact: boolean; workspa
         />
       </View>
     </ScrollView>
+  );
+}
+
+const VERBS: Record<AskCardData["verb"], string> = { create: "Asked", update: "Updated", resolve: "Resolved" };
+
+/** An ask shown in the agent chat where the agent created, updated or resolved it. Open asks start expanded. */
+export function AskCard(props: { theme: PluginTheme; compact: boolean; agentId: string } & AskCardData) {
+  const { theme, compact, agentId, askId, verb } = props;
+  const styles = useMemo(() => makeStyles(theme, compact), [theme, compact]);
+  const workspaceId = useAgent(agentId, (agent) => agent.workspaceId);
+  // Every card in a chat shares this one query, so a long chat still polls once.
+  const asks = useAsks(workspaceId ?? undefined, true);
+  const ask = asks.data?.asks.find((candidate) => candidate.workspaceId === workspaceId && candidate.id === askId);
+  const [toggled, setToggled] = useState<boolean | null>(null);
+  const expanded = toggled ?? ask?.status === "open";
+
+  const note = !workspaceId || asks.isPending ? "loading…" : asks.isError ? "could not load" : !ask ? "not found" : null;
+  return (
+    <View style={styles.inline}>
+      <Text style={styles.muted}>
+        {VERBS[verb]} {askId}
+        {note ? ` (${note})` : ""}
+      </Text>
+      {ask && <AskRow ask={ask} styles={styles} theme={theme} expanded={expanded} onToggle={() => setToggled(!expanded)} />}
+    </View>
   );
 }
 
@@ -313,6 +339,7 @@ function makeStyles(theme: PluginTheme, compact: boolean) {
     content: { padding: compact ? 12 : 16, gap: 16 },
     popover: { maxHeight: 520, width: compact ? undefined : 420, backgroundColor: colors.surface0 },
     popoverContent: { padding: 8, gap: 8 },
+    inline: { gap: 6, paddingVertical: 4 },
     group: { gap: 12 },
     section: { gap: 6 },
     workspace: { color: colors.foreground, fontSize: 15, fontWeight: "600" as const },
