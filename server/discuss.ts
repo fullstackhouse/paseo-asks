@@ -4,7 +4,7 @@ import type { Ask } from "../shared/asks";
 import type { AskStore } from "./store";
 
 const ASK_TOOLS = ["ask_create", "ask_update", "ask_resolve", "ask_list"];
-export const READ_ONLY_MODE = /^(plan|read[-_ ]?only)$/i;
+const READ_ONLY_MODE = /^(plan|read[-_ ]?only)$/i;
 const OWNER_CONTEXT_CHARS = 4000;
 
 export interface DiscussDeps {
