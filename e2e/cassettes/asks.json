@@ -1,0 +1,407 @@
+{
+  "entries": [
+    {
+      "key": "f891d7e50c194b28",
+      "request": {
+        "model": "claude-haiku-5-5",
+        "system": "You are a Claude agent, built on Anthropic's Claude Agent SDK.\n\nYou are an agent working with the user toward their goal",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "Call the asks ask_create tool once with kind \"pr\", title \"Merge PR #7\", and one action: label \"Merge\", kind \"send\", prompt \"Merge PR #7 with squash\". Then reply with just the ask id."
+              }
+            ]
+          }
+        ]
+      },
+      "status": 200,
+      "contentType": "text/event-stream",
+      "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_011CgE1Uhick8SzfoUoujuNH\",\"type\":\"message\",\"role\":\"assistant\",\"container\":null,\"content\":[],\"model\":\"anthropic/claude-haiku-5.5\",\"stop_reason\":null,\"stop_details\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":2,\"output_tokens\":24,\"output_tokens_details\":null,\"cache_creation_input_tokens\":7046,\"cache_read_input_tokens\":13006,\"cache_creation\":{\"ephemeral_5m_input_tokens\":7046,\"ephemeral_1h_input_tokens\":0},\"inference_geo\":\"global\",\"server_tool_use\":null,\"service_tier\":\"standard\",\"speed\":\"standard\"},\"provider\":\"Claude Platform on AWS\"}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_01HHvuHmkBENcmjkyvQ7mUKx\",\"caller\":{\"type\":\"direct\"},\"name\":\"mcp__asks__ask_create\",\"input\":{}}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"kind\\\": \\\"pr\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"\\\", \\\"title\\\": \\\"Merge PR #\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"7\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"\\\", \\\"actions\\\": [{\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"\\\"label\\\": \\\"Merge\\\",\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\" \\\"kind\\\": \\\"send\\\", \\\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"prompt\\\": \\\"Merge\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\" PR #7 with squash\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"\\\"}]\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"}\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"container\":null,\"stop_details\":null,\"stop_reason\":\"tool_use\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":2,\"output_tokens\":142,\"output_tokens_details\":{\"thinking_tokens\":0},\"cache_creation_input_tokens\":7046,\"cache_read_input_tokens\":13006,\"cache_creation\":{\"ephemeral_5m_input_tokens\":7046,\"ephemeral_1h_input_tokens\":0},\"server_tool_use\":null,\"service_tier\":\"standard\",\"speed\":\"standard\",\"cost\":0.00108201,\"is_byok\":false,\"cost_details\":{\"upstream_inference_cost\":0.00108201,\"upstream_inference_prompt_cost\":0.00101101,\"upstream_inference_completions_cost\":0.000071}},\"context_management\":{\"applied_edits\":[]}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\nevent: data\ndata: [DONE]\n\n"
+    },
+    {
+      "key": "ce2d9e82649da4e3",
+      "request": {
+        "model": "claude-haiku-5-5",
+        "system": "You are a Claude agent, built on Anthropic's Claude Agent SDK.\n\nYou are an agent working with the user toward their goal",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "Call the asks ask_create tool once with kind \"pr\", title \"Merge PR #7\", and one action: label \"Merge\", kind \"send\", prompt \"Merge PR #7 with squash\". Then reply with just the ask id."
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool_use",
+                "name": "mcp__asks__ask_create",
+                "input": {
+                  "kind": "pr",
+                  "title": "Merge PR #7",
+                  "actions": [
+                    {
+                      "label": "Merge",
+                      "kind": "send",
+                      "prompt": "Merge PR #7 with squash"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "tool_result",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "A1 [open] pr: Merge PR #7\nactions: a1 send \"Merge\""
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "status": 200,
+      "contentType": "text/event-stream",
+      "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_011CgE1UneH6i1Fc8bQsMx5L\",\"type\":\"message\",\"role\":\"assistant\",\"container\":null,\"content\":[],\"model\":\"anthropic/claude-haiku-5.5\",\"stop_reason\":null,\"stop_details\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":2,\"output_tokens\":4,\"output_tokens_details\":null,\"cache_creation_input_tokens\":200,\"cache_read_input_tokens\":20052,\"cache_creation\":{\"ephemeral_5m_input_tokens\":200,\"ephemeral_1h_input_tokens\":0},\"inference_geo\":\"global\",\"server_tool_use\":null,\"service_tier\":\"standard\",\"speed\":\"standard\"},\"provider\":\"Claude Platform on AWS\"}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\",\"citations\":[]}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"A1\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"container\":null,\"stop_details\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":2,\"output_tokens\":4,\"output_tokens_details\":{\"thinking_tokens\":0},\"cache_creation_input_tokens\":200,\"cache_read_input_tokens\":20052,\"cache_creation\":{\"ephemeral_5m_input_tokens\":200,\"ephemeral_1h_input_tokens\":0},\"server_tool_use\":null,\"service_tier\":\"standard\",\"speed\":\"standard\",\"cost\":0.00022772,\"is_byok\":false,\"cost_details\":{\"upstream_inference_cost\":0.00022772,\"upstream_inference_prompt_cost\":0.00022572,\"upstream_inference_completions_cost\":0.000002}},\"context_management\":{\"applied_edits\":[]}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\nevent: data\ndata: [DONE]\n\n"
+    },
+    {
+      "key": "4208fce86fe03f17",
+      "request": {
+        "model": "claude-haiku-5-5",
+        "system": "You are a Claude agent, built on Anthropic's Claude Agent SDK.\n\nYou are an agent working with the user toward their goal",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "Call the asks ask_create tool once with kind \"pr\", title \"Merge PR #7\", and one action: label \"Merge\", kind \"send\", prompt \"Merge PR #7 with squash\". Then reply with just the ask id."
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool_use",
+                "name": "mcp__asks__ask_create",
+                "input": {
+                  "kind": "pr",
+                  "title": "Merge PR #7",
+                  "actions": [
+                    {
+                      "label": "Merge",
+                      "kind": "send",
+                      "prompt": "Merge PR #7 with squash"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "tool_result",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "A1 [open] pr: Merge PR #7\nactions: a1 send \"Merge\""
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "A1"
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "[asks] A1 (Merge PR #7) \"Merge\": Merge PR #7 with squash. When it is done, call ask_resolve for A1."
+              }
+            ]
+          }
+        ]
+      },
+      "status": 200,
+      "contentType": "text/event-stream",
+      "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_011CgE1VHXLuTLXGaQoy3qAP\",\"type\":\"message\",\"role\":\"assistant\",\"container\":null,\"content\":[],\"model\":\"anthropic/claude-haiku-5.5\",\"stop_reason\":null,\"stop_details\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":2,\"output_tokens\":16,\"output_tokens_details\":null,\"cache_creation_input_tokens\":80,\"cache_read_input_tokens\":20252,\"cache_creation\":{\"ephemeral_5m_input_tokens\":80,\"ephemeral_1h_input_tokens\":0},\"inference_geo\":\"global\",\"server_tool_use\":null,\"service_tier\":\"standard\",\"speed\":\"standard\"},\"provider\":\"Claude Platform on AWS\"}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_01QxeVaAnEWNJCKKcYr4ugNZ\",\"caller\":{\"type\":\"direct\"},\"name\":\"Bash\",\"input\":{}}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"command\\\": \\\"gh pr mer\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"ge \"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"7 --squash\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"\\\", \\\"description\\\": \\\"Squ\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"ash-\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"merge PR #7\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"\\\"}\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"container\":null,\"stop_details\":null,\"stop_reason\":\"tool_use\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":2,\"output_tokens\":88,\"output_tokens_details\":{\"thinking_tokens\":0},\"cache_creation_input_tokens\":80,\"cache_read_input_tokens\":20252,\"cache_creation\":{\"ephemeral_5m_input_tokens\":80,\"ephemeral_1h_input_tokens\":0},\"server_tool_use\":null,\"service_tier\":\"standard\",\"speed\":\"standard\",\"cost\":0.00025672,\"is_byok\":false,\"cost_details\":{\"upstream_inference_cost\":0.00025672,\"upstream_inference_prompt_cost\":0.00021272,\"upstream_inference_completions_cost\":0.000044}},\"context_management\":{\"applied_edits\":[]}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\nevent: data\ndata: [DONE]\n\n"
+    },
+    {
+      "key": "a6b864861daee76c",
+      "request": {
+        "model": "claude-haiku-5-5",
+        "system": "You are a Claude agent, built on Anthropic's Claude Agent SDK.\n\nYou are an agent working with the user toward their goal",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "Call the asks ask_create tool once with kind \"pr\", title \"Merge PR #7\", and one action: label \"Merge\", kind \"send\", prompt \"Merge PR #7 with squash\". Then reply with just the ask id."
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool_use",
+                "name": "mcp__asks__ask_create",
+                "input": {
+                  "kind": "pr",
+                  "title": "Merge PR #7",
+                  "actions": [
+                    {
+                      "label": "Merge",
+                      "kind": "send",
+                      "prompt": "Merge PR #7 with squash"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "tool_result",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "A1 [open] pr: Merge PR #7\nactions: a1 send \"Merge\""
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "A1"
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "[asks] A1 (Merge PR #7) \"Merge\": Merge PR #7 with squash. When it is done, call ask_resolve for A1."
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool_use",
+                "name": "Bash",
+                "input": {
+                  "command": "gh pr merge 7 --squash",
+                  "description": "Squash-merge PR #7"
+                }
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "tool_result",
+                "content": "Exit code 4\nTo get started with GitHub CLI, please run:  gh auth login\nAlternatively, populate the GH_TOKEN environment variable with a GitHub API authentication token."
+              }
+            ]
+          }
+        ]
+      },
+      "status": 200,
+      "contentType": "text/event-stream",
+      "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_011CgE1VNQXs1x4k8eb3nKKZ\",\"type\":\"message\",\"role\":\"assistant\",\"container\":null,\"content\":[],\"model\":\"anthropic/claude-haiku-5.5\",\"stop_reason\":null,\"stop_details\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":2,\"output_tokens\":4,\"output_tokens_details\":null,\"cache_creation_input_tokens\":185,\"cache_read_input_tokens\":20332,\"cache_creation\":{\"ephemeral_5m_input_tokens\":185,\"ephemeral_1h_input_tokens\":0},\"inference_geo\":\"global\",\"server_tool_use\":null,\"service_tier\":\"standard\",\"speed\":\"standard\"},\"provider\":\"Claude Platform on AWS\"}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"CAQSnAcKEAgTGAI4AUIIdGhpbmtpbmcSDGqPHQKq6Kzaec3HmxoMBBUQxtgS115nnUgjIjBpH3PSPqkyRjw579zY7+peQUx2EgkhNwaTVTfe9TO0s2ueJR8wOFvgvZPYjlUV190quQYo4/j6a9YhJ3WkrEByPTEMrsaCLUlOK9PeuJfdAWcOyBPALDn1pLnQe7gRw9ni6NODNEqCE+SsZmdeWXr888BX2DHdLvd9YMTBlOdMvmmrIERtY2lxLKcxmKzmSUeaxcRzS1jwAiFUacCk7+KUkvIG8Z5Nkv9dFXcBhXXTOwq+M2txX9gZ1o13F5NB52TPUtucXnIxpsLFQ0EX5lcLzNzoDJRl+lULf6p8ad1zGJyTAh0TCAuIIU2rcM0LDaBlf/wLEj1tYWZ7ISe1D0NANj3waP/OH3BtKcoh31ee82F9E0ous17M6AgJ7pZMC7bLOIjqoe1fYeLEu5jt5uGxs5ENSVMyGXvJokSEn7RQlbVEJUKllePk9xLaAA+32wlXx4xasrnsHdvUURTJf1cD6YH2JWrezE+GTZIlBGTSbd6uwUyNxkaPqV2OZZ9/srjgid3d15LBzAehmUACaerlu8Rh4A7SR2lbv8h3iNhy2oZqtrGIZTI4tnjfjFpKKOXB68lNp6DKSMntq9QRjwILcskxknpyb2VncndSuFrFP9zDQavbRgPl4No7EhOeisrru1H7bz2fvVmqc3v6A2WOiB+DTdV3opEDaasPI0ho8rE7e8+MRedjFs838ebobXxXBP+hdHNdqmVh9t8cz4nBmZo+6uUeci7v9vW+Kh4Ww8j+uHq7IdqwhlK5gdCJGaGqhXqEWWi2ibp77/+gVzOoFlyE7MG3Lc/J7k15/sGybCHwruYTecj8OQZsD0VtJJiXBZRwVDoCvDBwYuUHtj9cZ3dXUYCP+ckvFQ/9dcTPKHER+nr6YIfjv+4IyRwVin8146RCTfM8T4h19RrUxXXjSKpejjb8q1Tsd6Mc5Ho2jIShWLBqsNgZ8l4TlJ5wQna/B2FDudPevqnjIGZfVaf7j7/ioFYcbWNcBUBNoTIdZIMC3UHJnYaPEsAoCULMRY/t3GNXEW0IZ57ulLWtE4I/1nXba1RahQIeemoHxmIUsbTLSObp1YED/UusjOqyVFnDUKMRvnN2z7Dv5SXw+/ZPQub/1wB++0bDhd0IpSYv8nUGtXP9wqXZRJDnfmk0taWfJOhXgIMp+X/bOLsYAQ==.eyJlbmRwb2ludF9zbHVnIjoiYW50aHJvcGljL2NsYXVkZS1oYWlrdS01LjUtMjAyNjEwMDd8Y2xhdWRlLW9uLWF3cyJ9\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"text\",\"text\":\"\",\"citations\":[]}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"I\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\" couldn't merge PR\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\" #7. The\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\" GitHub CLI is\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"n't authenticated in this\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\" environment (\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"`gh auth login` or\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\" a\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\" `GH_TOKE\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"N` is\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\" needed), so I left\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\" ask A1 open r\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"ather than resolving\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\" it.\\n\\nTo fin\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"ish, either\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\" run `gh auth login`\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\" in this environ\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"ment, or give\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\" me a `GH_TO\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"KEN` and I'll\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\" squ\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"ash-merge #\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"7 and\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\" resolve A1.\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"container\":null,\"stop_details\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":2,\"output_tokens\":224,\"output_tokens_details\":{\"thinking_tokens\":98},\"cache_creation_input_tokens\":185,\"cache_read_input_tokens\":20332,\"cache_creation\":{\"ephemeral_5m_input_tokens\":185,\"ephemeral_1h_input_tokens\":0},\"server_tool_use\":null,\"service_tier\":\"standard\",\"speed\":\"standard\",\"cost\":0.000338645,\"is_byok\":false,\"cost_details\":{\"upstream_inference_cost\":0.000338645,\"upstream_inference_prompt_cost\":0.000226645,\"upstream_inference_completions_cost\":0.000112}},\"context_management\":{\"applied_edits\":[]}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\nevent: data\ndata: [DONE]\n\n"
+    },
+    {
+      "key": "879eee53f490154a",
+      "request": {
+        "model": "claude-haiku-5-5",
+        "system": "You are a Claude agent, built on Anthropic's Claude Agent SDK.\n\nYou are an agent working with the user toward their goal",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "Reply with exactly this sentence and nothing else, without using any tools: \"The migration plan is ready. Should I run it tonight?\""
+              }
+            ]
+          }
+        ]
+      },
+      "status": 200,
+      "contentType": "text/event-stream",
+      "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_011CgE1VYncka5cSNHFdorVB\",\"type\":\"message\",\"role\":\"assistant\",\"container\":null,\"content\":[],\"model\":\"anthropic/claude-haiku-5.5\",\"stop_reason\":null,\"stop_details\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":2,\"output_tokens\":8,\"output_tokens_details\":null,\"cache_creation_input_tokens\":4270,\"cache_read_input_tokens\":15754,\"cache_creation\":{\"ephemeral_5m_input_tokens\":4270,\"ephemeral_1h_input_tokens\":0},\"inference_geo\":\"global\",\"server_tool_use\":null,\"service_tier\":\"standard\",\"speed\":\"standard\"},\"provider\":\"Claude Platform on AWS\"}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\",\"citations\":[]}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"The migration plan is ready\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\". Should I run it ton\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"ight?\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"container\":null,\"stop_details\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":2,\"output_tokens\":20,\"output_tokens_details\":{\"thinking_tokens\":0},\"cache_creation_input_tokens\":4270,\"cache_read_input_tokens\":15754,\"cache_creation\":{\"ephemeral_5m_input_tokens\":4270,\"ephemeral_1h_input_tokens\":0},\"server_tool_use\":null,\"service_tier\":\"standard\",\"speed\":\"standard\",\"cost\":0.00070149,\"is_byok\":false,\"cost_details\":{\"upstream_inference_cost\":0.00070149,\"upstream_inference_prompt_cost\":0.00069149,\"upstream_inference_completions_cost\":0.00001}},\"context_management\":{\"applied_edits\":[]}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\nevent: data\ndata: [DONE]\n\n"
+    },
+    {
+      "key": "69a0809fcfb8dc99",
+      "request": {
+        "model": "claude-haiku-5-5",
+        "system": "You are a Claude agent, built on Anthropic's Claude Agent SDK.\n\nYou are an agent working with the user toward their goal",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "Reply with exactly this sentence and nothing else, without using any tools: \"The migration plan is ready. Should I run it tonight?\""
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "The migration plan is ready. Should I run it tonight?"
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "[asks] Your last reply asks the human something, but no ask records it, so it is easy to miss. If you are waiting on them, call ask_create now (one per item) and reply with just the id. If you are not, reply \"no ask\" and nothing else."
+              }
+            ]
+          }
+        ]
+      },
+      "status": 200,
+      "contentType": "text/event-stream",
+      "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_011CgE1VdoVwj6SL4spjrbLB\",\"type\":\"message\",\"role\":\"assistant\",\"container\":null,\"content\":[],\"model\":\"anthropic/claude-haiku-5.5\",\"stop_reason\":null,\"stop_details\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":2,\"output_tokens\":3,\"output_tokens_details\":null,\"cache_creation_input_tokens\":3900,\"cache_read_input_tokens\":16247,\"cache_creation\":{\"ephemeral_5m_input_tokens\":3900,\"ephemeral_1h_input_tokens\":0},\"inference_geo\":\"global\",\"server_tool_use\":null,\"service_tier\":\"standard\",\"speed\":\"standard\"},\"provider\":\"Claude Platform on AWS\"}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"CAQSrwgKEAgTGAI4AUIIdGhpbmtpbmcSDP2uEahM5sZmGdDsCxoMnVYBCDO5JWrzG+iOIjBNpjtdnCS5mdzaYM5N6teZibxJBkyXBD0ud24EBdjg8IPhMl5iiTi/ky8UMHXr63IqzAcdSd07sWn3fFIWpcWKcyIqOCCnwDyCee5PmYWMm4dg/hPpXhDVPxiEkMQuwlGr5MqzvlLrDHlO9mIq0rlkRKJRRUVZDCchPKK2zocekSHzDabei+a5MdVKzWHS8inMCoc4VOBYE3FgcMxzRQzPDWfanqj93pN9FfZ5njFK/QYVhEdLWl9UsUuOP1z4deZXzN9eWSdEW8Xl6P/h3hl5FIBxej1F/GThLlAhjPrsY7F4h/F4Uqz/Vxwbzs0ROtgkxMCaC+5AUvNLG+iXY0zwBwFBCRKm+JFdpFkvzcnl8lYuiuSKiFnWXDvZuxrXActiLUDfT5ixIMLeN8/QX07yUkTBqTaFIj0/08XTBIE9elik0ramZV4sIUKRWzWpwJ+xew/W1vlMgRxZDBjWpG7np5QJo16Uphgx8quQQEvKWlED3HY+A1MD1s6I14xmMRpBB5sQ3zplApWAcb9Htt3er3I7gX2R4BOVv30MfZivQWMrdi1aO1+LaTFgdxa3HBr4bgx1j0tLEwFvawuuhR+VRN/ei0VtvOMv8dXAlInC2jhoXH8v/xnpjaaSY8C5KXNbnXbJeNZYbveSd6e2CAvnJ8dGreNbe0AgD/87hKS3OGGiFLBi96MnVEye+cAaXjoNiri98WGmCFrFZ4ZLdk/3SouNYxWmLEs0CJV8eP5JhGjLb3h5KLQYx7BINXNLURyYO9keza4u0vY9SifiQh2Qp1pdNhqFef6SQoiHCLTbIAMpRvoHVVYRJF3D2M8xQlyxBbqUkPEZUWZbNQAE6K34JcMyFkQM5K4ASY+xo6/gADb01hisSBeL/RN43HXWbg6oLVCCtvnGgNCNCkKpHoh1mnZl2E5F8g6E1cGOxJs5FhpBqosenojd0z/gKYg7ZfJBtfr7KLFFmzeaV35ViabbnoVOecV6YgZXf6qUX5MdvBhXnx+g4O8h08WojJI8jZuvDx4i8t294sMviGBcpqxWno59wyA3SuuKVPNoqEOFzW2Q5Ld4YQ4YX9XVvDICFrYSQJX/im9tEt1NLTOcKBQueJu5DsiPk0YTv517FAV1kXaN0MTw9hahSlEJbNTqN5X8WZiPLea4GrL/9DKJfyyqA49SlNJYlQTmVirK2HDFrQcq2HM806EpE1fJ+hHcXU0JX7ShPlWQYLkxdssQK9r4XMAHIfpqETD8LJJrVGep4OwqltSkz7vL9YV9GohbZmi2rfIuyvXxLbPOEeW0x8FpCDn06vGpNK/Vsf73Ov6OPG0AjCfn8BvBkdZU8lrCdNbImMo2gUM6Abd5OMNDz2kYAQ==.eyJlbmRwb2ludF9zbHVnIjoiYW50aHJvcGljL2NsYXVkZS1oYWlrdS01LjUtMjAyNjEwMDd8Y2xhdWRlLW9uLWF3cyJ9\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_01QvNAexT6TBgTKvpVkucSL2\",\"caller\":{\"type\":\"direct\"},\"name\":\"mcp__asks__ask_create\",\"input\":{}}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"kind\\\": \\\"decision\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"\\\", \\\"title\\\": \\\"Run the migration plan ton\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"ight?\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"\\\", \\\"body\\\": \\\"The mig\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"ration plan is ready.\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\" Running it tonight is\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\" the open\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\" question\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\";\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\" I have not started\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\" it.\\\\n\\\\nOptions:\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"\\\\n- Run it\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\" tonight.\\\\n- H\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"old until\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\" you\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\" say\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\" so.\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"\\\", \\\"actions\\\": [\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"kind\\\": \\\"resol\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"ve\\\", \\\"label\\\": \\\"Run\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\" t\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"onight\\\", \\\"recommended\\\":\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\" true}, {\\\"kind\\\":\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\" \\\"resolve\\\", \\\"label\\\":\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\" \\\"Hold\\\"}]\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"}\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"container\":null,\"stop_details\":null,\"stop_reason\":\"tool_use\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":2,\"output_tokens\":377,\"output_tokens_details\":{\"thinking_tokens\":149},\"cache_creation_input_tokens\":3900,\"cache_read_input_tokens\":16247,\"cache_creation\":{\"ephemeral_5m_input_tokens\":3900,\"ephemeral_1h_input_tokens\":0},\"server_tool_use\":null,\"service_tier\":\"standard\",\"speed\":\"standard\",\"cost\":0.00083867,\"is_byok\":false,\"cost_details\":{\"upstream_inference_cost\":0.00083867,\"upstream_inference_prompt_cost\":0.00065017,\"upstream_inference_completions_cost\":0.0001885}},\"context_management\":{\"applied_edits\":[]}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\nevent: data\ndata: [DONE]\n\n"
+    },
+    {
+      "key": "e493bc89253f0da3",
+      "request": {
+        "model": "claude-haiku-5-5",
+        "system": "You are a Claude agent, built on Anthropic's Claude Agent SDK.\n\nYou are an agent working with the user toward their goal",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "Reply with exactly this sentence and nothing else, without using any tools: \"The migration plan is ready. Should I run it tonight?\""
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "The migration plan is ready. Should I run it tonight?"
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "[asks] Your last reply asks the human something, but no ask records it, so it is easy to miss. If you are waiting on them, call ask_create now (one per item) and reply with just the id. If you are not, reply \"no ask\" and nothing else."
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool_use",
+                "name": "mcp__asks__ask_create",
+                "input": {
+                  "kind": "decision",
+                  "title": "Run the migration plan tonight?",
+                  "body": "The migration plan is ready. Running it tonight is the open question; I have not started it.\n\nOptions:\n- Run it tonight.\n- Hold until you say so.",
+                  "actions": [
+                    {
+                      "kind": "resolve",
+                      "label": "Run tonight",
+                      "recommended": true
+                    },
+                    {
+                      "kind": "resolve",
+                      "label": "Hold"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "tool_result",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "A1 [open] decision: Run the migration plan tonight?\nactions: a1 resolve \"Run tonight\", a2 resolve \"Hold\""
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "status": 200,
+      "contentType": "text/event-stream",
+      "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_011CgE1Vp5sTABjfDBpqLqMD\",\"type\":\"message\",\"role\":\"assistant\",\"container\":null,\"content\":[],\"model\":\"anthropic/claude-haiku-5.5\",\"stop_reason\":null,\"stop_details\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":2,\"output_tokens\":4,\"output_tokens_details\":null,\"cache_creation_input_tokens\":454,\"cache_read_input_tokens\":20147,\"cache_creation\":{\"ephemeral_5m_input_tokens\":454,\"ephemeral_1h_input_tokens\":0},\"inference_geo\":\"global\",\"server_tool_use\":null,\"service_tier\":\"standard\",\"speed\":\"standard\"},\"provider\":\"Claude Platform on AWS\"}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\",\"citations\":[]}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"A1\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"container\":null,\"stop_details\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":2,\"output_tokens\":4,\"output_tokens_details\":{\"thinking_tokens\":0},\"cache_creation_input_tokens\":454,\"cache_read_input_tokens\":20147,\"cache_creation\":{\"ephemeral_5m_input_tokens\":454,\"ephemeral_1h_input_tokens\":0},\"server_tool_use\":null,\"service_tier\":\"standard\",\"speed\":\"standard\",\"cost\":0.00026042,\"is_byok\":false,\"cost_details\":{\"upstream_inference_cost\":0.00026042,\"upstream_inference_prompt_cost\":0.00025842,\"upstream_inference_completions_cost\":0.000002}},\"context_management\":{\"applied_edits\":[]}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\nevent: data\ndata: [DONE]\n\n"
+    },
+    {
+      "key": "19694760e32d4d0e",
+      "request": {
+        "model": "claude-haiku-5-5",
+        "system": "You are a Claude agent, built on Anthropic's Claude Agent SDK.\n\nYou are an agent working with the user toward their goal",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "Reply with exactly \"Done: all 12 tests pass.\" and nothing else, without using any tools."
+              }
+            ]
+          }
+        ]
+      },
+      "status": 200,
+      "contentType": "text/event-stream",
+      "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_011CgE1VxjXqniY7HpJSNxtt\",\"type\":\"message\",\"role\":\"assistant\",\"container\":null,\"content\":[],\"model\":\"anthropic/claude-haiku-5.5\",\"stop_reason\":null,\"stop_details\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":2,\"output_tokens\":8,\"output_tokens_details\":null,\"cache_creation_input_tokens\":4259,\"cache_read_input_tokens\":15754,\"cache_creation\":{\"ephemeral_5m_input_tokens\":4259,\"ephemeral_1h_input_tokens\":0},\"inference_geo\":\"global\",\"server_tool_use\":null,\"service_tier\":\"standard\",\"speed\":\"standard\"},\"provider\":\"Claude Platform on AWS\"}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\",\"citations\":[]}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Done: all 12 t\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"ests pass.\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"container\":null,\"stop_details\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":2,\"output_tokens\":14,\"output_tokens_details\":{\"thinking_tokens\":0},\"cache_creation_input_tokens\":4259,\"cache_read_input_tokens\":15754,\"cache_creation\":{\"ephemeral_5m_input_tokens\":4259,\"ephemeral_1h_input_tokens\":0},\"server_tool_use\":null,\"service_tier\":\"standard\",\"speed\":\"standard\",\"cost\":0.000697115,\"is_byok\":false,\"cost_details\":{\"upstream_inference_cost\":0.000697115,\"upstream_inference_prompt_cost\":0.000690115,\"upstream_inference_completions_cost\":0.000007}},\"context_management\":{\"applied_edits\":[]}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\nevent: data\ndata: [DONE]\n\n"
+    }
+  ]
+}

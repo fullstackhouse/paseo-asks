@@ -21,5 +21,6 @@ Paseo plugin: agents record what they need from the human (asks) via MCP; Paseo 
 ## Commands
 
 - `npm run typecheck` (client and server tsconfigs), `npm test` (vitest).
+- `npm run e2e`: real Paseo daemon (`e2e/` pins `@getpaseo/cli` and Claude Code) in a temp `--home` and `HOME`, plugin installed, Haiku agents answered from `e2e/cassettes/` by a local proxy (`ANTHROPIC_BASE_URL`). No network, runs in CI. After changing a scenario, a prompt, or anything the model sees (nudge text, tool output), re-record: `npm run e2e:record` with `OPENROUTER_API_KEY` in the env or `e2e/.env` (the proxy adds it; agents only see a dummy key), then commit the cassette. A replay miss fails the run and lists the unmatched request.
 - After edits: `paseo plugin reload paseo-asks`, then `paseo plugin ls` must say `running`; logs via `paseo plugin logs paseo-asks`. Never restart the daemon.
 - Act on an ask from a terminal: POST `/act` on the port in `~/.paseo/plugin-data/asks/server.json` with its bearer token.
