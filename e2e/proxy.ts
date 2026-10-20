@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { dirname } from "node:path";
 
 /**
- * Stands in for api.anthropic.com. `record` forwards every request (to Anthropic or OpenRouter,
+ * Stands in for api.anthropic.com. `record` forwards every request (to OpenRouter,
  * adding the credentials itself) and keeps the response; `replay` answers from the cassette and
  * never touches the network. Either way the sandbox only ever holds a dummy key.
  *
@@ -27,16 +27,13 @@ export type Proxy = {
 export type Upstream = { url: string; headers: Record<string, string>; model?: (model: string) => string };
 
 export function upstreamFromEnv(env: NodeJS.ProcessEnv): Upstream {
-  if (env.OPENROUTER_API_KEY) {
-    return {
-      url: "https://openrouter.ai/api",
-      headers: { authorization: `Bearer ${env.OPENROUTER_API_KEY}` },
-      // Claude Code asks for Anthropic ids (claude-haiku-5-5); OpenRouter routes by its own names.
-      model: (model) => `~anthropic/claude-${model.match(/haiku|sonnet|opus/)?.[0] ?? "haiku"}-latest`,
-    };
-  }
-  if (env.ANTHROPIC_API_KEY) return { url: "https://api.anthropic.com", headers: { "x-api-key": env.ANTHROPIC_API_KEY } };
-  throw new Error("Recording needs OPENROUTER_API_KEY or ANTHROPIC_API_KEY, in the environment or e2e/.env");
+  if (!env.OPENROUTER_API_KEY) throw new Error("Recording needs OPENROUTER_API_KEY, in the environment or e2e/.env");
+  return {
+    url: "https://openrouter.ai/api",
+    headers: { authorization: `Bearer ${env.OPENROUTER_API_KEY}` },
+    // Claude Code asks for Anthropic ids (claude-haiku-5-5); OpenRouter routes by its own names.
+    model: (model) => `~anthropic/claude-${model.match(/haiku|sonnet|opus/)?.[0] ?? "haiku"}-latest`,
+  };
 }
 
 // Request headers the proxy replaces: the sandbox's dummy key must not reach the upstream.
@@ -121,14 +118,16 @@ export async function startProxy(options: { mode: Mode; cassette: string; scrub:
 
 /**
  * What identifies a request: the model, which system prompt (by its opening, since the rest
- * describes the machine), and the conversation. Tool definitions and metadata are left out.
+ * describes the machine), and the conversation. Tool definitions, metadata, the per-session
+ * billing line, and `system`-role context messages (environment, token counters) are left out.
  */
 export function canonical(body: any, scrub: string[]): unknown {
-  const system = typeof body.system === "string" ? body.system : (body.system ?? []).map((block: any) => block.text ?? "").join("\n");
+  const blocks = typeof body.system === "string" ? [{ text: body.system }] : (body.system ?? []);
+  const system = blocks.map((block: any) => block.text ?? "").join("\n").replace(/^x-anthropic-billing-header:[^\n]*\n?/m, "");
   return {
     model: body.model,
     system: scrubText(system, scrub).slice(0, 120),
-    messages: (body.messages ?? []).map((message: any) => ({
+    messages: (body.messages ?? []).filter((message: any) => message.role !== "system").map((message: any) => ({
       role: message.role,
       content: typeof message.content === "string" ? scrubText(message.content, scrub) : message.content.map((block: any) => scrubBlock(block, scrub)).filter(Boolean),
     })),
