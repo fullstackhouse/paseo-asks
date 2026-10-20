@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { endsWithQuestion, NUDGE, parseAnswer, REFRESH, shouldNudge } from "../server/nudge";
 import { Outbox, type AgentState, type Courier } from "../server/outbox";
 import { AsksService } from "../server/service";
+import { isAsksPermission } from "../server/permissions";
 import { AskStore } from "../server/store";
 
 const user = (text: string) => ({ type: "user_message", text }) as AgentTimelineItem;
@@ -65,6 +66,7 @@ describe("parseAnswer", () => {
   it("reads the answer from bare, fenced or chatty output", () => {
     expect(parseAnswer('{"waitsOnHuman": true}')).toBe(true);
     expect(parseAnswer('```json\n{"waitsOnHuman":false}\n```\n\nThe reply only reports.')).toBe(false);
+    expect(parseAnswer("**waitsOnHuman: true**\n\nThe reply asks the human to choose.")).toBe(true);
     expect(parseAnswer("I think yes.")).toBe(null);
   });
 });
@@ -98,5 +100,14 @@ describe("refresh", () => {
     await service.refresh("agent");
     expect(sent).toEqual([]);
     expect(outbox.pending("agent")).toHaveLength(1);
+  });
+});
+
+describe("isAsksPermission", () => {
+  it("recognises Claude and Codex prompts for the asks tools only", () => {
+    expect(isAsksPermission({ kind: "tool", name: "mcp__asks__ask_create" })).toBe(true);
+    expect(isAsksPermission({ kind: "tool", name: "CodexMcpElicitation", metadata: { serverName: "asks" } })).toBe(true);
+    expect(isAsksPermission({ kind: "tool", name: "CodexMcpElicitation", metadata: { serverName: "github" } })).toBe(false);
+    expect(isAsksPermission({ kind: "tool", name: "Bash" })).toBe(false);
   });
 });

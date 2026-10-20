@@ -79,7 +79,7 @@ const CLASSIFIER_TIMEOUT_MS = 60_000;
  */
 /** Providers may wrap the structured answer in a code fence or prose. */
 export function parseAnswer(text: string): boolean | null {
-  const match = /"waitsOnHuman"\s*:\s*(true|false)/.exec(text);
+  const match = /waitsOnHuman\W*(true|false)/i.exec(text);
   return match ? match[1] === "true" : null;
 }
 

@@ -10,6 +10,7 @@ import { listen } from "./server/listener";
 import { CLASSIFIER_PROMPT, NUDGE, paseoClassifier, shouldNudge } from "./server/nudge";
 import { Outbox, type Courier } from "./server/outbox";
 import { dataDir } from "./server/paths";
+import { isAsksPermission } from "./server/permissions";
 import { AsksService, INSTRUCTIONS, TOOLS } from "./server/service";
 import { AskStore } from "./server/store";
 import { PrWatcher } from "./server/watcher";
@@ -91,11 +92,16 @@ export default function contribute(server: PluginServerContext) {
       await outbox.flush(agent.id);
     }).catch(() => {});
   });
-  // Plan mode (the side chat's read-only mode) prompts even for preapproved MCP tools. The asks
+  // Plan mode (the side chat's read-only mode) and Codex prompt even for preapproved MCP tools. The asks
   // tools only touch asks, so answer those prompts here instead of interrupting the human.
   server.on("agent.permission_requested", async ({ agent, request }, { paseo: api }) => {
     capture(api);
-    if (request.kind !== "tool" || !request.name.startsWith("mcp__asks__")) return;
+    // A classifier only needs to answer; never let it put a prompt in front of the human.
+    if (helpers.has(agent.id)) {
+      await api.agents.ref(agent.id).respondToPermission({ requestId: request.id, response: { behavior: "deny", message: "Answer without tools." } });
+      return;
+    }
+    if (!isAsksPermission(request)) return;
     await api.agents.ref(agent.id).respondToPermission({ requestId: request.id, response: { behavior: "allow" } });
   });
   server.on("agent.archived", ({ agent }, { paseo: api }) => {
