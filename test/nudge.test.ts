@@ -1,11 +1,12 @@
 import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 import { describe, expect, it } from "vitest";
 import { endsWithQuestion, NUDGE, parseAnswer, REFRESH, shouldNudge } from "../server/nudge";
 import { Outbox, type AgentState, type Courier } from "../server/outbox";
 import { AsksService } from "../server/service";
+import { pickCaller } from "../server/agents";
 import { isAsksPermission } from "../server/permissions";
 import { AskStore } from "../server/store";
 
@@ -109,5 +110,21 @@ describe("isAsksPermission", () => {
     expect(isAsksPermission({ kind: "tool", name: "CodexMcpElicitation", metadata: { serverName: "asks" } })).toBe(true);
     expect(isAsksPermission({ kind: "tool", name: "CodexMcpElicitation", metadata: { serverName: "github" } })).toBe(false);
     expect(isAsksPermission({ kind: "tool", name: "Bash" })).toBe(false);
+  });
+});
+
+describe("pickCaller", () => {
+  const agent = (id: string, cwd: string, status = "idle", archivedAt: string | null = null) => ({ id, cwd, status, archivedAt });
+  const home = homedir();
+
+  it("picks the agent mid-turn in the bridge's directory", () => {
+    const agents = [agent("a", `${home}/w/one`), agent("b", "~/w/one", "running"), agent("c", `${home}/w/two`, "running")];
+    expect(pickCaller(agents, `${home}/w/one`)).toBe("b");
+  });
+
+  it("falls back to the only live agent there, and gives up when it cannot tell", () => {
+    expect(pickCaller([agent("a", "/w"), agent("b", "/w", "running", "2026-01-01")], "/w")).toBe("a");
+    expect(pickCaller([agent("a", "/w"), agent("b", "/w")], "/w")).toBe(null);
+    expect(pickCaller([agent("a", "/w", "running"), agent("b", "/w", "running")], "/w")).toBe(null);
   });
 });

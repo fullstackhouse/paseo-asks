@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { PaseoApi } from "@getpaseo/client";
+import type { PaseoAgentConfig, PaseoApi } from "@getpaseo/client";
 import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 
 /** Sent once when a turn ends on a question to the human that no ask records. */
@@ -98,7 +98,8 @@ export function paseoClassifier(paseo: () => PaseoApi, helpers: Set<string>): (o
     const handle = await api.agents.create({
       agentId,
       // Plan mode makes Claude explore and ask instead of answering; the plain mode honours outputSchema.
-      config: { provider: `${snapshot.provider}/${model}`, systemPrompt: CLASSIFIER_PROMPT },
+      // internal: hidden from listings and notifications, and skips plugin hooks. Not in the SDK types yet.
+      config: { provider: `${snapshot.provider}/${model}`, systemPrompt: CLASSIFIER_PROMPT, internal: true } as PaseoAgentConfig,
       cwd: snapshot.cwd,
       parent: ownerId,
       title: "Asks check",

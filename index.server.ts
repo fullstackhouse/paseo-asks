@@ -1,7 +1,7 @@
 import type { PaseoApi } from "@getpaseo/client";
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { actOnAsk, discussAsk, listAsks, OPEN_STATUSES, refreshAsks } from "./shared/asks";
-import { AgentDirectory } from "./server/agents";
+import { AgentDirectory, pickCaller } from "./server/agents";
 import { installBridge } from "./server/bridge";
 import { discuss } from "./server/discuss";
 import { findGh, ghFetcher } from "./server/github";
@@ -36,6 +36,10 @@ export default function contribute(server: PluginServerContext) {
     await handle.refresh();
     return handle.workspaceId;
   });
+  const callerIn = async (cwd: string) => {
+    const { entries } = await requirePaseo().agents.list();
+    return pickCaller(entries.map((entry) => entry.agent), cwd);
+  };
   const store = new AskStore(dir);
   const courier: Courier = {
     async state(agentId) {
@@ -139,8 +143,8 @@ export default function contribute(server: PluginServerContext) {
   const listening = listen(dir, {
     "/instructions": async () => ({ instructions: INSTRUCTIONS }),
     "/tools": async () => ({ tools: TOOLS }),
-    "/call": async ({ agentId, name, arguments: args }) => {
-      const result = await service.callTool(agentId ?? null, name, args);
+    "/call": async ({ agentId, cwd, name, arguments: args }) => {
+      const result = await service.callTool(agentId ?? (cwd ? await callerIn(cwd) : null), name, args);
       if (!result.isError && (name === "ask_create" || name === "ask_update")) void watcher?.refresh();
       return result;
     },
