@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { startProxy, type Mode, type Proxy } from "./proxy";
+import { startProxy, upstreamFromEnv, type Mode, type Proxy } from "./proxy";
 
 const exec = promisify(execFile);
 const E2E = dirname(fileURLToPath(import.meta.url));
@@ -13,7 +13,7 @@ const PLUGIN = resolve(E2E, "..");
 const BIN = join(E2E, "node_modules", ".bin");
 const PASEO = join(BIN, "paseo");
 
-// Recording reads its token from e2e/.env (gitignored) when it is not in the environment.
+// Recording reads its key from e2e/.env (gitignored) when it is not in the environment.
 if (existsSync(join(E2E, ".env"))) process.loadEnvFile(join(E2E, ".env"));
 
 export const MODE: Mode = process.env.E2E_MODE === "record" ? "record" : "replay";
@@ -41,7 +41,8 @@ export class Sandbox {
     for (const dir of [home, paseoHome, project]) mkdirSync(dir, { recursive: true });
     await exec("git", ["init", "-q"], { cwd: project });
 
-    const proxy = await startProxy({ mode: MODE, cassette: join(E2E, "cassettes", `${name}.json`), scrub: [root] });
+    const upstream = MODE === "record" ? upstreamFromEnv(process.env) : undefined;
+    const proxy = await startProxy({ mode: MODE, cassette: join(E2E, "cassettes", `${name}.json`), scrub: [root], upstream });
     const port = await freePort();
     writeFileSync(
       join(paseoHome, "config.json"),
@@ -160,15 +161,13 @@ function daemonEnv({ home, proxy }: { home: string; proxy: string }): NodeJS.Pro
     HOME: home,
     PATH: `${BIN}:${env.PATH ?? "/usr/bin:/bin"}`,
     ANTHROPIC_BASE_URL: proxy,
+    // The proxy holds the real credentials; agents get the same dummy key in record and replay.
+    ANTHROPIC_API_KEY: "e2e-dummy",
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
     DISABLE_AUTOUPDATER: "1",
     PASEO_DICTATION_ENABLED: "false",
     PASEO_VOICE_MODE_ENABLED: "false",
   });
-  if (MODE === "replay") env.CLAUDE_CODE_OAUTH_TOKEN = "replay";
-  else if (process.env.CLAUDE_CODE_OAUTH_TOKEN) env.CLAUDE_CODE_OAUTH_TOKEN = process.env.CLAUDE_CODE_OAUTH_TOKEN;
-  else if (process.env.ANTHROPIC_API_KEY) env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-  else throw new Error("Recording needs CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`) or ANTHROPIC_API_KEY, in the environment or e2e/.env");
   return env;
 }
 

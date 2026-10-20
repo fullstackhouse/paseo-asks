@@ -5,8 +5,9 @@ import type { AddressInfo } from "node:net";
 import { dirname } from "node:path";
 
 /**
- * Stands in for api.anthropic.com. `record` forwards every request and keeps the response;
- * `replay` answers from the cassette and never touches the network.
+ * Stands in for api.anthropic.com. `record` forwards every request (to Anthropic or OpenRouter,
+ * adding the credentials itself) and keeps the response; `replay` answers from the cassette and
+ * never touches the network. Either way the sandbox only ever holds a dummy key.
  *
  * Requests are matched by a key over what the model saw, with the parts that change between
  * machines and runs taken out (paths, ids, dates, the environment block in the system prompt).
@@ -22,11 +23,28 @@ export type Proxy = {
   close(): Promise<void>;
 };
 
-const UPSTREAM = "https://api.anthropic.com";
+/** Where record mode sends requests, and how it authenticates. */
+export type Upstream = { url: string; headers: Record<string, string>; model?: (model: string) => string };
+
+export function upstreamFromEnv(env: NodeJS.ProcessEnv): Upstream {
+  if (env.OPENROUTER_API_KEY) {
+    return {
+      url: "https://openrouter.ai/api",
+      headers: { authorization: `Bearer ${env.OPENROUTER_API_KEY}` },
+      // Claude Code asks for Anthropic ids (claude-haiku-5-5); OpenRouter routes by its own names.
+      model: (model) => `~anthropic/claude-${model.match(/haiku|sonnet|opus/)?.[0] ?? "haiku"}-latest`,
+    };
+  }
+  if (env.ANTHROPIC_API_KEY) return { url: "https://api.anthropic.com", headers: { "x-api-key": env.ANTHROPIC_API_KEY } };
+  throw new Error("Recording needs OPENROUTER_API_KEY or ANTHROPIC_API_KEY, in the environment or e2e/.env");
+}
+
+// Request headers the proxy replaces: the sandbox's dummy key must not reach the upstream.
+const AUTH_HEADERS = new Set(["authorization", "x-api-key"]);
 // Response headers that must not be copied: the body is re-sent decoded and whole.
 const HOP_HEADERS = new Set(["content-encoding", "content-length", "transfer-encoding", "connection"]);
 
-export async function startProxy(options: { mode: Mode; cassette: string; scrub: string[] }): Promise<Proxy> {
+export async function startProxy(options: { mode: Mode; cassette: string; scrub: string[]; upstream?: Upstream }): Promise<Proxy> {
   const { mode, cassette } = options;
   const recorded: Entry[] = mode === "replay" && existsSync(cassette) ? JSON.parse(readFileSync(cassette, "utf8")).entries : [];
   const served = new Map<string, number>();
@@ -41,7 +59,8 @@ export async function startProxy(options: { mode: Mode; cassette: string; scrub:
       res.writeHead(404, { "content-type": "application/json" });
       return res.end(JSON.stringify({ type: "error", error: { type: "not_found_error", message: `e2e proxy: ${req.url}` } }));
     }
-    const request = canonical(JSON.parse(raw.toString("utf8")), options.scrub);
+    const parsed = JSON.parse(raw.toString("utf8"));
+    const request = canonical(parsed, options.scrub);
     const key = createHash("sha256").update(JSON.stringify(request)).digest("hex").slice(0, 16);
 
     if (mode === "replay") {
@@ -59,19 +78,24 @@ export async function startProxy(options: { mode: Mode; cassette: string; scrub:
       return res.end(take.body);
     }
 
-    const headers = Object.fromEntries(
-      Object.entries(req.headers).filter(([name]) => name !== "host" && !HOP_HEADERS.has(name)),
-    ) as Record<string, string>;
-    const upstream = await fetch(UPSTREAM + req.url, { method: req.method, headers, body: raw });
-    const body = await upstream.text();
+    const target = options.upstream!;
+    const headers = {
+      ...(Object.fromEntries(
+        Object.entries(req.headers).filter(([name]) => name !== "host" && !HOP_HEADERS.has(name) && !AUTH_HEADERS.has(name)),
+      ) as Record<string, string>),
+      ...target.headers,
+    };
+    const body = target.model ? JSON.stringify({ ...parsed, model: target.model(parsed.model) }) : raw;
+    const upstream = await fetch(target.url + req.url, { method: req.method, headers, body });
+    const answer = await upstream.text();
     const contentType = upstream.headers.get("content-type") ?? "application/json";
-    kept.push({ key, request, status: upstream.status, contentType, body });
+    kept.push({ key, request, status: upstream.status, contentType, body: answer });
     const out: Record<string, string> = {};
     upstream.headers.forEach((value, name) => {
       if (!HOP_HEADERS.has(name)) out[name] = value;
     });
     res.writeHead(upstream.status, out);
-    res.end(body);
+    res.end(answer);
   };
 
   const server = createServer((req, res) => {
