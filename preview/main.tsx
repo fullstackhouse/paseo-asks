@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
 import { Text, View } from "react-native";
-import { AsksView } from "../client/AsksView";
+import { AskCard, AsksView } from "../client/AsksView";
 
 const theme = {
   colors: {
@@ -37,6 +37,12 @@ createRoot(document.getElementById("root")!).render(
     </Frame>
     <Frame id="phone" title="Asks" width={390} height={720}>
       <AsksView theme={theme} compact openAgent={() => {}} />
+    </Frame>
+    <Frame id="chat" title="Agent chat" width={620} height={700}>
+      <View style={{ padding: 16, gap: 12, backgroundColor: theme.colors.surface0, flex: 1 }}>
+        <AskCard theme={theme} compact={false} agentId="main" askId="A3" verb="create" />
+        <AskCard theme={theme} compact={false} agentId="main" askId="A2" verb="update" />
+      </View>
     </Frame>
   </QueryClientProvider>,
 );

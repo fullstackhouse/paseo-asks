@@ -14,6 +14,10 @@ export function useRpc(contract: Contract) {
   };
 }
 
+export function useAgent<T>(_agentId: string, selector: (agent: { workspaceId: string }) => T): T {
+  return selector({ workspaceId: "api" });
+}
+
 export async function openExternalUrl(url: string) {
   console.log("openExternalUrl", url);
 }
