@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 import { describe, expect, it } from "vitest";
-import { endsWithQuestion, NUDGE, REFRESH, shouldNudge } from "../server/nudge";
+import { endsWithQuestion, NUDGE, parseAnswer, REFRESH, shouldNudge } from "../server/nudge";
 import { Outbox, type AgentState, type Courier } from "../server/outbox";
 import { AsksService } from "../server/service";
 import { AskStore } from "../server/store";
@@ -55,9 +55,17 @@ describe("shouldNudge", () => {
   });
 
   it("falls back to the question mark check when the classifier fails", async () => {
-    const fail = async () => Promise.reject(new Error("no claude"));
+    const fail = async () => Promise.reject(new Error("provider down"));
     expect(await shouldNudge([user("go"), reply("Which one?")], fail)).toBe(true);
     expect(await shouldNudge([user("go"), reply("Done.")], fail)).toBe(false);
+  });
+});
+
+describe("parseAnswer", () => {
+  it("reads the answer from bare, fenced or chatty output", () => {
+    expect(parseAnswer('{"waitsOnHuman": true}')).toBe(true);
+    expect(parseAnswer('```json\n{"waitsOnHuman":false}\n```\n\nThe reply only reports.')).toBe(false);
+    expect(parseAnswer("I think yes.")).toBe(null);
   });
 });
 

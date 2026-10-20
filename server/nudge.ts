@@ -42,7 +42,8 @@ export async function shouldNudge(timeline: readonly AgentTimelineItem[], classi
   if (!classify) return endsWithQuestion(reply);
   try {
     return await classify(reply);
-  } catch {
+  } catch (error) {
+    console.error("[asks] nudge classifier failed, falling back to the question mark check", error);
     return endsWithQuestion(reply);
   }
 }
@@ -76,6 +77,12 @@ const CLASSIFIER_TIMEOUT_MS = 60_000;
  * whatever the human runs. Picks the provider's cheapest-looking model, else the owner's. Throws when it cannot answer.
  * `helpers` collects the children's ids so the plugin's own hooks can ignore them.
  */
+/** Providers may wrap the structured answer in a code fence or prose. */
+export function parseAnswer(text: string): boolean | null {
+  const match = /"waitsOnHuman"\s*:\s*(true|false)/.exec(text);
+  return match ? match[1] === "true" : null;
+}
+
 export function paseoClassifier(paseo: () => PaseoApi, helpers: Set<string>): (ownerId: string) => Classify {
   return (ownerId) => async (reply) => {
     const api = paseo();
@@ -101,11 +108,11 @@ export function paseoClassifier(paseo: () => PaseoApi, helpers: Set<string>): (o
     });
     try {
       const result = await handle.waitForFinish(CLASSIFIER_TIMEOUT_MS);
-      const answer = result.status === "idle" && result.lastMessage ? JSON.parse(result.lastMessage) : null;
-      if (typeof answer?.waitsOnHuman !== "boolean") throw new Error(`Classifier gave no answer: ${result.status} ${result.error ?? result.lastMessage}`);
-      return answer.waitsOnHuman;
+      const answer = result.status === "idle" ? parseAnswer(result.lastMessage ?? "") : null;
+      if (answer === null) throw new Error(`Classifier gave no answer: ${result.status} ${result.error ?? result.lastMessage}`);
+      return answer;
     } finally {
-      if (!handle.archivedAt) await handle.archive().catch(() => {});
+      if (!handle.archivedAt) await handle.archive().catch((error) => console.error("[asks] could not archive classifier", agentId, error));
     }
   };
 }
