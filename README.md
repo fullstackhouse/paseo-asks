@@ -34,7 +34,7 @@ agent ──stdio MCP──▶ bridge.mjs ──HTTP 127.0.0.1──▶ plugin s
 ```
 
 - Every agent created after the plugin is installed gets an `asks` MCP server with `ask_create`, `ask_update`, `ask_resolve` and `ask_list`. Its instructions tell the agent when to use them, so no `CLAUDE.md` edit is needed.
-- Agents sometimes ask in chat and skip `ask_create`. When a turn ends on a question, uses no asks tool and names no ask id, the plugin sends one `[asks]` reminder. Its answer is never reminded again, and side chats are never reminded.
+- Agents sometimes ask in chat and skip `ask_create`. When a turn uses no asks tool and names no ask id, a short-lived child agent on the same provider (its cheapest model) judges whether the reply leaves anything for the human; if so, the plugin sends one `[asks]` reminder. If that check fails, a question mark in the last paragraph decides. Its answer is never reminded again, and side chats are never reminded.
 - Answers are written to an on-disk outbox first. They're sent only when the agent is between turns, because a prompt sent mid-turn interrupts it, and several answers are batched into one message. A plugin restart loses nothing.
 - If the agent that raised an ask is archived, the ask is marked *orphaned*: you can still close it, and nobody is notified.
 

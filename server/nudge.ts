@@ -112,7 +112,8 @@ export function paseoClassifier(paseo: () => PaseoApi, helpers: Set<string>): (o
       if (answer === null) throw new Error(`Classifier gave no answer: ${result.status} ${result.error ?? result.lastMessage}`);
       return answer;
     } finally {
-      if (!handle.archivedAt) await handle.archive().catch((error) => console.error("[asks] could not archive classifier", agentId, error));
+      // autoArchive usually removed it already; this covers a timeout.
+      await handle.archive().catch(() => {});
     }
   };
 }
