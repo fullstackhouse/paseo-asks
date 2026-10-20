@@ -1,8 +1,12 @@
 {
   "id": "paseo-asks",
-  "media": [],
+  "name": "Asks",
+  "description": "Collects what your agents need from you — decisions, PR reviews, approvals — into one list with answer buttons.",
+  "media": [
+    "docs/panel.png",
+    "docs/phone.png"
+  ],
   "requirements": {
     "paseo": ">=0.12.0"
-  },
-  "name": "Asks"
+  }
 }
