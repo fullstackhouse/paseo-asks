@@ -1,0 +1,17 @@
+{
+  "name": "paseo-asks-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "record": "E2E_MODE=record vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@anthropic-ai/claude-code": "2.1.304",
+    "@getpaseo/cli": "0.12.0",
+    "@types/node": "^24.19.2",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.5"
+  }
+}
