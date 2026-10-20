@@ -72,17 +72,17 @@ const CHEAP_MODEL = /haiku|mini|flash|lite|nano/i;
 const MAX_REPLY_CHARS = 8_000;
 const CLASSIFIER_TIMEOUT_MS = 60_000;
 
-/**
- * Classifies with a short-lived read-only child of the owner on the owner's own provider, so it works with
- * whatever the human runs. Picks the provider's cheapest-looking model, else the owner's. Throws when it cannot answer.
- * `helpers` collects the children's ids so the plugin's own hooks can ignore them.
- */
 /** Providers may wrap the structured answer in a code fence or prose. */
 export function parseAnswer(text: string): boolean | null {
   const match = /waitsOnHuman\W*(true|false)/i.exec(text);
   return match ? match[1] === "true" : null;
 }
 
+/**
+ * Classifies with a short-lived read-only child of the owner on the owner's own provider, so it works with
+ * whatever the human runs. Picks the provider's cheapest-looking model, else the owner's. Throws when it cannot answer.
+ * `helpers` collects the children's ids so the plugin's own hooks can ignore them.
+ */
 export function paseoClassifier(paseo: () => PaseoApi, helpers: Set<string>): (ownerId: string) => Classify {
   return (ownerId) => async (reply) => {
     const api = paseo();
