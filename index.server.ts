@@ -1,15 +1,16 @@
 import type { PaseoApi } from "@getpaseo/client";
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { actOnAsk, discussAsk, listAsks, OPEN_STATUSES, refreshAsks } from "./shared/asks";
-import { AgentDirectory } from "./server/agents";
+import { AgentDirectory, pickCaller } from "./server/agents";
 import { installBridge } from "./server/bridge";
 import { discuss } from "./server/discuss";
 import { findGh, ghFetcher } from "./server/github";
 import { LastOutputs } from "./server/last-output";
 import { listen } from "./server/listener";
-import { NUDGE, shouldNudge } from "./server/nudge";
+import { CLASSIFIER_PROMPT, NUDGE, paseoClassifier, shouldNudge } from "./server/nudge";
 import { Outbox, type Courier } from "./server/outbox";
 import { dataDir } from "./server/paths";
+import { isAsksPermission } from "./server/permissions";
 import { AsksService, INSTRUCTIONS, TOOLS } from "./server/service";
 import { AskStore } from "./server/store";
 import { PrWatcher } from "./server/watcher";
@@ -35,6 +36,15 @@ export default function contribute(server: PluginServerContext) {
     await handle.refresh();
     return handle.workspaceId;
   });
+  const callerIn = async (cwd: string) => {
+    // The caller is mid-turn during its own tool call; background workspaces are left out unless asked for.
+    const { entries } = await requirePaseo().agents.list({
+      includeBackground: true,
+      filter: { statuses: ["running"], includeBackground: true },
+      page: { limit: 200 },
+    });
+    return pickCaller(entries.map((entry) => entry.agent), cwd);
+  };
   const store = new AskStore(dir);
   const courier: Courier = {
     async state(agentId) {
@@ -58,34 +68,49 @@ export default function contribute(server: PluginServerContext) {
   const gh = findGh();
   if (!gh) console.error("[asks] gh not found; PR asks will show no live status");
   const watcher = gh ? new PrWatcher(store, service, ghFetcher(gh)) : null;
+  // Short-lived classifier agents the plugin starts itself; its hooks leave them alone.
+  const helpers = new Set<string>();
+  const classifierFor = paseoClassifier(requirePaseo, helpers);
 
   server.before("agent.create", ({ request }, { paseo: api }) => {
     capture(api);
+    if (request.config.systemPrompt === CLASSIFIER_PROMPT) return request;
     return { ...request, config: { ...request.config, mcpServers: { ...request.config.mcpServers, asks: mcp } } };
   });
   server.before("agent.session_open", ({ request }, { paseo: api }) => {
     capture(api);
-    if (request.workspaceId) agents.remember(request.agentId, request.workspaceId);
+    if (request.workspaceId && !helpers.has(request.agentId)) agents.remember(request.agentId, request.workspaceId);
   });
   server.on("agent.created", ({ agent }, { paseo: api }) => {
     capture(api);
-    if (agent.workspaceId) agents.remember(agent.id, agent.workspaceId);
+    if (agent.workspaceId && !helpers.has(agent.id)) agents.remember(agent.id, agent.workspaceId);
   });
   server.on("agent.turn_ended", ({ agent, outcome, timeline }, { paseo: api }) => {
     capture(api);
+    if (helpers.has(agent.id)) return;
     lastOutputs.record(agent.id, timeline);
+    void outbox.flush(agent.id);
     // Agents sometimes ask in chat and skip ask_create; one reminder per such turn. Side chats talk to the human directly.
     const sideChat = store.list(agent.workspaceId ?? undefined).some((ask) => ask.discussionAgentId === agent.id);
-    if (outcome.kind === "completed" && agent.workspaceId && !sideChat && shouldNudge(timeline)) {
-      service.message(agent.id, agent.workspaceId, NUDGE);
-    }
-    void outbox.flush(agent.id);
+    if (outcome.kind !== "completed" || !agent.workspaceId || sideChat) return;
+    const workspaceId = agent.workspaceId;
+    void shouldNudge(timeline, classifierFor(agent.id)).then(async (nudge) => {
+      // The classifier takes a few seconds; a reminder after the human has moved on would be stale.
+      if (!nudge || (await courier.state(agent.id)) !== "idle") return;
+      service.message(agent.id, workspaceId, NUDGE);
+      await outbox.flush(agent.id);
+    }).catch(() => {});
   });
-  // Plan mode (the side chat's read-only mode) prompts even for preapproved MCP tools. The asks
+  // Plan mode (the side chat's read-only mode) and Codex prompt even for preapproved MCP tools. The asks
   // tools only touch asks, so answer those prompts here instead of interrupting the human.
   server.on("agent.permission_requested", async ({ agent, request }, { paseo: api }) => {
     capture(api);
-    if (request.kind !== "tool" || !request.name.startsWith("mcp__asks__")) return;
+    // A classifier only needs to answer; never let it put a prompt in front of the human.
+    if (helpers.has(agent.id)) {
+      await api.agents.ref(agent.id).respondToPermission({ requestId: request.id, response: { behavior: "deny", message: "Answer without tools." } });
+      return;
+    }
+    if (!isAsksPermission(request)) return;
     await api.agents.ref(agent.id).respondToPermission({ requestId: request.id, response: { behavior: "allow" } });
   });
   server.on("agent.archived", ({ agent }, { paseo: api }) => {
@@ -123,8 +148,8 @@ export default function contribute(server: PluginServerContext) {
   const listening = listen(dir, {
     "/instructions": async () => ({ instructions: INSTRUCTIONS }),
     "/tools": async () => ({ tools: TOOLS }),
-    "/call": async ({ agentId, name, arguments: args }) => {
-      const result = await service.callTool(agentId ?? null, name, args);
+    "/call": async ({ agentId, cwd, name, arguments: args }) => {
+      const result = await service.callTool(agentId ?? (cwd ? await callerIn(cwd) : null), name, args);
       if (!result.isError && (name === "ask_create" || name === "ask_update")) void watcher?.refresh();
       return result;
     },

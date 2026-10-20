@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Sandbox } from "./harness";
 
-const NUDGED = /\[User\] \[asks\] Your last reply asks the human something/;
+const NUDGED = /\[User\] \[asks\] A check found that your last reply leaves something for the human/;
 
 describe("asks in a real Paseo daemon", () => {
   let sandbox: Sandbox;
@@ -44,9 +44,19 @@ describe("asks in a real Paseo daemon", () => {
     expect(timeline).toMatch(NUDGED);
   });
 
+  it("nudges a request left in chat without a question mark", async () => {
+    const agent = await sandbox.run(
+      'Write a file plan.md containing "Add an index on orders.created_at". Then reply with exactly this sentence and nothing else: "Wrote the migration plan to plan.md; decide whether to run it tonight, then I will re-review."',
+    );
+
+    const timeline = await sandbox.waitForTimeline(agent, NUDGED);
+    expect(timeline).toMatch(NUDGED);
+  });
+
   it("does not nudge a plain report", async () => {
-    const agent = await sandbox.run('Reply with exactly "Done: all 12 tests pass." and nothing else, without using any tools.');
-    await sandbox.settle(agent);
+    const before = sandbox.classifierCalls();
+    const agent = await sandbox.run('Write a file notes.txt containing "hello". Then reply with exactly "Created notes.txt." and nothing else.');
+    await sandbox.waitForClassifier(agent, before);
 
     expect(await sandbox.timeline(agent)).not.toMatch(NUDGED);
   });

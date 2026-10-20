@@ -4,6 +4,7 @@ import type { McpServerConfig } from "@getpaseo/protocol/agent-types";
 
 // Agents talk MCP over stdio to this script. It inherits PASEO_AGENT_ID from the agent process,
 // which is how a tool call knows who made it, and forwards to the plugin's localhost listener.
+// Codex drops that variable, so the bridge also sends its working directory, which is the agent's.
 const BRIDGE_SOURCE = String.raw`
 import { readFileSync } from "node:fs";
 const dir = process.env.PASEO_ASKS_DIR;
@@ -35,7 +36,7 @@ async function handle(m) {
     if (m.method === "ping") return send({ jsonrpc: "2.0", id: m.id, result: {} });
     if (m.method === "tools/list") return send({ jsonrpc: "2.0", id: m.id, result: await call("/tools", {}) });
     if (m.method === "tools/call") {
-      const r = await call("/call", { agentId, name: m.params.name, arguments: m.params.arguments ?? {} });
+      const r = await call("/call", { agentId, cwd: process.cwd(), name: m.params.name, arguments: m.params.arguments ?? {} });
       return send({ jsonrpc: "2.0", id: m.id, result: { content: [{ type: "text", text: r.text }], isError: Boolean(r.isError) } });
     }
     send({ jsonrpc: "2.0", id: m.id, error: { code: -32601, message: "Method not found: " + m.method } });

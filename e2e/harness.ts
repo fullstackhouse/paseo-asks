@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { CLASSIFIER_PROMPT } from "../server/nudge";
 import { startProxy, upstreamFromEnv, type Mode, type Proxy } from "./proxy";
 
 const exec = promisify(execFile);
@@ -42,7 +43,7 @@ export class Sandbox {
     await exec("git", ["init", "-q"], { cwd: project });
 
     const upstream = MODE === "record" ? upstreamFromEnv(process.env) : undefined;
-    const proxy = await startProxy({ mode: MODE, cassette: join(E2E, "cassettes", `${name}.json`), scrub: [root], upstream });
+    const proxy = await startProxy({ mode: MODE, cassette: join(E2E, "cassettes", `${name}.json`), root, upstream });
     const port = await freePort();
     writeFileSync(
       join(paseoHome, "config.json"),
@@ -138,6 +139,18 @@ export class Sandbox {
   async settle(agentId: string): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 5_000));
     await this.wait(agentId);
+  }
+
+  /** How many times the nudge classifier (a child agent prompted with CLASSIFIER_PROMPT) has had its answer. */
+  classifierCalls(): number {
+    const opening = CLASSIFIER_PROMPT.slice(0, 60);
+    return this.proxy.answered.filter(({ messages }) => JSON.stringify(messages[0]?.content ?? "").includes(opening)).length;
+  }
+
+  /** Waits for the classifier to answer once more than `before`, then for the agent to settle on what the plugin did with it. */
+  async waitForClassifier(agentId: string, before: number): Promise<void> {
+    await waitFor("the nudge classifier", () => this.classifierCalls() > before, 120_000);
+    await this.settle(agentId);
   }
 
   /** Requests the cassette could not answer; a non-empty list means the scenario needs re-recording. */
