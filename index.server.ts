@@ -7,7 +7,7 @@ import { discuss } from "./server/discuss";
 import { findGh, ghFetcher } from "./server/github";
 import { LastOutputs } from "./server/last-output";
 import { listen } from "./server/listener";
-import { claudeClassifier, findClaude, NUDGE, shouldNudge } from "./server/nudge";
+import { CLASSIFIER_PROMPT, NUDGE, paseoClassifier, shouldNudge } from "./server/nudge";
 import { Outbox, type Courier } from "./server/outbox";
 import { dataDir } from "./server/paths";
 import { AsksService, INSTRUCTIONS, TOOLS } from "./server/service";
@@ -58,30 +58,33 @@ export default function contribute(server: PluginServerContext) {
   const gh = findGh();
   if (!gh) console.error("[asks] gh not found; PR asks will show no live status");
   const watcher = gh ? new PrWatcher(store, service, ghFetcher(gh)) : null;
-  const claude = findClaude();
-  const classify = claude ? claudeClassifier(claude) : undefined;
+  // Short-lived classifier agents the plugin starts itself; its hooks leave them alone.
+  const helpers = new Set<string>();
+  const classifierFor = paseoClassifier(requirePaseo, helpers);
 
   server.before("agent.create", ({ request }, { paseo: api }) => {
     capture(api);
+    if (request.config.systemPrompt === CLASSIFIER_PROMPT) return request;
     return { ...request, config: { ...request.config, mcpServers: { ...request.config.mcpServers, asks: mcp } } };
   });
   server.before("agent.session_open", ({ request }, { paseo: api }) => {
     capture(api);
-    if (request.workspaceId) agents.remember(request.agentId, request.workspaceId);
+    if (request.workspaceId && !helpers.has(request.agentId)) agents.remember(request.agentId, request.workspaceId);
   });
   server.on("agent.created", ({ agent }, { paseo: api }) => {
     capture(api);
-    if (agent.workspaceId) agents.remember(agent.id, agent.workspaceId);
+    if (agent.workspaceId && !helpers.has(agent.id)) agents.remember(agent.id, agent.workspaceId);
   });
   server.on("agent.turn_ended", ({ agent, outcome, timeline }, { paseo: api }) => {
     capture(api);
+    if (helpers.has(agent.id)) return;
     lastOutputs.record(agent.id, timeline);
     void outbox.flush(agent.id);
     // Agents sometimes ask in chat and skip ask_create; one reminder per such turn. Side chats talk to the human directly.
     const sideChat = store.list(agent.workspaceId ?? undefined).some((ask) => ask.discussionAgentId === agent.id);
     if (outcome.kind !== "completed" || !agent.workspaceId || sideChat) return;
     const workspaceId = agent.workspaceId;
-    void shouldNudge(timeline, classify).then(async (nudge) => {
+    void shouldNudge(timeline, classifierFor(agent.id)).then(async (nudge) => {
       // The classifier takes a few seconds; a reminder after the human has moved on would be stale.
       if (!nudge || (await courier.state(agent.id)) !== "idle") return;
       service.message(agent.id, workspaceId, NUDGE);
