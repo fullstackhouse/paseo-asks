@@ -37,7 +37,12 @@ export default function contribute(server: PluginServerContext) {
     return handle.workspaceId;
   });
   const callerIn = async (cwd: string) => {
-    const { entries } = await requirePaseo().agents.list();
+    // The caller is mid-turn during its own tool call; background workspaces are left out unless asked for.
+    const { entries } = await requirePaseo().agents.list({
+      includeBackground: true,
+      filter: { statuses: ["running"], includeBackground: true },
+      page: { limit: 200 },
+    });
     return pickCaller(entries.map((entry) => entry.agent), cwd);
   };
   const store = new AskStore(dir);
