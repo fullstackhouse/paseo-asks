@@ -5,7 +5,8 @@ export interface Delivery {
   id: string;
   agentId: string;
   workspaceId: string;
-  askId: string;
+  /** Absent for messages about asks in general, such as the nudge or a refresh. */
+  askId?: string;
   text: string;
   createdAt: string;
   state: "pending" | "sent" | "failed";

@@ -1,12 +1,13 @@
 import type { PaseoApi } from "@getpaseo/client";
 import type { PluginServerContext } from "@getpaseo/plugin/server";
-import { actOnAsk, discussAsk, listAsks, OPEN_STATUSES } from "./shared/asks";
+import { actOnAsk, discussAsk, listAsks, OPEN_STATUSES, refreshAsks } from "./shared/asks";
 import { AgentDirectory } from "./server/agents";
 import { installBridge } from "./server/bridge";
 import { discuss } from "./server/discuss";
 import { findGh, ghFetcher } from "./server/github";
 import { LastOutputs } from "./server/last-output";
 import { listen } from "./server/listener";
+import { NUDGE, shouldNudge } from "./server/nudge";
 import { Outbox, type Courier } from "./server/outbox";
 import { dataDir } from "./server/paths";
 import { AsksService, INSTRUCTIONS, TOOLS } from "./server/service";
@@ -48,8 +49,8 @@ export default function contribute(server: PluginServerContext) {
   };
   const outbox = new Outbox(dir, courier, async (deliveries) => {
     for (const { workspaceId, askId } of deliveries) {
-      const ask = store.get(workspaceId, askId);
-      if (ask && OPEN_STATUSES.includes(ask.status)) await store.update(workspaceId, askId, { orphaned: true });
+      const ask = askId ? store.get(workspaceId, askId) : undefined;
+      if (ask && OPEN_STATUSES.includes(ask.status)) await store.update(workspaceId, ask.id, { orphaned: true });
     }
   });
   const service = new AsksService(store, outbox, (agentId) => agents.workspaceOf(agentId));
@@ -70,9 +71,14 @@ export default function contribute(server: PluginServerContext) {
     capture(api);
     if (agent.workspaceId) agents.remember(agent.id, agent.workspaceId);
   });
-  server.on("agent.turn_ended", ({ agent, timeline }, { paseo: api }) => {
+  server.on("agent.turn_ended", ({ agent, outcome, timeline }, { paseo: api }) => {
     capture(api);
     lastOutputs.record(agent.id, timeline);
+    // Agents sometimes ask in chat and skip ask_create; one reminder per such turn. Side chats talk to the human directly.
+    const sideChat = store.list(agent.workspaceId ?? undefined).some((ask) => ask.discussionAgentId === agent.id);
+    if (outcome.kind === "completed" && agent.workspaceId && !sideChat && shouldNudge(timeline)) {
+      service.message(agent.id, agent.workspaceId, NUDGE);
+    }
     void outbox.flush(agent.id);
   });
   // Plan mode (the side chat's read-only mode) prompts even for preapproved MCP tools. The asks
@@ -100,6 +106,10 @@ export default function contribute(server: PluginServerContext) {
     capture(api);
     return service.act(input);
   });
+  server.handle(refreshAsks, ({ agentId }, { paseo: api }) => {
+    capture(api);
+    return service.refresh(agentId);
+  });
   const startDiscussion = (api: PaseoApi, workspaceId: string, id: string) => {
     const ask = store.get(workspaceId, id);
     if (!ask) throw new Error(`No ask ${id} in this workspace`);
@@ -120,6 +130,7 @@ export default function contribute(server: PluginServerContext) {
     },
     // The same disposal the UI does, for scripts and terminal use.
     "/act": async (input) => service.act(actOnAsk.input.parse(input)),
+    "/refresh": async (input) => service.refresh(refreshAsks.input.parse(input).agentId),
     "/discuss": async (input) => {
       const { workspaceId, id } = discussAsk.input.parse(input);
       return startDiscussion(requirePaseo(), workspaceId, id);

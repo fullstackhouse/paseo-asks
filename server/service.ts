@@ -1,9 +1,11 @@
 import { z } from "zod";
 import { ACTION_KINDS, ASK_KINDS, ASK_STATUSES, OPEN_STATUSES, type Ask } from "../shared/asks";
+import { REFRESH } from "./nudge";
 import type { Outbox } from "./outbox";
 import type { AskStore, NewAsk } from "./store";
 
 export const INSTRUCTIONS = `Asks are the human's list of what you need from them, shown in Paseo outside this chat, with buttons that answer you.
+- Rule: never end a turn with a question, a choice or a request for the human in chat alone. Call ask_create first, then point to it ("see A3").
 - Whenever you need the human — a PR to review or merge, a decision, approval of a follow-up, a manual step you cannot do (an OAuth click, a vendor console), or an answer — call ask_create, then refer to it by id in chat ("see A3"). Do not leave it only in the chat.
 - One item per ask. title: the question or the move, one line. body (markdown): what is at stake, the facts, the options, your recommendation.
 - Decisions: one "resolve" action per option (2-4), mark one recommended. PRs and follow-ups: "send" actions whose prompt is the exact instruction you want back ("Merge PR #30 with squash"); put the PR URL in links. Set subscribe: true on a PR ask to be told when it is merged or closed, its checks pass or fail, or its review decision changes.
@@ -181,6 +183,21 @@ export class AsksService {
   notify(ask: Ask, text: string): void {
     this.outbox.enqueue({ agentId: ask.ownerAgentId, workspaceId: ask.workspaceId, askId: ask.id, text });
     void this.outbox.flush(ask.ownerAgentId);
+  }
+
+  /** Queue a message about asks in general. The same text already waiting is not queued twice. */
+  message(agentId: string, workspaceId: string, text: string): void {
+    if (this.outbox.pending(agentId).some((entry) => entry.text === text)) return;
+    this.outbox.enqueue({ agentId, workspaceId, text });
+  }
+
+  /** The human asks an agent to bring its asks up to date. Returns whether it went out now or waits for the turn to end. */
+  async refresh(agentId: string): Promise<{ sent: boolean }> {
+    const workspaceId = await this.workspaceOf(agentId);
+    if (!workspaceId) throw new Error(`Agent ${agentId} has no workspace`);
+    this.message(agentId, workspaceId, REFRESH);
+    await this.outbox.flush(agentId);
+    return { sent: this.outbox.pending(agentId).length === 0 };
   }
 
   private async create(workspaceId: string, agentId: string, input: z.output<typeof CreateInput>): Promise<Ask> {

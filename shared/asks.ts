@@ -93,6 +93,13 @@ export const discussAsk = defineRpc({
   output: z.object({ agentId: z.string(), created: z.boolean() }),
 });
 
+/** Ask an agent to bring its asks up to date. Sent now if it is idle, otherwise when its turn ends. */
+export const refreshAsks = defineRpc({
+  name: "asks.refresh",
+  input: z.object({ agentId: z.string() }),
+  output: z.object({ sent: z.boolean() }),
+});
+
 const PR_URL = /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+/;
 
 export function prUrlOf(ask: Pick<Ask, "links">): string | undefined {

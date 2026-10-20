@@ -37,7 +37,7 @@ describe("asks", () => {
     store = new AskStore(dir);
     courier = new FakeCourier();
     outbox = new Outbox(dir, courier, async (deliveries) => {
-      for (const delivery of deliveries) await store.update(delivery.workspaceId, delivery.askId, { orphaned: true });
+      for (const delivery of deliveries) if (delivery.askId) await store.update(delivery.workspaceId, delivery.askId, { orphaned: true });
     });
     service = new AsksService(store, outbox, async (agentId) => (agentId === AGENT ? WS : null));
   });

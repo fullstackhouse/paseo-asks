@@ -4,7 +4,7 @@ import { Icon, ScrollView, TextInput, useToast } from "@getpaseo/plugin/client/r
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import { actOnAsk, discussAsk, listAsks, type Action, type Ask, type PrState } from "../shared/asks";
+import { actOnAsk, discussAsk, listAsks, refreshAsks, type Action, type Ask, type PrState } from "../shared/asks";
 import { Markdown, openLink } from "./Markdown";
 
 export const POLL_MS = 4000;
@@ -78,6 +78,48 @@ export function AsksView({ theme, compact, workspaceId, openAgent }: ViewProps) 
           })}
         </View>
       ))}
+    </ScrollView>
+  );
+}
+
+/** One agent's asks and a Refresh that asks it to bring them up to date, for the composer pill's popover. */
+export function AgentAsks(props: { theme: PluginTheme; compact: boolean; workspaceId: string; agentId: string }) {
+  const { theme, compact, workspaceId, agentId } = props;
+  const styles = useMemo(() => makeStyles(theme, compact), [theme, compact]);
+  const asks = useAsks(workspaceId);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const refresh = useRpc(refreshAsks);
+  const toast = useToast();
+  const mutation = useMutation({
+    mutationFn: () => refresh({ agentId }),
+    onSuccess: ({ sent }) => toast.show(sent ? "Asked the agent to update its asks." : "The agent will update its asks when its turn ends."),
+    onError: (error) => toast.error(error instanceof Error ? error.message : String(error)),
+  });
+
+  if (asks.isPending) return <Message styles={styles} text="Loading asks…" />;
+  if (asks.isError) return <Message styles={styles} text={`Could not load asks: ${asks.error.message}`} danger />;
+  const mine = asks.data.asks.filter((ask) => ask.ownerAgentId === agentId);
+  return (
+    <ScrollView style={styles.popover} contentContainerStyle={styles.popoverContent}>
+      {mine.length === 0 && <Text style={styles.muted}>This agent has no open asks.</Text>}
+      {mine.map((ask) => (
+        <AskRow
+          key={ask.id}
+          ask={ask}
+          styles={styles}
+          theme={theme}
+          expanded={expanded === ask.id}
+          onToggle={() => setExpanded(expanded === ask.id ? null : ask.id)}
+        />
+      ))}
+      <View style={styles.buttons}>
+        <Button
+          styles={styles}
+          label={mutation.isPending ? "Asking…" : "Refresh asks"}
+          disabled={mutation.isPending}
+          onPress={() => mutation.mutate()}
+        />
+      </View>
     </ScrollView>
   );
 }
@@ -269,6 +311,8 @@ function makeStyles(theme: PluginTheme, compact: boolean) {
   return {
     screen: { flex: 1, backgroundColor: colors.surface0 },
     content: { padding: compact ? 12 : 16, gap: 16 },
+    popover: { maxHeight: 520, width: compact ? undefined : 420, backgroundColor: colors.surface0 },
+    popoverContent: { padding: 8, gap: 8 },
     group: { gap: 12 },
     section: { gap: 6 },
     workspace: { color: colors.foreground, fontSize: 15, fontWeight: "600" as const },
