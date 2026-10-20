@@ -66,7 +66,11 @@ export const OPEN_STATUSES: readonly Ask["status"][] = ["open", "in_progress"];
 export const listAsks = defineRpc({
   name: "asks.list",
   input: z.object({ workspaceId: z.string().optional(), includeClosed: z.boolean().optional() }),
-  output: z.object({ asks: z.array(AskSchema) }),
+  output: z.object({
+    asks: z.array(AskSchema),
+    /** Workspace id → display name, filled when listing every workspace. */
+    workspaceNames: z.record(z.string(), z.string()).optional(),
+  }),
 });
 
 /** A human disposes of an ask: run one of its actions, mark it done, or drop it. */

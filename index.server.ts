@@ -87,10 +87,14 @@ export default function contribute(server: PluginServerContext) {
     void outbox.flush(agent.id);
   });
 
-  server.handle(listAsks, ({ workspaceId, includeClosed }, { paseo: api }) => {
+  server.handle(listAsks, async ({ workspaceId, includeClosed }, { paseo: api }) => {
     capture(api);
     const asks = store.list(workspaceId).filter((ask) => includeClosed || OPEN_STATUSES.includes(ask.status));
-    return { asks: asks.sort((a, b) => b.createdAt.localeCompare(a.createdAt)) };
+    asks.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    if (workspaceId) return { asks };
+    // The global screen has no workspace context, so client state hooks can't resolve names there.
+    const { entries } = await api.workspaces.list({ page: { limit: 200 } }).catch(() => ({ entries: [] }));
+    return { asks, workspaceNames: Object.fromEntries(entries.map((w) => [w.id, w.name])) };
   });
   server.handle(actOnAsk, (input, { paseo: api }) => {
     capture(api);

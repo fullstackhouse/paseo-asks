@@ -1,5 +1,5 @@
 import type { PluginTheme } from "@getpaseo/plugin";
-import { useRpc, useWorkspace } from "@getpaseo/plugin/client";
+import { useRpc } from "@getpaseo/plugin/client";
 import { Icon, ScrollView, TextInput, useToast } from "@getpaseo/plugin/client/react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
@@ -52,7 +52,7 @@ export function AsksView({ theme, compact, workspaceId, openAgent }: ViewProps) 
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       {groups.map(([groupId, items]) => (
         <View key={groupId} style={styles.group}>
-          {!workspaceId && <WorkspaceHeading workspaceId={groupId} styles={styles} />}
+          {!workspaceId && <Text style={styles.workspace}>{asks.data.workspaceNames?.[groupId] ?? groupId}</Text>}
           {(["open", "in_progress"] as const).map((status) => {
             const rows = items.filter((ask) => ask.status === status);
             if (rows.length === 0) return null;
@@ -80,11 +80,6 @@ export function AsksView({ theme, compact, workspaceId, openAgent }: ViewProps) 
       ))}
     </ScrollView>
   );
-}
-
-function WorkspaceHeading({ workspaceId, styles }: { workspaceId: string; styles: Styles }) {
-  const name = useWorkspace(workspaceId, (workspace) => workspace?.title ?? workspace?.name ?? null);
-  return <Text style={styles.workspace}>{name ?? workspaceId}</Text>;
 }
 
 function AskRow(props: {
