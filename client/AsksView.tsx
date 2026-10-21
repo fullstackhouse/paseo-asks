@@ -101,7 +101,7 @@ export function AgentAsks(props: { theme: PluginTheme; compact: boolean; workspa
   if (asks.isError) return <Message styles={styles} text={`Could not load asks: ${asks.error.message}`} danger />;
   const mine = asks.data.asks.filter((ask) => ask.ownerAgentId === agentId);
   return (
-    <ScrollView style={styles.popover} contentContainerStyle={styles.popoverContent}>
+    <View style={styles.popover}>
       {mine.length === 0 && <Text style={styles.muted}>This agent has no open asks.</Text>}
       {mine.map((ask) => (
         <AskRow
@@ -121,7 +121,7 @@ export function AgentAsks(props: { theme: PluginTheme; compact: boolean; workspa
           onPress={() => mutation.mutate()}
         />
       </View>
-    </ScrollView>
+    </View>
   );
 }
 
@@ -337,8 +337,8 @@ function makeStyles(theme: PluginTheme, compact: boolean) {
   return {
     screen: { flex: 1, backgroundColor: colors.surface0 },
     content: { padding: compact ? 12 : 16, gap: 16 },
-    popover: { maxHeight: 520, width: compact ? undefined : 420, backgroundColor: colors.surface0 },
-    popoverContent: { padding: 8, gap: 8 },
+    // The host popover already pads, scrolls and caps the size (420×440); sizing it here again clips it.
+    popover: { gap: 8 },
     inline: { gap: 6, paddingVertical: 4 },
     group: { gap: 12 },
     section: { gap: 6 },
