@@ -18,13 +18,18 @@ export interface DiscussDeps {
 /**
  * Opens a read-only side chat, a child of the ask's owner, seeded with the ask and the owner's latest
  * reply. Reuses the existing one while it is alive. It ends by calling ask_resolve, which the owner hears.
+ * A note the human typed opens the chat (new) or is sent to it (existing).
  */
-export async function discuss(deps: DiscussDeps, ask: Ask): Promise<{ agentId: string; created: boolean }> {
+export async function discuss(deps: DiscussDeps, ask: Ask, note?: string): Promise<{ agentId: string; created: boolean }> {
   const { paseo, store } = deps;
+  const message = note?.trim() || undefined;
   if (ask.discussionAgentId) {
     const existing = paseo.agents.ref(ask.discussionAgentId);
     const found = await existing.refresh().catch(() => null);
-    if (found && !existing.archivedAt) return { agentId: existing.id, created: false };
+    if (found && !existing.archivedAt) {
+      if (message) await existing.send(message, { activeTurnBehavior: "steer" });
+      return { agentId: existing.id, created: false };
+    }
   }
 
   const owner = paseo.agents.ref(ask.ownerAgentId);
@@ -46,13 +51,13 @@ export async function discuss(deps: DiscussDeps, ask: Ask): Promise<{ agentId: s
     parent: ask.ownerAgentId,
     title: `Discuss ${ask.id}: ${ask.title}`.slice(0, 60),
     labels: { "asks.discussion": `${ask.workspaceId}/${ask.id}` },
-    prompt: seedPrompt(ask, deps.lastOutput(ask.ownerAgentId)),
+    prompt: seedPrompt(ask, deps.lastOutput(ask.ownerAgentId), message),
   });
   await store.update(ask.workspaceId, ask.id, { discussionAgentId: handle.id }, { touch: false });
   return { agentId: handle.id, created: true };
 }
 
-export function seedPrompt(ask: Ask, ownerOutput: string | undefined): string {
+export function seedPrompt(ask: Ask, ownerOutput: string | undefined, message?: string): string {
   const options = ask.actions
     .filter((action) => action.kind === "resolve")
     .map((action) => `- actionId ${action.id}: ${action.label}${action.recommended ? " (the main agent recommends this)" : ""}`);
@@ -72,7 +77,9 @@ export function seedPrompt(ask: Ask, ownerOutput: string | undefined): string {
     ask.links.length ? `\nLinks:\n${ask.links.map((link) => `- ${link.label}: ${link.url}`).join("\n")}` : "",
     context ? `\n## The main agent's latest reply (context)\n${context}` : "",
     "",
-    "Start with a short brief: what is at stake, the options, and your honest view, in five lines or fewer. Then wait for the human.",
+    message
+      ? `The human opened this chat with:\n\n${message}\n\nAnswer them directly; keep it short.`
+      : "Start with a short brief: what is at stake, the options, and your honest view, in five lines or fewer. Then wait for the human.",
   ]
     .filter((line) => line !== "")
     .join("\n");

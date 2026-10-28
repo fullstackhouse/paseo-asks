@@ -84,8 +84,14 @@ export function AsksView({ theme, compact, workspaceId, openAgent }: ViewProps) 
 }
 
 /** One agent's asks and a Refresh that asks it to bring them up to date, for the composer pill's popover. */
-export function AgentAsks(props: { theme: PluginTheme; compact: boolean; workspaceId: string; agentId: string }) {
-  const { theme, compact, workspaceId, agentId } = props;
+export function AgentAsks(props: {
+  theme: PluginTheme;
+  compact: boolean;
+  workspaceId: string;
+  agentId: string;
+  openAgent?: (agentId: string) => void;
+}) {
+  const { theme, compact, workspaceId, agentId, openAgent } = props;
   const styles = useMemo(() => makeStyles(theme, compact), [theme, compact]);
   const asks = useAsks(workspaceId);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -111,6 +117,8 @@ export function AgentAsks(props: { theme: PluginTheme; compact: boolean; workspa
           theme={theme}
           expanded={expanded === ask.id}
           onToggle={() => setExpanded(expanded === ask.id ? null : ask.id)}
+          openAgent={openAgent}
+          viewingAgentId={agentId}
         />
       ))}
       <View style={styles.buttons}>
@@ -128,8 +136,10 @@ export function AgentAsks(props: { theme: PluginTheme; compact: boolean; workspa
 const VERBS: Record<AskCardData["verb"], string> = { create: "Asked", update: "Updated", resolve: "Resolved" };
 
 /** An ask shown in the agent chat where the agent created, updated or resolved it. Open asks start expanded. */
-export function AskCard(props: { theme: PluginTheme; compact: boolean; agentId: string } & AskCardData) {
-  const { theme, compact, agentId, askId, verb } = props;
+export function AskCard(
+  props: { theme: PluginTheme; compact: boolean; agentId: string; openAgent?: (agentId: string) => void } & AskCardData,
+) {
+  const { theme, compact, agentId, askId, verb, openAgent } = props;
   const styles = useMemo(() => makeStyles(theme, compact), [theme, compact]);
   const workspaceId = useAgent(agentId, (agent) => agent.workspaceId);
   // Every card in a chat shares this one query, so a long chat still polls once.
@@ -145,7 +155,7 @@ export function AskCard(props: { theme: PluginTheme; compact: boolean; agentId: 
         {VERBS[verb]} {askId}
         {note ? ` (${note})` : ""}
       </Text>
-      {ask && <AskRow ask={ask} styles={styles} theme={theme} expanded={expanded} onToggle={() => setToggled(!expanded)} />}
+      {ask && <AskRow ask={ask} styles={styles} theme={theme} expanded={expanded} onToggle={() => setToggled(!expanded)} openAgent={openAgent} viewingAgentId={agentId} />}
     </View>
   );
 }
@@ -157,6 +167,8 @@ function AskRow(props: {
   expanded: boolean;
   onToggle(): void;
   openAgent?: (agentId: string) => void;
+  /** The agent whose chat this is shown in, so "Open chat" does not point at itself. */
+  viewingAgentId?: string;
 }) {
   const { ask, styles, theme, expanded } = props;
   return (
@@ -186,11 +198,13 @@ function AskDetail({
   styles,
   theme,
   openAgent,
+  viewingAgentId,
 }: {
   ask: Ask;
   styles: Styles;
   theme: PluginTheme;
   openAgent?: (agentId: string) => void;
+  viewingAgentId?: string;
 }) {
   const act = useRpc(actOnAsk);
   const queryClient = useQueryClient();
@@ -208,8 +222,9 @@ function AskDetail({
   });
   const startDiscussion = useRpc(discussAsk);
   const discussion = useMutation({
-    mutationFn: () => startDiscussion({ workspaceId: ask.workspaceId, id: ask.id }),
+    mutationFn: () => startDiscussion({ workspaceId: ask.workspaceId, id: ask.id, note }),
     onSuccess: ({ agentId }) => {
+      setNote("");
       void queryClient.invalidateQueries({ queryKey: ["asks"] });
       openAgent?.(agentId);
     },
@@ -262,11 +277,11 @@ function AskDetail({
           <Button
             styles={styles}
             label={discussion.isPending ? "Opening…" : ask.discussionAgentId ? "Open discussion" : "Discuss"}
-            disabled={discussion.isPending}
+            disabled={discussion.isPending || mutation.isPending}
             onPress={() => discussion.mutate()}
           />
         )}
-        {openAgent && <Button styles={styles} label="Open chat" onPress={() => openAgent(ask.ownerAgentId)} />}
+        {openAgent && ask.ownerAgentId !== viewingAgentId && <Button styles={styles} label="Open chat" onPress={() => openAgent(ask.ownerAgentId)} />}
       </View>
     </View>
   );

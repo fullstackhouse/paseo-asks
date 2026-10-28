@@ -138,6 +138,14 @@ describe("phase 2", () => {
     expect(prompt).toContain("The release tool reads commit subjects.");
     expect(prompt).toContain("Both PRs are green.");
     expect(prompt).toContain("Do not edit files");
+    expect(prompt).toContain("Start with a short brief");
+  });
+
+  it("opens a side chat with the note the human typed instead of a brief", async () => {
+    await service.callTool(OWNER, "ask_create", { kind: "question", title: "Squash-only?" });
+    const prompt = seedPrompt(store.get(WS, "A1")!, undefined, "Why not rebase?");
+    expect(prompt).toContain("The human opened this chat with:\n\nWhy not rebase?");
+    expect(prompt).not.toContain("Start with a short brief");
   });
 
   it("takes the latest reply after the last user message, joining streamed parts", () => {

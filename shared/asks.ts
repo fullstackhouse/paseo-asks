@@ -86,10 +86,10 @@ export const actOnAsk = defineRpc({
   output: z.object({ ask: AskSchema, notified: z.boolean() }),
 });
 
-/** Open (or reopen) a read-only side chat about one ask. */
+/** Open (or reopen) a read-only side chat about one ask; `note` is the human's first message to it. */
 export const discussAsk = defineRpc({
   name: "asks.discuss",
-  input: z.object({ workspaceId: z.string(), id: z.string() }),
+  input: z.object({ workspaceId: z.string(), id: z.string(), note: z.string().optional() }),
   output: z.object({ agentId: z.string(), created: z.boolean() }),
 });
 
