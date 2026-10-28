@@ -93,6 +93,8 @@ export class AsksService {
           const { id, ...patch } = UpdateInput.parse(args);
           const ask = this.require(workspaceId, id);
           checkActions(patch.actions ?? []);
+          // Fresh options on an ask the agent was working on hand it back to the human; the UI shows buttons only on open asks.
+          if (patch.actions?.length && !patch.status && ask.status === "in_progress") patch.status = "open";
           const updated = await this.store.update(workspaceId, id, patch);
           if (agentId !== ask.ownerAgentId && !ask.orphaned && patch.status && patch.status !== ask.status) {
             this.notify(ask, `[asks] ${ask.id} (${ask.title}) marked ${patch.status.replace("_", " ")} in a side chat.`);
