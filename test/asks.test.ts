@@ -111,6 +111,23 @@ describe("asks", () => {
     expect(courier.sent).toHaveLength(1);
   });
 
+  it("new options on an in-progress ask hand it back to the human", async () => {
+    await service.callTool(AGENT, "ask_create", {
+      kind: "pr",
+      title: "PR #30 ready",
+      actions: [{ label: "Merge", kind: "send", prompt: "Merge PR #30 with squash" }],
+    });
+    await service.act({ workspaceId: WS, id: "A1", verb: "action", actionId: "a1" });
+    await service.callTool(AGENT, "ask_update", { id: "A1", body: "Working on it" });
+    expect(store.get(WS, "A1")!.status).toBe("in_progress");
+
+    await service.callTool(AGENT, "ask_update", { id: "A1", actions: [{ label: "I merged it", kind: "resolve" }] });
+    expect(store.get(WS, "A1")!.status).toBe("open");
+
+    await service.callTool(AGENT, "ask_update", { id: "A1", actions: [{ label: "Retry", kind: "send" }], status: "in_progress" });
+    expect(store.get(WS, "A1")!.status).toBe("in_progress");
+  });
+
   it("survives a restart with messages still pending", async () => {
     await service.callTool(AGENT, "ask_create", decision);
     courier.states.set(AGENT, "running");
