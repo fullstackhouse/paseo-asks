@@ -14,6 +14,7 @@ import { isAsksPermission } from "./server/permissions";
 import { AsksService, INSTRUCTIONS, TOOLS } from "./server/service";
 import { AskStore } from "./server/store";
 import { PrWatcher } from "./server/watcher";
+import { activeWorkspaces } from "./server/workspaces";
 
 const FLUSH_EVERY_MS = 20_000;
 const PR_EVERY_MS = 120_000;
@@ -124,8 +125,10 @@ export default function contribute(server: PluginServerContext) {
     asks.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     if (workspaceId) return { asks };
     // The global screen has no workspace context, so client state hooks can't resolve names there.
-    const { entries } = await api.workspaces.list({ page: { limit: 200 } }).catch(() => ({ entries: [] }));
-    return { asks, workspaceNames: Object.fromEntries(entries.map((w) => [w.id, w.name])) };
+    // Asks of archived workspaces stay on disk but are hidden; if the daemon can't say which are live, show all.
+    const live = await activeWorkspaces(api).catch(() => null);
+    if (!live) return { asks };
+    return { asks: asks.filter((ask) => live.has(ask.workspaceId)), workspaceNames: Object.fromEntries(live) };
   });
   server.handle(actOnAsk, (input, { paseo: api }) => {
     capture(api);
