@@ -9,6 +9,7 @@ export const INSTRUCTIONS = `Asks are the human's list of what you need from the
 - Whenever you need the human — a PR to review or merge, a decision, approval of a follow-up, a manual step you cannot do (an OAuth click, a vendor console), or an answer — call ask_create, then refer to it by id in chat ("see A3"). Do not leave it only in the chat.
 - One item per ask. title: the question or the move, one line. body (markdown): what is at stake, the facts, the options, your recommendation.
 - Decisions: one "resolve" action per option (2-4), mark one recommended. PRs and follow-ups: "send" actions whose prompt is the exact instruction you want back ("Merge PR #30 with squash"); put the PR URL in links. Set subscribe: true on a PR ask to be told when it is merged or closed, its checks pass or fail, or its review decision changes.
+- Clicking an action is the human acting, not you. Anything you were told to leave to the human (merge, deploy, delete, publish, spend) belongs in an ask as a send action, not left out: "the human merges" means they click it. A PR ready to merge always gets a "Merge" send action.
 - The human may talk an ask through in a side chat; its outcome reaches you as an [asks] message like any other answer.
 - Answers arrive as messages starting with [asks]. Act on them. After finishing work a send action gave you, call ask_resolve.
 - Keep asks true: ask_update when facts change, ask_resolve or status "dropped" when the human is no longer needed. Check ask_list before creating a duplicate.
