@@ -61,6 +61,20 @@ describe("asks in a real Paseo daemon", () => {
     expect(await sandbox.timeline(agent)).not.toMatch(NUDGED);
   });
 
+  it("explains a decision in chat before creating its ask", async () => {
+    const agent = await sandbox.run(
+      "Our shop keeps carts in a 4 KB session cookie and long carts get cut short. Compare keeping carts in Redis or in Postgres in a short paragraph, recommend one, and leave the choice to me. Do not read or write any files.",
+    );
+    await sandbox.settle(agent);
+
+    expect(sandbox.asks()).toContainEqual(expect.objectContaining({ kind: "decision", ownerAgentId: agent }));
+    // The ask's buttons render where ask_create was called, so the explanation must come before it and little after.
+    const turn = (await sandbox.timeline(agent)).split(/^\[User\].*$/m).at(-1) ?? "";
+    const [before, after = ""] = turn.split("[mcp__asks__ask_create]");
+    expect(before).toMatch(/Postgres/);
+    expect(after.split("\n").slice(1).filter((line) => line.trim() && !line.startsWith("[")).length).toBeLessThanOrEqual(1);
+  });
+
   it("logs no plugin errors", async () => {
     expect(await sandbox.pluginLogs()).not.toMatch(/error|exception/i);
   });
