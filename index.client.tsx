@@ -26,10 +26,18 @@ function WorkspacePanel({ theme, layout, workspaceId, navigation }: PluginWorksp
 }
 
 /**
- * Chat cards and pill popovers get no `navigation` from the host, so they open an agent by visiting the
- * Asks screen with `open`, which has navigation and hands off at once. Set in `contribute`.
+ * Older hosts give chat cards and pill popovers no `navigation`, so there they open an agent by visiting
+ * the Asks screen with `open`, which has navigation and hands off at once. Set in `contribute`.
  */
 let openAgentViaScreen: ((agentId: string) => void) | undefined;
+
+type Navigation = PluginScreenProps["navigation"];
+
+/** Opens agents through the host's navigation when it passes one (FSH fork), else via the Asks screen. */
+function agentOpener(props: object): ((agentId: string) => void) | undefined {
+  const navigation = (props as { navigation?: Navigation }).navigation;
+  return navigation ? (agentId) => navigation.openAgent({ agentId }) : openAgentViaScreen;
+}
 
 function GlobalScreen({ theme, layout, navigation, params }: PluginScreenProps) {
   const open = params.open;
@@ -58,16 +66,19 @@ function SidebarItem({ theme, currentScreen, openScreen }: PluginSidebarItemProp
   );
 }
 
-function TimelineCard({ theme, layout, agentId, item }: PluginTimelineItemProps<AskCardData>) {
-  return <AskCard theme={theme} compact={layout.compact} agentId={agentId} openAgent={openAgentViaScreen} {...item.data} />;
+function TimelineCard(props: PluginTimelineItemProps<AskCardData>) {
+  const { theme, layout, agentId, item } = props;
+  return <AskCard theme={theme} compact={layout.compact} agentId={agentId} openAgent={agentOpener(props)} {...item.data} />;
 }
 
-function PillPopover({ theme, layout, workspaceId, close, ...context }: PluginButtonContentProps) {
+function PillPopover(props: PluginButtonContentProps) {
+  const { theme, layout, workspaceId, close, ...context } = props;
   if (context.context !== "agent") return null;
-  const openAgent = openAgentViaScreen
+  const open = agentOpener(props);
+  const openAgent = open
     ? (agentId: string) => {
         close();
-        openAgentViaScreen?.(agentId);
+        open(agentId);
       }
     : undefined;
   return (
