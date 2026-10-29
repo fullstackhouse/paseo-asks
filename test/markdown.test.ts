@@ -54,4 +54,27 @@ describe("markdown", () => {
   it("leaves unmatched markers as text", () => {
     expect(parseInline("2 * 3 = 6, a ** b, `open")).toEqual([{ type: "text", text: "2 * 3 = 6, a ** b, `open" }]);
   });
+
+  it("parses GFM tables, including one straight after a paragraph", () => {
+    const blocks = parseMarkdown(
+      "**Rule:** party holds identity.\n| Data | Home | Why |\n|---|:---:|--:|\n| **Tags** | customers | `a\\|b` and `c|d` |\n| Addresses | party |\n\nAfter.",
+    );
+    expect(blocks.map((block) => block.type)).toEqual(["paragraph", "table", "paragraph"]);
+    const table = blocks[1]!;
+    if (table.type !== "table") throw new Error("expected a table");
+    expect(table.align).toEqual([null, "center", "right"]);
+    expect(table.header).toEqual([[{ type: "text", text: "Data" }], [{ type: "text", text: "Home" }], [{ type: "text", text: "Why" }]]);
+    expect(table.rows).toHaveLength(2);
+    expect(table.rows[0]![0]).toEqual([{ type: "strong", children: [{ type: "text", text: "Tags" }] }]);
+    expect(table.rows[0]![2]).toEqual([
+      { type: "code", text: "a|b" },
+      { type: "text", text: " and " },
+      { type: "code", text: "c|d" },
+    ]);
+    expect(table.rows[1]![2]).toEqual([]);
+  });
+
+  it("keeps pipes without a delimiter row as paragraph text", () => {
+    expect(parseMarkdown("a | b\nc | d").map((block) => block.type)).toEqual(["paragraph"]);
+  });
 });

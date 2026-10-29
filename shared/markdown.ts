@@ -1,5 +1,5 @@
-// The markdown agents write in asks: headings, paragraphs, lists, quotes, fenced code, and inline
-// bold/italic/code/links. Plugin client code can only import host modules, so no library.
+// The markdown agents write in asks: headings, paragraphs, lists, quotes, fenced code, GFM tables,
+// and inline bold/italic/code/links. Plugin client code can only import host modules, so no library.
 
 export type Inline =
   | { type: "text"; text: string }
@@ -12,20 +12,32 @@ export type Block =
   | { type: "paragraph"; inlines: Inline[] }
   | { type: "quote"; inlines: Inline[] }
   | { type: "list"; ordered: boolean; start: number; items: Inline[][] }
-  | { type: "code"; lang: string; text: string };
+  | { type: "code"; lang: string; text: string }
+  | { type: "table"; align: Align[]; header: Inline[][]; rows: Inline[][][] };
+
+export type Align = "left" | "center" | "right" | null;
 
 const FENCE = /^\s*(```|~~~)\s*([\w+-]*)\s*$/;
 const HEADING = /^(#{1,6})\s+(.*)$/;
 const BULLET = /^\s*[-*+]\s+(.*)$/;
 const NUMBERED = /^\s*(\d+)[.)]\s+(.*)$/;
 const QUOTE = /^\s*>\s?(.*)$/;
+const TABLE_DELIMITER = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
 
 export function parseMarkdown(source: string): Block[] {
   const lines = source.replace(/\r\n?/g, "\n").split("\n");
   const blocks: Block[] = [];
   let index = 0;
-  const startsBlock = (line: string) =>
-    FENCE.test(line) || HEADING.test(line) || BULLET.test(line) || NUMBERED.test(line) || QUOTE.test(line);
+  const startsTable = (at: number) => {
+    const header = lines[at];
+    const delimiter = lines[at + 1];
+    if (header === undefined || delimiter === undefined || !header.includes("|") || !TABLE_DELIMITER.test(delimiter)) return false;
+    return splitRow(header).length === splitRow(delimiter).length;
+  };
+  const startsBlock = (at: number) => {
+    const line = lines[at]!;
+    return FENCE.test(line) || HEADING.test(line) || BULLET.test(line) || NUMBERED.test(line) || QUOTE.test(line) || startsTable(at);
+  };
 
   while (index < lines.length) {
     const line = lines[index]!;
@@ -40,6 +52,18 @@ export function parseMarkdown(source: string): Block[] {
       while (index < lines.length && !lines[index]!.trim().startsWith(fence[1]!)) body.push(lines[index++]!);
       index++; // closing fence, or past the end when it is missing
       blocks.push({ type: "code", lang: fence[2] ?? "", text: body.join("\n") });
+      continue;
+    }
+    if (startsTable(index)) {
+      const header = splitRow(line);
+      const align = splitRow(lines[index + 1]!).map(cellAlign);
+      index += 2;
+      const rows: Inline[][][] = [];
+      while (index < lines.length && lines[index]!.includes("|") && lines[index]!.trim()) {
+        const cells = splitRow(lines[index++]!);
+        rows.push(header.map((_, column) => parseInline(cells[column] ?? "")));
+      }
+      blocks.push({ type: "table", align, header: header.map(parseInline), rows });
       continue;
     }
     const heading = line.match(HEADING);
@@ -63,7 +87,7 @@ export function parseMarkdown(source: string): Block[] {
         const current = lines[index]!;
         const item = current.match(marker);
         if (item) items.push(item[ordered ? 2 : 1]!);
-        else if (current.trim() && !startsBlock(current) && /^\s+/.test(current) && items.length) {
+        else if (current.trim() && !startsBlock(index) && /^\s+/.test(current) && items.length) {
           items[items.length - 1] += ` ${current.trim()}`; // an indented continuation line
         } else break;
         index++;
@@ -72,12 +96,41 @@ export function parseMarkdown(source: string): Block[] {
       continue;
     }
     const body: string[] = [];
-    while (index < lines.length && lines[index]!.trim() && (body.length === 0 || !startsBlock(lines[index]!))) {
+    while (index < lines.length && lines[index]!.trim() && (body.length === 0 || !startsBlock(index))) {
       body.push(lines[index++]!.trim());
     }
     blocks.push({ type: "paragraph", inlines: parseInline(body.join(" ")) });
   }
   return blocks;
+}
+
+/** A table row's cells, honouring `\|` and pipes inside code spans. */
+function splitRow(line: string): string[] {
+  const cells: string[] = [];
+  let cell = "";
+  let inCode = false;
+  const text = line.trim().replace(/^\|/, "");
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index]!;
+    if (char === "\\" && text[index + 1] === "|") {
+      cell += "|";
+      index++;
+    } else if (char === "`") {
+      inCode = !inCode;
+      cell += char;
+    } else if (char === "|" && !inCode) {
+      cells.push(cell.trim());
+      cell = "";
+    } else cell += char;
+  }
+  if (cell.trim() || !text.endsWith("|")) cells.push(cell.trim());
+  return cells;
+}
+
+function cellAlign(cell: string): Align {
+  const left = cell.startsWith(":");
+  const right = cell.endsWith(":");
+  return left && right ? "center" : right ? "right" : left ? "left" : null;
 }
 
 const URL_CHARS = /^https?:\/\/[^\s<>()]+[^\s<>().,;:!?'"]/;
