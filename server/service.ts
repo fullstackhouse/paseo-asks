@@ -5,8 +5,9 @@ import type { Outbox } from "./outbox";
 import type { AskStore, NewAsk } from "./store";
 
 export const INSTRUCTIONS = `Asks are the human's list of what you need from them, shown in Paseo outside this chat, with buttons that answer you.
-- Rule: never end a turn with a question, a choice or a request for the human in chat alone. Call ask_create first, then point to it ("see A3").
+- Rule: never end a turn with a question, a choice or a request for the human in chat alone. Record it with ask_create and point to it ("see A3").
 - Whenever you need the human — a PR to review or merge, a decision, approval of a follow-up, a manual step you cannot do (an OAuth click, a vendor console), or an answer — call ask_create, then refer to it by id in chat ("see A3"). Do not leave it only in the chat.
+- Call ask_create as the last step of your turn: write your summary and explanation in chat first, then create the ask, then add at most one short line ("See A3."). The ask and its buttons appear in the chat where you call it, so this puts them right below what the human just read.
 - One item per ask. title: the question or the move, one line. body (markdown): what is at stake, the facts, the options, your recommendation.
 - Decisions: one "resolve" action per option (2-4), mark one recommended. PRs and follow-ups: "send" actions whose prompt is the exact instruction you want back ("Merge PR #30 with squash"); put the PR URL in links. Set subscribe: true on a PR ask to be told when it is merged or closed, its checks pass or fail, or its review decision changes.
 - Clicking an action is the human acting, not you. Anything you were told to leave to the human (merge, deploy, delete, publish, spend) belongs in an ask as a send action, not left out: "the human merges" means they click it. A PR ready to merge always gets a "Merge" send action.

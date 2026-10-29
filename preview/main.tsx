@@ -40,8 +40,14 @@ createRoot(document.getElementById("root")!).render(
     </Frame>
     <Frame id="chat" title="Agent chat" width={620} height={700}>
       <View style={{ padding: 16, gap: 12, backgroundColor: theme.colors.surface0, flex: 1 }}>
-        <AskCard theme={theme} compact={false} agentId="main" askId="A3" verb="create" />
         <AskCard theme={theme} compact={false} agentId="main" askId="A2" verb="update" />
+        <Text style={{ color: theme.colors.foreground, lineHeight: 20 }}>
+          The checkout rework writes the cart on every click, so where carts live has to be settled before the CartStore
+          interface is fixed. Today they sit in a 4 KB session cookie and long carts get cut short. Redis is fast but
+          loses carts on eviction; Postgres keeps them and lets us report on abandoned carts. I recommend Postgres.
+        </Text>
+        <AskCard theme={theme} compact={false} agentId="main" askId="A3" verb="create" />
+        <Text style={{ color: theme.colors.foreground }}>See A3.</Text>
       </View>
     </Frame>
   </QueryClientProvider>,

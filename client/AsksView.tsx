@@ -135,7 +135,10 @@ export function AgentAsks(props: {
 
 const VERBS: Record<AskCardData["verb"], string> = { create: "Asked", update: "Updated", resolve: "Resolved" };
 
-/** An ask shown in the agent chat where the agent created, updated or resolved it. Open asks start expanded. */
+/**
+ * An ask shown in the agent chat where the agent created, updated or resolved it. Open asks start expanded.
+ * The chat around it already explains the ask, so its buttons come first and its body folds behind "Details".
+ */
 export function AskCard(
   props: { theme: PluginTheme; compact: boolean; agentId: string; openAgent?: (agentId: string) => void } & AskCardData,
 ) {
@@ -155,7 +158,18 @@ export function AskCard(
         {VERBS[verb]} {askId}
         {note ? ` (${note})` : ""}
       </Text>
-      {ask && <AskRow ask={ask} styles={styles} theme={theme} expanded={expanded} onToggle={() => setToggled(!expanded)} openAgent={openAgent} viewingAgentId={agentId} />}
+      {ask && (
+        <AskRow
+          ask={ask}
+          styles={styles}
+          theme={theme}
+          expanded={expanded}
+          onToggle={() => setToggled(!expanded)}
+          openAgent={openAgent}
+          viewingAgentId={agentId}
+          foldBody
+        />
+      )}
     </View>
   );
 }
@@ -169,6 +183,7 @@ function AskRow(props: {
   openAgent?: (agentId: string) => void;
   /** The agent whose chat this is shown in, so "Open chat" does not point at itself. */
   viewingAgentId?: string;
+  foldBody?: boolean;
 }) {
   const { ask, styles, theme, expanded } = props;
   return (
@@ -199,17 +214,21 @@ function AskDetail({
   theme,
   openAgent,
   viewingAgentId,
+  foldBody = false,
 }: {
   ask: Ask;
   styles: Styles;
   theme: PluginTheme;
   openAgent?: (agentId: string) => void;
   viewingAgentId?: string;
+  /** Show the action buttons first and the body only on request. */
+  foldBody?: boolean;
 }) {
   const act = useRpc(actOnAsk);
   const queryClient = useQueryClient();
   const toast = useToast();
   const [note, setNote] = useState("");
+  const [bodyShown, setBodyShown] = useState(!foldBody);
   const mutation = useMutation({
     mutationFn: (input: { verb: "action" | "done" | "drop" | "reply"; actionId?: string }) =>
       act({ workspaceId: ask.workspaceId, id: ask.id, note, ...input }),
@@ -235,9 +254,30 @@ function AskDetail({
     mutation.mutate({ verb: "action", actionId: action.id });
   };
 
+  const actions = ask.status === "open" && ask.actions.length > 0 && (
+    <View style={styles.buttons}>
+      {ask.actions.map((action) => (
+        <Button
+          key={action.id}
+          styles={styles}
+          primary={action.recommended}
+          disabled={mutation.isPending}
+          label={`${action.label}${action.recommended ? " ★" : ""}${action.kind === "open" ? " ↗" : ""}`}
+          onPress={() => press(action)}
+        />
+      ))}
+    </View>
+  );
+
   return (
     <View style={styles.detail}>
-      {ask.bodyBlocks?.length ? <Markdown blocks={ask.bodyBlocks} theme={theme} /> : null}
+      {foldBody && actions}
+      {foldBody && ask.bodyBlocks?.length ? (
+        <Pressable accessibilityRole="button" onPress={() => setBodyShown(!bodyShown)}>
+          <Text style={styles.link}>{bodyShown ? "Hide details" : "Details"}</Text>
+        </Pressable>
+      ) : null}
+      {bodyShown && ask.bodyBlocks?.length ? <Markdown blocks={ask.bodyBlocks} theme={theme} /> : null}
       {ask.links.map((link) => (
         <Pressable key={link.url} accessibilityRole="link" onPress={() => openLink(link.url)}>
           <Text style={styles.link}>{link.label} ↗</Text>
@@ -247,20 +287,7 @@ function AskDetail({
       {ask.orphaned && (
         <Text style={styles.orphaned}>The agent that raised this is archived. Closing it here notifies nobody.</Text>
       )}
-      {ask.status === "open" && ask.actions.length > 0 && (
-        <View style={styles.buttons}>
-          {ask.actions.map((action) => (
-            <Button
-              key={action.id}
-              styles={styles}
-              primary={action.recommended}
-              disabled={mutation.isPending}
-              label={`${action.label}${action.recommended ? " ★" : ""}${action.kind === "open" ? " ↗" : ""}`}
-              onPress={() => press(action)}
-            />
-          ))}
-        </View>
-      )}
+      {!foldBody && actions}
       <TextInput
         value={note}
         onChangeText={setNote}
