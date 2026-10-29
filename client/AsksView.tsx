@@ -127,7 +127,10 @@ export function AgentAsks(props: { theme: PluginTheme; compact: boolean; workspa
 
 const VERBS: Record<AskCardData["verb"], string> = { create: "Asked", update: "Updated", resolve: "Resolved" };
 
-/** An ask shown in the agent chat where the agent created, updated or resolved it. Open asks start expanded. */
+/**
+ * An ask shown in the agent chat where the agent created, updated or resolved it. Open asks start expanded.
+ * The chat around it already explains the ask, so its buttons come first and its body folds behind "Details".
+ */
 export function AskCard(props: { theme: PluginTheme; compact: boolean; agentId: string } & AskCardData) {
   const { theme, compact, agentId, askId, verb } = props;
   const styles = useMemo(() => makeStyles(theme, compact), [theme, compact]);
@@ -145,7 +148,9 @@ export function AskCard(props: { theme: PluginTheme; compact: boolean; agentId: 
         {VERBS[verb]} {askId}
         {note ? ` (${note})` : ""}
       </Text>
-      {ask && <AskRow ask={ask} styles={styles} theme={theme} expanded={expanded} onToggle={() => setToggled(!expanded)} />}
+      {ask && (
+        <AskRow ask={ask} styles={styles} theme={theme} expanded={expanded} onToggle={() => setToggled(!expanded)} foldBody />
+      )}
     </View>
   );
 }
@@ -157,6 +162,7 @@ function AskRow(props: {
   expanded: boolean;
   onToggle(): void;
   openAgent?: (agentId: string) => void;
+  foldBody?: boolean;
 }) {
   const { ask, styles, theme, expanded } = props;
   return (
@@ -186,16 +192,20 @@ function AskDetail({
   styles,
   theme,
   openAgent,
+  foldBody = false,
 }: {
   ask: Ask;
   styles: Styles;
   theme: PluginTheme;
   openAgent?: (agentId: string) => void;
+  /** Show the action buttons first and the body only on request. */
+  foldBody?: boolean;
 }) {
   const act = useRpc(actOnAsk);
   const queryClient = useQueryClient();
   const toast = useToast();
   const [note, setNote] = useState("");
+  const [bodyShown, setBodyShown] = useState(!foldBody);
   const mutation = useMutation({
     mutationFn: (input: { verb: "action" | "done" | "drop" | "reply"; actionId?: string }) =>
       act({ workspaceId: ask.workspaceId, id: ask.id, note, ...input }),
@@ -220,9 +230,30 @@ function AskDetail({
     mutation.mutate({ verb: "action", actionId: action.id });
   };
 
+  const actions = ask.status === "open" && ask.actions.length > 0 && (
+    <View style={styles.buttons}>
+      {ask.actions.map((action) => (
+        <Button
+          key={action.id}
+          styles={styles}
+          primary={action.recommended}
+          disabled={mutation.isPending}
+          label={`${action.label}${action.recommended ? " ★" : ""}${action.kind === "open" ? " ↗" : ""}`}
+          onPress={() => press(action)}
+        />
+      ))}
+    </View>
+  );
+
   return (
     <View style={styles.detail}>
-      {ask.body ? <Markdown source={ask.body} theme={theme} /> : null}
+      {foldBody && actions}
+      {foldBody && ask.body ? (
+        <Pressable accessibilityRole="button" onPress={() => setBodyShown(!bodyShown)}>
+          <Text style={styles.link}>{bodyShown ? "Hide details" : "Details"}</Text>
+        </Pressable>
+      ) : null}
+      {bodyShown && ask.body ? <Markdown source={ask.body} theme={theme} /> : null}
       {ask.links.map((link) => (
         <Pressable key={link.url} accessibilityRole="link" onPress={() => openLink(link.url)}>
           <Text style={styles.link}>{link.label} ↗</Text>
@@ -232,20 +263,7 @@ function AskDetail({
       {ask.orphaned && (
         <Text style={styles.orphaned}>The agent that raised this is archived. Closing it here notifies nobody.</Text>
       )}
-      {ask.status === "open" && ask.actions.length > 0 && (
-        <View style={styles.buttons}>
-          {ask.actions.map((action) => (
-            <Button
-              key={action.id}
-              styles={styles}
-              primary={action.recommended}
-              disabled={mutation.isPending}
-              label={`${action.label}${action.recommended ? " ★" : ""}${action.kind === "open" ? " ↗" : ""}`}
-              onPress={() => press(action)}
-            />
-          ))}
-        </View>
-      )}
+      {!foldBody && actions}
       <TextInput
         value={note}
         onChangeText={setNote}
