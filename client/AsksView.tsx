@@ -237,7 +237,7 @@ function AskDetail({
 
   return (
     <View style={styles.detail}>
-      {ask.body ? <Markdown source={ask.body} theme={theme} /> : null}
+      {ask.bodyBlocks?.length ? <Markdown blocks={ask.bodyBlocks} theme={theme} /> : null}
       {ask.links.map((link) => (
         <Pressable key={link.url} accessibilityRole="link" onPress={() => openLink(link.url)}>
           <Text style={styles.link}>{link.label} ↗</Text>

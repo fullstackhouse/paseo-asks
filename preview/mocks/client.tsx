@@ -1,4 +1,7 @@
-import { asks, workspaces } from "../fixtures";
+import { toBlocks } from "../../server/markdown";
+import { asks as stored, workspaces } from "../fixtures";
+
+const asks = stored.map((ask) => (ask.body ? { ...ask, bodyBlocks: toBlocks(ask.body) } : ask));
 
 type Contract = { name: string };
 
