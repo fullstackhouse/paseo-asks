@@ -7,6 +7,7 @@ import { discuss } from "./server/discuss";
 import { findGh, ghFetcher } from "./server/github";
 import { LastOutputs } from "./server/last-output";
 import { listen } from "./server/listener";
+import { toBlocks } from "./server/markdown";
 import { CLASSIFIER_PROMPT, NUDGE, paseoClassifier, shouldNudge } from "./server/nudge";
 import { Outbox, type Courier } from "./server/outbox";
 import { dataDir } from "./server/paths";
@@ -121,7 +122,10 @@ export default function contribute(server: PluginServerContext) {
 
   server.handle(listAsks, async ({ workspaceId, includeClosed }, { paseo: api }) => {
     capture(api);
-    const asks = store.list(workspaceId).filter((ask) => includeClosed || OPEN_STATUSES.includes(ask.status));
+    const asks = store
+      .list(workspaceId)
+      .filter((ask) => includeClosed || OPEN_STATUSES.includes(ask.status))
+      .map((ask) => (ask.body ? { ...ask, bodyBlocks: toBlocks(ask.body) } : ask));
     asks.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     if (workspaceId) return { asks };
     // The global screen has no workspace context, so client state hooks can't resolve names there.

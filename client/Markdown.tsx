@@ -3,7 +3,7 @@ import { openExternalUrl } from "@getpaseo/plugin/client";
 import { ScrollView } from "@getpaseo/plugin/client/react-native";
 import { Fragment, useMemo, useState, type ReactNode } from "react";
 import { Platform, Text, View } from "react-native";
-import { parseMarkdown, type Block, type Inline } from "../shared/markdown";
+import type { Block, Inline } from "../shared/markdown";
 
 const MONO = Platform.select({ ios: "Menlo", android: "monospace", default: "ui-monospace, SFMono-Regular, Menlo, monospace" });
 
@@ -11,9 +11,12 @@ export function openLink(url: string): void {
   void openExternalUrl(url).catch((error) => console.error("[asks] could not open", url, error));
 }
 
-export function Markdown({ source, theme }: { source: string; theme: PluginTheme }) {
-  const blocks = useMemo(() => parseMarkdown(source), [source]);
+export function Markdown({ blocks, theme }: { blocks: Block[]; theme: PluginTheme }) {
   const styles = useMemo(() => makeStyles(theme), [theme]);
+  return <Blocks blocks={blocks} styles={styles} />;
+}
+
+function Blocks({ blocks, styles }: { blocks: Block[]; styles: Styles }) {
   return (
     <View style={styles.root}>
       {blocks.map((block, index) => {
@@ -33,9 +36,7 @@ export function Markdown({ source, theme }: { source: string; theme: PluginTheme
           case "quote":
             return (
               <View key={index} style={styles.quote}>
-                <Text style={[styles.text, styles.muted]} selectable>
-                  {inlines(block.inlines, styles)}
-                </Text>
+                <Blocks blocks={block.blocks} styles={styles} />
               </View>
             );
           case "list":
@@ -43,15 +44,18 @@ export function Markdown({ source, theme }: { source: string; theme: PluginTheme
               <View key={index} style={styles.list}>
                 {block.items.map((item, itemIndex) => (
                   <View key={itemIndex} style={styles.item}>
-                    <Text style={[styles.text, styles.marker]}>{block.ordered ? `${block.start + itemIndex}.` : "•"}</Text>
-                    <Text style={[styles.text, styles.itemText]} selectable>
-                      {inlines(item, styles)}
+                    <Text style={[styles.text, styles.marker]}>
+                      {item.checked !== null ? (item.checked ? "☑" : "☐") : block.ordered ? `${block.start + itemIndex}.` : "•"}
                     </Text>
+                    <View style={styles.itemBody}>
+                      <Blocks blocks={item.blocks} styles={styles} />
+                    </View>
                   </View>
                 ))}
               </View>
             );
           case "code":
+          case "raw":
             return (
               <ScrollView key={index} horizontal style={styles.codeBlock} contentContainerStyle={styles.codeContent}>
                 <Text style={styles.codeBlockText} selectable>
@@ -59,6 +63,8 @@ export function Markdown({ source, theme }: { source: string; theme: PluginTheme
                 </Text>
               </ScrollView>
             );
+          case "rule":
+            return <View key={index} style={styles.rule} />;
           case "table":
             return <Table key={index} block={block} styles={styles} />;
         }
@@ -128,7 +134,7 @@ function fitColumns(natural: number[], available: number): number[] {
 }
 
 function plainLength(nodes: Inline[]): number {
-  return nodes.reduce((sum, node) => sum + (node.type === "text" || node.type === "code" ? node.text.length : plainLength(node.children)), 0);
+  return nodes.reduce((sum, node) => sum + (node.type === "text" || node.type === "code" ? node.text.length : node.type === "break" ? 0 : plainLength(node.children)), 0);
 }
 
 function inlines(nodes: Inline[], styles: Styles): ReactNode {
@@ -145,6 +151,14 @@ function inlines(nodes: Inline[], styles: Styles): ReactNode {
       case "strong":
         return (
           <Text key={index} style={styles.strong}>
+            {inlines(node.children, styles)}
+          </Text>
+        );
+      case "break":
+        return "\n";
+      case "del":
+        return (
+          <Text key={index} style={styles.del}>
             {inlines(node.children, styles)}
           </Text>
         );
@@ -179,7 +193,9 @@ function makeStyles(theme: PluginTheme) {
     list: { gap: 4 },
     item: { flexDirection: "row" as const, gap: 6 },
     marker: { color: colors.foregroundMuted, minWidth: 14 },
-    itemText: { flex: 1 },
+    itemBody: { flex: 1 },
+    del: { textDecorationLine: "line-through" as const },
+    rule: { height: 1, backgroundColor: colors.border },
     codeBlock: { backgroundColor: colors.surface2, borderRadius: 6, borderWidth: 1, borderColor: colors.border },
     codeContent: { padding: 10 },
     table: { borderRadius: 6, borderWidth: 1, borderColor: colors.border },

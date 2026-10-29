@@ -20,6 +20,7 @@
   "devDependencies": {
     "@getpaseo/plugin": "0.12.0",
     "@tanstack/react-query": "^5.90.11",
+    "@types/mdast": "^4.0.4",
     "@types/node": "^24.19.2",
     "@types/react": "~19.2.0",
     "react": "19.1.0",
@@ -27,5 +28,10 @@
     "typescript": "^5.9.3",
     "vitest": "^5.0.5",
     "zod": "^4.4.3"
+  },
+  "dependencies": {
+    "mdast-util-from-markdown": "^2.1.0",
+    "mdast-util-gfm": "^3.1.0",
+    "micromark-extension-gfm": "^3.0.0"
   }
 }
