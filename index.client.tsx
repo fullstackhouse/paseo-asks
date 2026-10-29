@@ -8,6 +8,7 @@ import type {
   PluginWorkspacePanelProps,
 } from "@getpaseo/plugin/client";
 import { SidebarRow } from "@getpaseo/plugin/client/ui";
+import { useEffect } from "react";
 import { Text } from "react-native";
 import { AgentAsks, AskCard, AsksView, POLL_MS, useAsks } from "./client/AsksView";
 import { listAsks } from "./shared/asks";
@@ -24,7 +25,25 @@ function WorkspacePanel({ theme, layout, workspaceId, navigation }: PluginWorksp
   );
 }
 
-function GlobalScreen({ theme, layout, navigation }: PluginScreenProps) {
+/**
+ * Older hosts give chat cards and pill popovers no `navigation`, so there they open an agent by visiting
+ * the Asks screen with `open`, which has navigation and hands off at once. Set in `contribute`.
+ */
+let openAgentViaScreen: ((agentId: string) => void) | undefined;
+
+type Navigation = PluginScreenProps["navigation"];
+
+/** Opens agents through the host's navigation when it passes one (FSH fork), else via the Asks screen. */
+function agentOpener(props: object): ((agentId: string) => void) | undefined {
+  const navigation = (props as { navigation?: Navigation }).navigation;
+  return navigation ? (agentId) => navigation.openAgent({ agentId }) : openAgentViaScreen;
+}
+
+function GlobalScreen({ theme, layout, navigation, params }: PluginScreenProps) {
+  const open = params.open;
+  useEffect(() => {
+    if (open && navigation) navigation.openAgent({ agentId: open });
+  }, [open, navigation]);
   return (
     <AsksView
       theme={theme}
@@ -47,13 +66,24 @@ function SidebarItem({ theme, currentScreen, openScreen }: PluginSidebarItemProp
   );
 }
 
-function TimelineCard({ theme, layout, agentId, item }: PluginTimelineItemProps<AskCardData>) {
-  return <AskCard theme={theme} compact={layout.compact} agentId={agentId} {...item.data} />;
+function TimelineCard(props: PluginTimelineItemProps<AskCardData>) {
+  const { theme, layout, agentId, item } = props;
+  return <AskCard theme={theme} compact={layout.compact} agentId={agentId} openAgent={agentOpener(props)} {...item.data} />;
 }
 
-function PillPopover({ theme, layout, workspaceId, ...context }: PluginButtonContentProps) {
+function PillPopover(props: PluginButtonContentProps) {
+  const { theme, layout, workspaceId, close, ...context } = props;
   if (context.context !== "agent") return null;
-  return <AgentAsks theme={theme} compact={layout.compact} workspaceId={workspaceId} agentId={context.agentId} />;
+  const open = agentOpener(props);
+  const openAgent = open
+    ? (agentId: string) => {
+        close();
+        open(agentId);
+      }
+    : undefined;
+  return (
+    <AgentAsks theme={theme} compact={layout.compact} workspaceId={workspaceId} agentId={context.agentId} openAgent={openAgent} />
+  );
 }
 
 /** The pill's face: how many asks wait on you, or "No asks" so a missing one is noticed. */
@@ -124,6 +154,7 @@ function contributePills(client: PluginClientContext): () => void {
 }
 
 export default function contribute(client: PluginClientContext) {
+  openAgentViaScreen = (agentId) => client.openScreen({ screenId: "asks", params: { open: agentId } });
   client.addWorkspacePanel({ id: "asks", title: "Asks", icon: "Inbox", context: "workspace", Component: WorkspacePanel });
   client.addScreen({ id: "asks", title: "Asks", Component: GlobalScreen });
   client.addSidebarHeaderItem({ id: "asks", title: "Asks", Component: SidebarItem });

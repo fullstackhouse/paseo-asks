@@ -7,6 +7,7 @@ import { discuss } from "./server/discuss";
 import { findGh, ghFetcher } from "./server/github";
 import { LastOutputs } from "./server/last-output";
 import { listen } from "./server/listener";
+import { toBlocks } from "./server/markdown";
 import { CLASSIFIER_PROMPT, NUDGE, paseoClassifier, shouldNudge } from "./server/nudge";
 import { Outbox, type Courier } from "./server/outbox";
 import { dataDir } from "./server/paths";
@@ -121,7 +122,10 @@ export default function contribute(server: PluginServerContext) {
 
   server.handle(listAsks, async ({ workspaceId, includeClosed }, { paseo: api }) => {
     capture(api);
-    const asks = store.list(workspaceId).filter((ask) => includeClosed || OPEN_STATUSES.includes(ask.status));
+    const asks = store
+      .list(workspaceId)
+      .filter((ask) => includeClosed || OPEN_STATUSES.includes(ask.status))
+      .map((ask) => (ask.body ? { ...ask, bodyBlocks: toBlocks(ask.body) } : ask));
     asks.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     if (workspaceId) return { asks };
     // The global screen has no workspace context, so client state hooks can't resolve names there.
@@ -138,14 +142,14 @@ export default function contribute(server: PluginServerContext) {
     capture(api);
     return service.refresh(agentId);
   });
-  const startDiscussion = (api: PaseoApi, workspaceId: string, id: string) => {
+  const startDiscussion = (api: PaseoApi, workspaceId: string, id: string, note?: string) => {
     const ask = store.get(workspaceId, id);
     if (!ask) throw new Error(`No ask ${id} in this workspace`);
-    return discuss({ paseo: api, store, mcp, lastOutput: (agentId) => lastOutputs.get(agentId) }, ask);
+    return discuss({ paseo: api, store, mcp, lastOutput: (agentId) => lastOutputs.get(agentId) }, ask, note);
   };
-  server.handle(discussAsk, ({ workspaceId, id }, { paseo: api }) => {
+  server.handle(discussAsk, ({ workspaceId, id, note }, { paseo: api }) => {
     capture(api);
-    return startDiscussion(api, workspaceId, id);
+    return startDiscussion(api, workspaceId, id, note);
   });
 
   const listening = listen(dir, {
@@ -160,8 +164,8 @@ export default function contribute(server: PluginServerContext) {
     "/act": async (input) => service.act(actOnAsk.input.parse(input)),
     "/refresh": async (input) => service.refresh(refreshAsks.input.parse(input).agentId),
     "/discuss": async (input) => {
-      const { workspaceId, id } = discussAsk.input.parse(input);
-      return startDiscussion(requirePaseo(), workspaceId, id);
+      const { workspaceId, id, note } = discussAsk.input.parse(input);
+      return startDiscussion(requirePaseo(), workspaceId, id, note);
     },
   });
   const timer = setInterval(() => {

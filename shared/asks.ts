@@ -1,5 +1,6 @@
 import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
+import { BlockSchema } from "./markdown";
 
 export const ASK_KINDS = ["decision", "review", "pr", "followup", "action", "question"] as const;
 export const ASK_STATUSES = ["open", "in_progress", "done", "dropped"] as const;
@@ -44,6 +45,8 @@ export const AskSchema = z.object({
   kind: z.enum(ASK_KINDS),
   title: z.string(),
   body: z.string().optional(),
+  /** `body` parsed for rendering; filled by the server when listing, never stored. */
+  bodyBlocks: z.array(BlockSchema).optional(),
   actions: z.array(ActionSchema),
   links: z.array(LinkSchema),
   status: z.enum(ASK_STATUSES),
@@ -86,10 +89,10 @@ export const actOnAsk = defineRpc({
   output: z.object({ ask: AskSchema, notified: z.boolean() }),
 });
 
-/** Open (or reopen) a read-only side chat about one ask. */
+/** Open (or reopen) a read-only side chat about one ask; `note` is the human's first message to it. */
 export const discussAsk = defineRpc({
   name: "asks.discuss",
-  input: z.object({ workspaceId: z.string(), id: z.string() }),
+  input: z.object({ workspaceId: z.string(), id: z.string(), note: z.string().optional() }),
   output: z.object({ agentId: z.string(), created: z.boolean() }),
 });
 
