@@ -24,3 +24,7 @@ export function useAgent<T>(_agentId: string, selector: (agent: { workspaceId: s
 export async function openExternalUrl(url: string) {
   console.log("openExternalUrl", url);
 }
+
+export function useSettings() {
+  return { status: "ready" as const, values: { foldChatBodies: false } };
+}

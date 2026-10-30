@@ -24,7 +24,7 @@ PR asks show live status from `gh`: open, merged or closed, checks, review decis
 
 - an **Asks** panel in each workspace (also in ⌘K: "Open asks for this workspace");
 - an **Asks** screen in the sidebar, covering every workspace, with a count of what's waiting;
-- **inline in the agent's chat**, where it called `ask_create`, `ask_update` or `ask_resolve`: the tool row becomes the ask itself, live, open asks expanded with their buttons first and the body behind **Details** (the chat around it already explains it). Agents are told to create the ask as the last step of their turn, so the buttons land right below their summary;
+- **inline in the agent's chat**, where it called `ask_create`, `ask_update` or `ask_resolve`: the tool row becomes the ask itself, live, open asks expanded with their buttons first, then the body (**Settings → Plugins → Asks** can fold the body behind a **Details** link). Agents are told to create the ask as the last step of their turn, so the buttons land right below their summary;
 - an **Asks · n** (or **No asks**) pill in every agent's composer. Pressing it lists that agent's asks, with a **Refresh asks** button that tells the agent to bring them up to date: create asks it skipped, and update or resolve stale ones.
 
 ## How it works
