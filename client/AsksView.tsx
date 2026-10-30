@@ -1,10 +1,11 @@
 import type { PluginTheme } from "@getpaseo/plugin";
-import { useAgent, useRpc } from "@getpaseo/plugin/client";
+import { useAgent, useRpc, useSettings } from "@getpaseo/plugin/client";
 import { Icon, ScrollView, TextInput, useToast } from "@getpaseo/plugin/client/react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { actOnAsk, discussAsk, listAsks, refreshAsks, type Action, type Ask, type PrState } from "../shared/asks";
+import { displaySettings } from "../shared/settings";
 import type { AskCard as AskCardData } from "../shared/timeline";
 import { Markdown, openLink } from "./Markdown";
 
@@ -137,7 +138,7 @@ const VERBS: Record<AskCardData["verb"], string> = { create: "Asked", update: "U
 
 /**
  * An ask shown in the agent chat where the agent created, updated or resolved it. Open asks start expanded.
- * The chat around it already explains the ask, so its buttons come first, then its body.
+ * The chat around it already explains the ask, so its buttons come first, then its body, folded if the setting says so.
  */
 export function AskCard(
   props: { theme: PluginTheme; compact: boolean; agentId: string; openAgent?: (agentId: string) => void } & AskCardData,
@@ -150,6 +151,7 @@ export function AskCard(
   const ask = asks.data?.asks.find((candidate) => candidate.workspaceId === workspaceId && candidate.id === askId);
   const [toggled, setToggled] = useState<boolean | null>(null);
   const expanded = toggled ?? ask?.status === "open";
+  const settings = useSettings(displaySettings);
 
   const note = !workspaceId || asks.isPending ? "loading…" : asks.isError ? "could not load" : !ask ? "not found" : null;
   return (
@@ -168,6 +170,7 @@ export function AskCard(
           openAgent={openAgent}
           viewingAgentId={agentId}
           actionsFirst
+          foldBody={settings.status === "ready" && settings.values.foldChatBodies}
         />
       )}
     </View>
@@ -184,6 +187,7 @@ function AskRow(props: {
   /** The agent whose chat this is shown in, so "Open chat" does not point at itself. */
   viewingAgentId?: string;
   actionsFirst?: boolean;
+  foldBody?: boolean;
 }) {
   const { ask, styles, theme, expanded } = props;
   return (
@@ -215,6 +219,7 @@ function AskDetail({
   openAgent,
   viewingAgentId,
   actionsFirst = false,
+  foldBody = false,
 }: {
   ask: Ask;
   styles: Styles;
@@ -223,11 +228,15 @@ function AskDetail({
   viewingAgentId?: string;
   /** Show the action buttons above the body. */
   actionsFirst?: boolean;
+  /** Keep the body behind a "Details" link. */
+  foldBody?: boolean;
 }) {
   const act = useRpc(actOnAsk);
   const queryClient = useQueryClient();
   const toast = useToast();
   const [note, setNote] = useState("");
+  const [bodyOpened, setBodyOpened] = useState(false);
+  const bodyShown = !foldBody || bodyOpened;
   const mutation = useMutation({
     mutationFn: (input: { verb: "action" | "done" | "drop" | "reply"; actionId?: string }) =>
       act({ workspaceId: ask.workspaceId, id: ask.id, note, ...input }),
@@ -271,7 +280,12 @@ function AskDetail({
   return (
     <View style={styles.detail}>
       {actionsFirst && actions}
-      {ask.bodyBlocks?.length ? <Markdown blocks={ask.bodyBlocks} theme={theme} /> : null}
+      {foldBody && ask.bodyBlocks?.length ? (
+        <Pressable accessibilityRole="button" onPress={() => setBodyOpened(!bodyOpened)}>
+          <Text style={styles.link}>{bodyOpened ? "Hide details" : "Details"}</Text>
+        </Pressable>
+      ) : null}
+      {bodyShown && ask.bodyBlocks?.length ? <Markdown blocks={ask.bodyBlocks} theme={theme} /> : null}
       {ask.links.map((link) => (
         <Pressable key={link.url} accessibilityRole="link" onPress={() => openLink(link.url)}>
           <Text style={styles.link}>{link.label} ↗</Text>

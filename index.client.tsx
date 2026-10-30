@@ -11,6 +11,7 @@ import { SidebarRow } from "@getpaseo/plugin/client/ui";
 import { useEffect } from "react";
 import { Text } from "react-native";
 import { AgentAsks, AskCard, AsksView, POLL_MS, useAsks } from "./client/AsksView";
+import { SettingsScreen } from "./client/SettingsScreen";
 import { listAsks } from "./shared/asks";
 import { ASK_CARD, AskCardSchema, askCardFor, type AskCard as AskCardData } from "./shared/timeline";
 
@@ -157,6 +158,7 @@ export default function contribute(client: PluginClientContext) {
   openAgentViaScreen = (agentId) => client.openScreen({ screenId: "asks", params: { open: agentId } });
   client.addWorkspacePanel({ id: "asks", title: "Asks", icon: "Inbox", context: "workspace", Component: WorkspacePanel });
   client.addScreen({ id: "asks", title: "Asks", Component: GlobalScreen });
+  client.addSettingsScreen({ id: "asks", title: "Asks", icon: "Inbox", Component: SettingsScreen });
   client.addSidebarHeaderItem({ id: "asks", title: "Asks", Component: SidebarItem });
   client.addCommandCenterItem({
     id: "open-asks",

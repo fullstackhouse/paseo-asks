@@ -6,7 +6,7 @@ Paseo plugin: agents record what they need from the human (asks) via MCP; Paseo 
 
 - `index.server.ts` wires everything. `server/`: `store` (one JSON per workspace), `outbox` (disk-backed, holds messages until the agent's turn ends), `service` (MCP tools + human actions + agent instructions), `bridge` (stdio MCP script, written to the data dir at start), `listener` (localhost HTTP the bridge calls), `agents` (agentId → workspaceId), `discuss` (read-only side chat, child of the owner), `github` + `watcher` (live PR state via `gh`, subscriptions), `last-output` (each agent's latest reply, seeds side chats).
 - `client/` + `index.client.tsx`: React Native only (runs on mobile). Colors from `theme.colors`. Open URLs with `openExternalUrl` (default browser); `window.open` opens an unauthenticated in-app Paseo window. Client code can import only host modules, so ask bodies are parsed on the server (`server/markdown.ts`, mdast + GFM) and `asks.list` returns them as `bodyBlocks` (`shared/markdown.ts`); the client only renders them, showing unknown blocks as source.
-- `shared/asks.ts`: Zod schemas and RPC contracts.
+- `shared/asks.ts`: Zod schemas and RPC contracts. `shared/settings.ts`: host-wide display settings, edited in `client/SettingsScreen.tsx`.
 - `preview/`: own package.json; renders `client/` with react-native-web and mocked host modules for screenshots (`docs/*.png`). Not shipped.
 
 ## Load-bearing facts (Paseo 0.12)
