@@ -53,6 +53,15 @@ describe("asks in a real Paseo daemon", () => {
     expect(timeline).toMatch(NUDGED);
   });
 
+  it("nudges a deferred follow-up left in chat", async () => {
+    const agent = await sandbox.run(
+      'Reply with exactly this sentence and nothing else, without using any tools: "Kept the onRetryComplete callback for today\'s release; it is worth removing when the replay path is replaced."',
+    );
+
+    const timeline = await sandbox.waitForTimeline(agent, NUDGED);
+    expect(timeline).toMatch(NUDGED);
+  });
+
   it("does not nudge a plain report", async () => {
     const before = sandbox.classifierCalls();
     const agent = await sandbox.run('Write a file notes.txt containing "hello". Then reply with exactly "Created notes.txt." and nothing else.');
