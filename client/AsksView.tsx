@@ -137,7 +137,7 @@ const VERBS: Record<AskCardData["verb"], string> = { create: "Asked", update: "U
 
 /**
  * An ask shown in the agent chat where the agent created, updated or resolved it. Open asks start expanded.
- * The chat around it already explains the ask, so its buttons come first and its body folds behind "Details".
+ * The chat around it already explains the ask, so its buttons come first, then its body.
  */
 export function AskCard(
   props: { theme: PluginTheme; compact: boolean; agentId: string; openAgent?: (agentId: string) => void } & AskCardData,
@@ -167,7 +167,7 @@ export function AskCard(
           onToggle={() => setToggled(!expanded)}
           openAgent={openAgent}
           viewingAgentId={agentId}
-          foldBody
+          actionsFirst
         />
       )}
     </View>
@@ -183,7 +183,7 @@ function AskRow(props: {
   openAgent?: (agentId: string) => void;
   /** The agent whose chat this is shown in, so "Open chat" does not point at itself. */
   viewingAgentId?: string;
-  foldBody?: boolean;
+  actionsFirst?: boolean;
 }) {
   const { ask, styles, theme, expanded } = props;
   return (
@@ -214,21 +214,20 @@ function AskDetail({
   theme,
   openAgent,
   viewingAgentId,
-  foldBody = false,
+  actionsFirst = false,
 }: {
   ask: Ask;
   styles: Styles;
   theme: PluginTheme;
   openAgent?: (agentId: string) => void;
   viewingAgentId?: string;
-  /** Show the action buttons first and the body only on request. */
-  foldBody?: boolean;
+  /** Show the action buttons above the body. */
+  actionsFirst?: boolean;
 }) {
   const act = useRpc(actOnAsk);
   const queryClient = useQueryClient();
   const toast = useToast();
   const [note, setNote] = useState("");
-  const [bodyShown, setBodyShown] = useState(!foldBody);
   const mutation = useMutation({
     mutationFn: (input: { verb: "action" | "done" | "drop" | "reply"; actionId?: string }) =>
       act({ workspaceId: ask.workspaceId, id: ask.id, note, ...input }),
@@ -271,13 +270,8 @@ function AskDetail({
 
   return (
     <View style={styles.detail}>
-      {foldBody && actions}
-      {foldBody && ask.bodyBlocks?.length ? (
-        <Pressable accessibilityRole="button" onPress={() => setBodyShown(!bodyShown)}>
-          <Text style={styles.link}>{bodyShown ? "Hide details" : "Details"}</Text>
-        </Pressable>
-      ) : null}
-      {bodyShown && ask.bodyBlocks?.length ? <Markdown blocks={ask.bodyBlocks} theme={theme} /> : null}
+      {actionsFirst && actions}
+      {ask.bodyBlocks?.length ? <Markdown blocks={ask.bodyBlocks} theme={theme} /> : null}
       {ask.links.map((link) => (
         <Pressable key={link.url} accessibilityRole="link" onPress={() => openLink(link.url)}>
           <Text style={styles.link}>{link.label} ↗</Text>
@@ -287,7 +281,7 @@ function AskDetail({
       {ask.orphaned && (
         <Text style={styles.orphaned}>The agent that raised this is archived. Closing it here notifies nobody.</Text>
       )}
-      {!foldBody && actions}
+      {!actionsFirst && actions}
       <TextInput
         value={note}
         onChangeText={setNote}
