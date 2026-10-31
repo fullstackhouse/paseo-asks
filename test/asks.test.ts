@@ -5,7 +5,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { Outbox, type AgentState, type Courier } from "../server/outbox";
 import { AsksService } from "../server/service";
 import { AskStore } from "../server/store";
-import { pillLabel } from "../shared/asks";
 
 class FakeCourier implements Courier {
   states = new Map<string, AgentState>();
@@ -163,14 +162,5 @@ describe("asks", () => {
     await service.callTool(AGENT, "ask_update", { id: "A2", status: "dropped" });
     expect((await service.callTool(AGENT, "ask_list", {})).text).toBe("A1 [open] decision: Squash-only merges?");
     expect((await service.callTool(AGENT, "ask_list", { status: "all" })).text.split("\n")).toHaveLength(2);
-  });
-});
-
-describe("pillLabel", () => {
-  it("counts what waits on the human and what is in progress", () => {
-    expect(pillLabel({ open: 0, inProgress: 0 })).toBe("No asks");
-    expect(pillLabel({ open: 1, inProgress: 0 })).toBe("Asks · 1");
-    expect(pillLabel({ open: 0, inProgress: 4 })).toBe("Asks · 0/4");
-    expect(pillLabel({ open: 1, inProgress: 3 })).toBe("Asks · 1/4");
   });
 });

@@ -11,8 +11,7 @@ import { SidebarRow } from "@getpaseo/plugin/client/ui";
 import { useEffect } from "react";
 import { Text } from "react-native";
 import { AgentAsks, AskCard, AsksView, POLL_MS, useAsks } from "./client/AsksView";
-import { SettingsScreen } from "./client/SettingsScreen";
-import { listAsks, pillLabel } from "./shared/asks";
+import { listAsks } from "./shared/asks";
 import { ASK_CARD, AskCardSchema, askCardFor, type AskCard as AskCardData } from "./shared/timeline";
 
 function WorkspacePanel({ theme, layout, workspaceId, navigation }: PluginWorkspacePanelProps) {
@@ -87,6 +86,11 @@ function PillPopover(props: PluginButtonContentProps) {
   );
 }
 
+/** The pill's face: how many asks wait on you, or "No asks" so a missing one is noticed. */
+function pillLabel(count: number): string {
+  return count > 0 ? `Asks · ${count}` : "No asks";
+}
+
 /** A composer pill per agent with its open asks; pressing it shows them and a Refresh. */
 function contributePills(client: PluginClientContext): () => void {
   const pills = new Map<string, PluginButtonRegistration>();
@@ -101,7 +105,7 @@ function contributePills(client: PluginClientContext): () => void {
         id: "asks",
         workspaceId,
         agentId,
-        button: { title: "Asks", icon: "Inbox", label: pillLabel({ open: 0, inProgress: 0 }), behavior: { kind: "popover", Content: PillPopover } },
+        button: { title: "Asks", icon: "Inbox", label: pillLabel(0), behavior: { kind: "popover", Content: PillPopover } },
       }),
     );
   };
@@ -112,15 +116,10 @@ function contributePills(client: PluginClientContext): () => void {
 
   const refreshCounts = async () => {
     const { asks } = await client.rpc(listAsks, {});
-    const counts = new Map<string, { open: number; inProgress: number }>();
-    for (const ask of asks) {
-      const count = counts.get(ask.ownerAgentId) ?? { open: 0, inProgress: 0 };
-      if (ask.status === "open") count.open++;
-      if (ask.status === "in_progress") count.inProgress++;
-      counts.set(ask.ownerAgentId, count);
-    }
+    const counts = new Map<string, number>();
+    for (const ask of asks) if (ask.status === "open") counts.set(ask.ownerAgentId, (counts.get(ask.ownerAgentId) ?? 0) + 1);
     for (const [agentId, pill] of pills) {
-      pill.update({ label: pillLabel(counts.get(agentId) ?? { open: 0, inProgress: 0 }) });
+      pill.update({ label: pillLabel(counts.get(agentId) ?? 0) });
     }
   };
   const timer = setInterval(() => void refreshCounts().catch(() => undefined), POLL_MS * 2);
@@ -158,7 +157,6 @@ export default function contribute(client: PluginClientContext) {
   openAgentViaScreen = (agentId) => client.openScreen({ screenId: "asks", params: { open: agentId } });
   client.addWorkspacePanel({ id: "asks", title: "Asks", icon: "Inbox", context: "workspace", Component: WorkspacePanel });
   client.addScreen({ id: "asks", title: "Asks", Component: GlobalScreen });
-  client.addSettingsScreen({ id: "asks", title: "Asks", icon: "Inbox", Component: SettingsScreen });
   client.addSidebarHeaderItem({ id: "asks", title: "Asks", Component: SidebarItem });
   client.addCommandCenterItem({
     id: "open-asks",
