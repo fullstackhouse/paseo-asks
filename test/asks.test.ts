@@ -170,7 +170,7 @@ describe("pillLabel", () => {
   it("counts what waits on the human and what is in progress", () => {
     expect(pillLabel({ open: 0, inProgress: 0 })).toBe("No asks");
     expect(pillLabel({ open: 1, inProgress: 0 })).toBe("Asks · 1");
-    expect(pillLabel({ open: 0, inProgress: 4 })).toBe("Asks · 4 in progress");
-    expect(pillLabel({ open: 1, inProgress: 3 })).toBe("Asks · 1 · 3 in progress");
+    expect(pillLabel({ open: 0, inProgress: 4 })).toBe("Asks · 0/4");
+    expect(pillLabel({ open: 1, inProgress: 3 })).toBe("Asks · 1/4");
   });
 });
