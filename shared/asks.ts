@@ -66,6 +66,12 @@ export type Ask = z.infer<typeof AskSchema>;
 
 export const OPEN_STATUSES: readonly Ask["status"][] = ["open", "in_progress"];
 
+/** A composer pill's face: asks waiting on you, then ones in progress, or "No asks" so a missing one is noticed. */
+export function pillLabel({ open, inProgress }: { open: number; inProgress: number }): string {
+  const parts = [...(open > 0 ? [String(open)] : []), ...(inProgress > 0 ? [`${inProgress} in progress`] : [])];
+  return parts.length > 0 ? `Asks · ${parts.join(" · ")}` : "No asks";
+}
+
 export const listAsks = defineRpc({
   name: "asks.list",
   input: z.object({ workspaceId: z.string().optional(), includeClosed: z.boolean().optional() }),
