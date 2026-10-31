@@ -2,7 +2,7 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { useAgent, useRpc, useSettings } from "@getpaseo/plugin/client";
 import { Icon, ScrollView, TextInput, useToast } from "@getpaseo/plugin/client/react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 import { actOnAsk, discussAsk, listAsks, refreshAsks, type Action, type Ask, type PrState } from "../shared/asks";
 import { displaySettings } from "../shared/settings";
@@ -55,32 +55,45 @@ export function AsksView({ theme, compact, workspaceId, openAgent }: ViewProps) 
       {groups.map(([groupId, items]) => (
         <View key={groupId} style={styles.group}>
           {!workspaceId && <Text style={styles.workspace}>{asks.data.workspaceNames?.[groupId] ?? groupId}</Text>}
-          {(["open", "in_progress"] as const).map((status) => {
-            const rows = items.filter((ask) => ask.status === status);
-            if (rows.length === 0) return null;
-            return (
-              <View key={status} style={styles.section}>
-                <Text style={styles.sectionTitle}>{status === "open" ? "NEEDS YOU" : "IN PROGRESS"}</Text>
-                {rows.map((ask) => {
-                  const key = `${ask.workspaceId}/${ask.id}`;
-                  return (
-                    <AskRow
-                      key={key}
-                      ask={ask}
-                      styles={styles}
-                      theme={theme}
-                      expanded={expanded === key}
-                      onToggle={() => setExpanded(expanded === key ? null : key)}
-                      openAgent={openAgent}
-                    />
-                  );
-                })}
-              </View>
-            );
-          })}
+          <StatusSections
+            asks={items}
+            styles={styles}
+            renderRow={(ask) => {
+              const key = `${ask.workspaceId}/${ask.id}`;
+              return (
+                <AskRow
+                  key={key}
+                  ask={ask}
+                  styles={styles}
+                  theme={theme}
+                  expanded={expanded === key}
+                  onToggle={() => setExpanded(expanded === key ? null : key)}
+                  openAgent={openAgent}
+                />
+              );
+            }}
+          />
         </View>
       ))}
     </ScrollView>
+  );
+}
+
+/** Splits asks into what waits on the human and what the agent is already doing. */
+function StatusSections({ asks, styles, renderRow }: { asks: Ask[]; styles: Styles; renderRow: (ask: Ask) => ReactNode }) {
+  return (
+    <>
+      {(["open", "in_progress"] as const).map((status) => {
+        const rows = asks.filter((ask) => ask.status === status);
+        if (rows.length === 0) return null;
+        return (
+          <View key={status} style={styles.section}>
+            <Text style={styles.sectionTitle}>{status === "open" ? "NEEDS YOU" : "IN PROGRESS"}</Text>
+            {rows.map(renderRow)}
+          </View>
+        );
+      })}
+    </>
   );
 }
 
@@ -110,18 +123,22 @@ export function AgentAsks(props: {
   return (
     <View style={styles.popover}>
       {mine.length === 0 && <Text style={styles.muted}>This agent has no open asks.</Text>}
-      {mine.map((ask) => (
-        <AskRow
-          key={ask.id}
-          ask={ask}
-          styles={styles}
-          theme={theme}
-          expanded={expanded === ask.id}
-          onToggle={() => setExpanded(expanded === ask.id ? null : ask.id)}
-          openAgent={openAgent}
-          viewingAgentId={agentId}
-        />
-      ))}
+      <StatusSections
+        asks={mine}
+        styles={styles}
+        renderRow={(ask) => (
+          <AskRow
+            key={ask.id}
+            ask={ask}
+            styles={styles}
+            theme={theme}
+            expanded={expanded === ask.id}
+            onToggle={() => setExpanded(expanded === ask.id ? null : ask.id)}
+            openAgent={openAgent}
+            viewingAgentId={agentId}
+          />
+        )}
+      />
       <View style={styles.buttons}>
         <Button
           styles={styles}
