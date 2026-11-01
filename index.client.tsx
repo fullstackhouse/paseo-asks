@@ -87,9 +87,9 @@ function PillPopover(props: PluginButtonContentProps) {
   );
 }
 
-/** The pill's face: how many asks wait on you, or "No asks" so a missing one is noticed. */
+/** The pill's face beside its inbox icon: how many asks wait on you, 0 so a missing one is noticed. */
 function pillLabel(count: number): string {
-  return count > 0 ? `Asks · ${count}` : "No asks";
+  return String(count);
 }
 
 /** A composer pill per agent with its open asks; pressing it shows them and a Refresh. */
