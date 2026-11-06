@@ -60,6 +60,10 @@ describe("asks in a real Paseo daemon", () => {
 
     const timeline = await sandbox.waitForTimeline(agent, NUDGED);
     expect(timeline).toMatch(NUDGED);
+    await sandbox.settle(agent);
+    expect(sandbox.asks()).toContainEqual(
+      expect.objectContaining({ kind: "followup", ownerAgentId: agent, actions: expect.arrayContaining([expect.objectContaining({ kind: "send" })]) }),
+    );
   });
 
   it("does not nudge a plain report", async () => {
