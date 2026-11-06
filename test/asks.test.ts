@@ -111,6 +111,29 @@ describe("asks", () => {
     expect(courier.sent).toHaveLength(1);
   });
 
+  it("tells the agent to keep a watched PR ask open while the PR still waits on the human", async () => {
+    await service.callTool(AGENT, "ask_create", {
+      kind: "pr",
+      title: "Request review on PR #30",
+      links: [{ label: "PR #30", url: "https://github.com/example/shop/pull/30" }],
+      subscribe: true,
+      actions: [{ label: "Request review from alice", kind: "send", prompt: "Request review on PR #30 from alice" }],
+    });
+    await service.callTool(AGENT, "ask_create", {
+      kind: "pr",
+      title: "PR #31 ready",
+      links: [{ label: "PR #31", url: "https://github.com/example/shop/pull/31" }],
+      actions: [{ label: "Merge", kind: "send", prompt: "Merge PR #31 with squash" }],
+    });
+    await service.act({ workspaceId: WS, id: "A1", verb: "action", actionId: "a1" });
+    await service.act({ workspaceId: WS, id: "A2", verb: "action", actionId: "a1" });
+    await outbox.flush();
+
+    const [watched, unwatched] = courier.sent.map((message) => message.text);
+    expect(watched).toContain("leave the ask in progress");
+    expect(unwatched).not.toContain("leave the ask in progress");
+  });
+
   it("new options on an in-progress ask hand it back to the human", async () => {
     await service.callTool(AGENT, "ask_create", {
       kind: "pr",

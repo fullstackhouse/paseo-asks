@@ -1,19 +1,20 @@
 import { z } from "zod";
-import { ACTION_KINDS, ASK_KINDS, ASK_STATUSES, OPEN_STATUSES, type Ask } from "../shared/asks";
+import { ACTION_KINDS, ASK_KINDS, ASK_STATUSES, OPEN_STATUSES, prUrlOf, type Ask } from "../shared/asks";
 import { REFRESH } from "./nudge";
 import type { Outbox } from "./outbox";
 import type { AskStore, NewAsk } from "./store";
 
 export const INSTRUCTIONS = `Asks are the human's list of what you need from them, shown in Paseo outside this chat, with buttons that answer you.
 - Rule: never end a turn with a question, a choice or a request for the human in chat alone. Record it with ask_create and point to it ("see A3").
-- Whenever you need the human — a PR to review or merge, a decision, approval of a follow-up, a manual step you cannot do (an OAuth click, a vendor console), or an answer — call ask_create, then refer to it by id in chat ("see A3"). Do not leave it only in the chat.
+- Whenever you need the human — reviewers or a merge for a PR, a decision, approval of a follow-up, a manual step you cannot do (an OAuth click, a vendor console), or an answer — call ask_create, then refer to it by id in chat ("see A3"). Do not leave it only in the chat.
 - Follow-ups count even when nothing blocks you: work you recommend or defer ("worth doing next time", "out of scope here") gets a followup ask with a send action whose prompt starts that work, or it is lost when this chat is archived. Instructions against offering more work in your reply do not apply: the ask replaces the offer. Skip it only if you would advise against doing the work at all.
 - Call ask_create as the last step of your turn: write your summary and explanation in chat first, then create the ask, then add at most one short line ("See A3."). The ask and its buttons appear in the chat where you call it, so this puts them right below what the human just read.
 - One item per ask. title: the question or the move, one line. body (markdown): what is at stake, the facts, the options, your recommendation.
 - Decisions: one "resolve" action per option (2-4), mark one recommended. PRs and follow-ups: "send" actions whose prompt is the exact instruction you want back ("Merge PR #30 with squash"); put the PR URL in links. Set subscribe: true on a PR ask to be told when it is merged or closed, its checks pass or fail, or its review decision changes.
-- Clicking an action is the human acting, not you. Anything you were told to leave to the human (merge, deploy, delete, publish, spend) belongs in an ask as a send action, not left out: "the human merges" means they click it. A PR ready to merge always gets a "Merge" send action.
+- Clicking an action is the human acting, not you. Anything you were told to leave to the human (merge, deploy, delete, publish, spend) belongs in an ask as a send action, not left out: "the human merges" means they click it.
+- PRs: check gh pr view --json reviewDecision. Empty or "APPROVED" with checks passing: the PR is ready, its one ask gets a "Merge" send action, and no review ask. "REVIEW_REQUIRED": no Merge action yet, the human's move is choosing who reviews it. Title it "Request review on PR #N", with one send action per candidate reviewer (2-4, from CODEOWNERS, recent reviewers of the touched files, or collaborators; recommend one), each prompt naming who ("Request review on PR #30 from alice"). Do not request a review until the human clicks. Set subscribe: true. Requesting the review does not finish the ask: keep it in progress, not resolved, so its subscription tells you about the review. Once the review is approved and checks pass, ask_update the same ask to a "Merge" send action.
 - The human may talk an ask through in a side chat; its outcome reaches you as an [asks] message like any other answer.
-- Answers arrive as messages starting with [asks]. Act on them. After finishing work a send action gave you, call ask_resolve.
+- Answers arrive as messages starting with [asks]. Act on them. After finishing work a send action gave you, call ask_resolve (a requested PR review is not finished until it is approved; see PRs).
 - Keep asks true: ask_update when facts change, ask_resolve or status "dropped" when the human is no longer needed. Check ask_list before creating a duplicate.
 - Your own to-do list stays in your task tool. Asks are only for things whose next move is the human's.`;
 
@@ -157,7 +158,9 @@ export class AsksService {
         if (action.kind === "open") throw new Error("Open actions run on the client");
         if (action.kind === "send") {
           next = await this.store.update(ask.workspaceId, ask.id, { status: "in_progress" });
-          message = `${head} "${action.label}": ${action.prompt ?? action.label}.${noted} When it is done, call ask_resolve for ${ask.id}.`;
+          // Resolving drops the ask from the PR watcher, so a review request resolved here would never hear the approval.
+          const watched = ask.subscribe && prUrlOf(ask) ? " If the PR still waits on the human after it (a review requested, not yet approved), leave the ask in progress instead: resolving it ends its PR updates." : "";
+          message = `${head} "${action.label}": ${action.prompt ?? action.label}.${noted} When it is done, call ask_resolve for ${ask.id}.${watched}`;
         } else {
           const outcome = { actionId: action.id, label: action.label, note, by: "human" as const, at };
           next = await this.store.update(ask.workspaceId, ask.id, { status: "done", outcome });
