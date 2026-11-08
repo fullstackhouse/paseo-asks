@@ -1,4 +1,5 @@
 import type {
+  PluginButtonBehavior,
   PluginButtonContentProps,
   PluginButtonRegistration,
   PluginClientContext,
@@ -87,6 +88,13 @@ function PillPopover(props: PluginButtonContentProps) {
   );
 }
 
+// Older hosts ignore the presentation hint and keep their existing popover.
+const asksPopover: Extract<PluginButtonBehavior, { kind: "popover" }> & { presentation: "side-panel" } = {
+  kind: "popover",
+  presentation: "side-panel",
+  Content: PillPopover,
+};
+
 /** The pill's face beside its inbox icon: how many asks wait on you, 0 so a missing one is noticed. */
 function pillLabel(count: number): string {
   return String(count);
@@ -106,7 +114,7 @@ function contributePills(client: PluginClientContext): () => void {
         id: "asks",
         workspaceId,
         agentId,
-        button: { title: "Asks", icon: "Inbox", label: pillLabel(0), behavior: { kind: "popover", Content: PillPopover } },
+        button: { title: "Asks", icon: "Inbox", label: pillLabel(0), behavior: asksPopover },
       }),
     );
   };
