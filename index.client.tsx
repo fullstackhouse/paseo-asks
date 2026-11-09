@@ -13,7 +13,7 @@ import { useEffect } from "react";
 import { Text } from "react-native";
 import { AgentAsks, AskCard, AsksView, POLL_MS, useAsks } from "./client/AsksView";
 import { SettingsScreen } from "./client/SettingsScreen";
-import { listAsks } from "./shared/asks";
+import { awaitsYou, listAsks } from "./shared/asks";
 import { ASK_CARD, AskCardSchema, askCardFor, type AskCard as AskCardData } from "./shared/timeline";
 
 function WorkspacePanel({ theme, layout, workspaceId, navigation }: PluginWorkspacePanelProps) {
@@ -55,15 +55,20 @@ function GlobalScreen({ theme, layout, navigation, params }: PluginScreenProps) 
   );
 }
 
+/** The FSH host's needs-input orange; older hosts only have the status warning. */
+function attentionColor(theme: PluginSidebarItemProps["theme"]): string {
+  return (theme.colors as { attention?: string }).attention ?? theme.colors.statusWarning;
+}
+
 function SidebarItem({ theme, currentScreen, openScreen }: PluginSidebarItemProps) {
   const asks = useAsks();
-  const waiting = asks.data?.asks.filter((ask) => ask.status === "open").length ?? 0;
+  const waiting = asks.data?.asks.filter(awaitsYou).length ?? 0;
   return (
     <SidebarRow
       icon="Inbox"
       active={currentScreen?.screenId === "asks"}
       onPress={() => openScreen({ screenId: "asks" })}
-      trailing={waiting > 0 ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>{waiting}</Text> : undefined}
+      trailing={waiting > 0 ? <Text style={{ color: attentionColor(theme), fontSize: 12, fontWeight: "600" }}>{waiting}</Text> : undefined}
     />
   );
 }
@@ -126,7 +131,7 @@ function contributePills(client: PluginClientContext): () => void {
   const refreshCounts = async () => {
     const { asks } = await client.rpc(listAsks, {});
     const counts = new Map<string, number>();
-    for (const ask of asks) if (ask.status === "open") counts.set(ask.ownerAgentId, (counts.get(ask.ownerAgentId) ?? 0) + 1);
+    for (const ask of asks) if (awaitsYou(ask)) counts.set(ask.ownerAgentId, (counts.get(ask.ownerAgentId) ?? 0) + 1);
     for (const [agentId, pill] of pills) {
       pill.update({ label: pillLabel(counts.get(agentId) ?? 0) });
     }

@@ -68,6 +68,11 @@ export type Ask = z.infer<typeof AskSchema>;
 
 export const OPEN_STATUSES: readonly Ask["status"][] = ["open", "in_progress"];
 
+/** Waits on the human: open, and not about a PR that is already merged or closed (its owner just hasn't closed it yet). */
+export function awaitsYou(ask: Pick<Ask, "status" | "pr">): boolean {
+  return ask.status === "open" && (!ask.pr || ask.pr.state === "OPEN");
+}
+
 export const listAsks = defineRpc({
   name: "asks.list",
   input: z.object({ workspaceId: z.string().optional(), includeClosed: z.boolean().optional() }),
