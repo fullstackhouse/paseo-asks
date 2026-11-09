@@ -122,6 +122,69 @@ describe("phase 2", () => {
     expect(store.get(WS, "A1")).toMatchObject({ updatedAt: before, pr: { checks: "failing" } });
   });
 
+  it("leaves the review out of a change when asked to", () => {
+    const before = pr({ checks: "pending" });
+    const after = pr({ checks: "failing", reviewDecision: "CHANGES_REQUESTED" });
+    expect(describePrChange(before, after, { review: false })).toBe("PR #30 checks failing");
+    expect(describePrChange(pr(), pr({ reviewDecision: "CHANGES_REQUESTED" }), { review: false })).toBeNull();
+  });
+
+  it("holds requested changes as an ask instead of telling the owner, once per open ask", async () => {
+    await prAsk(true);
+    let next = pr();
+    const watcher = new PrWatcher(store, service, async () => next, async () => false);
+    await watcher.refresh();
+
+    next = pr({ reviewDecision: "CHANGES_REQUESTED" });
+    await watcher.refresh();
+    await outbox.flush();
+    expect(sent).toEqual([]);
+    const raised = store.list(WS).filter((ask) => ask.id !== "A1");
+    expect(raised).toMatchObject([
+      {
+        ownerAgentId: OWNER,
+        kind: "followup",
+        status: "open",
+        title: "Address review comments on PR #30",
+        links: [{ url: "https://github.com/o/r/pull/30" }],
+        actions: [{ kind: "send", label: "Address review comments" }],
+      },
+    ]);
+
+    next = pr({ reviewDecision: "REVIEW_REQUIRED" });
+    await watcher.refresh();
+    next = pr({ reviewDecision: "CHANGES_REQUESTED" });
+    await watcher.refresh();
+    expect(store.list(WS)).toHaveLength(2);
+
+    await service.act({ workspaceId: WS, id: raised[0]!.id, verb: "action", actionId: raised[0]!.actions[0]!.id });
+    await outbox.flush();
+    expect(sent.at(-1)).toContain("Address the review comments on PR #30 (https://github.com/o/r/pull/30) and push");
+  });
+
+  it("still tells the owner about checks and merges while holding reviews", async () => {
+    await prAsk(true);
+    let next = pr();
+    const watcher = new PrWatcher(store, service, async () => next, async () => false);
+    await watcher.refresh();
+    next = pr({ checks: "failing", reviewDecision: "CHANGES_REQUESTED" });
+    await watcher.refresh();
+    await outbox.flush();
+    expect(sent).toEqual(["[asks] A1 (Merge PR #30) PR #30 checks failing."]);
+  });
+
+  it("tells the owner about requested changes by default", async () => {
+    await prAsk(true);
+    let next = pr();
+    const watcher = new PrWatcher(store, service, async () => next);
+    await watcher.refresh();
+    next = pr({ reviewDecision: "CHANGES_REQUESTED" });
+    await watcher.refresh();
+    await outbox.flush();
+    expect(sent).toEqual(["[asks] A1 (Merge PR #30) PR #30 review: changes requested."]);
+    expect(store.list(WS)).toHaveLength(1);
+  });
+
   it("seeds a side chat with the ask, its option ids, and the owner's latest reply", async () => {
     await service.callTool(OWNER, "ask_create", {
       kind: "decision",

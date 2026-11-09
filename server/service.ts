@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ACTION_KINDS, ASK_KINDS, ASK_STATUSES, OPEN_STATUSES, prUrlOf, type Ask } from "../shared/asks";
+import { ACTION_KINDS, ASK_KINDS, ASK_STATUSES, OPEN_STATUSES, prUrlOf, type Ask, type PrState } from "../shared/asks";
 import { REFRESH } from "./nudge";
 import type { Outbox } from "./outbox";
 import type { AskStore, NewAsk } from "./store";
@@ -210,6 +210,24 @@ export class AsksService {
     this.message(agentId, workspaceId, REFRESH);
     await this.outbox.flush(agentId);
     return { sent: this.outbox.pending(agentId).length === 0 };
+  }
+
+  /** Requested changes the human holds back: an ask whose button starts the work, owned by the PR ask's agent. */
+  async raiseReview(prAsk: Ask, pr: PrState): Promise<Ask> {
+    const title = `Address review comments on PR #${pr.number}`;
+    const open = this.store
+      .list(prAsk.workspaceId)
+      .find((ask) => OPEN_STATUSES.includes(ask.status) && ask.title === title && prUrlOf(ask) === pr.url);
+    if (open) return open;
+    return this.store.create({
+      workspaceId: prAsk.workspaceId,
+      ownerAgentId: prAsk.ownerAgentId,
+      kind: "followup",
+      title,
+      body: `A reviewer requested changes on PR #${pr.number}. The agent has not been told: it starts on them when you press **Address review comments**.`,
+      links: [{ label: `PR #${pr.number}`, url: pr.url }],
+      actions: [{ label: "Address review comments", kind: "send", prompt: `Address the review comments on PR #${pr.number} (${pr.url}) and push` }],
+    });
   }
 
   private async create(workspaceId: string, agentId: string, input: z.output<typeof CreateInput>): Promise<Ask> {

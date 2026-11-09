@@ -16,13 +16,18 @@ import { AsksService, INSTRUCTIONS, TOOLS } from "./server/service";
 import { AskStore } from "./server/store";
 import { PrWatcher } from "./server/watcher";
 import { activeWorkspaces } from "./server/workspaces";
-import { displaySettings } from "./shared/settings";
+import { displaySettings, reviewSettings } from "./shared/settings";
 
 const FLUSH_EVERY_MS = 20_000;
 const PR_EVERY_MS = 120_000;
 
 export default function contribute(server: PluginServerContext) {
   server.registerSettings(displaySettings);
+  const reviews = server.registerSettings(reviewSettings);
+  const actOnReviewChanges = async () => {
+    const state = await reviews.read();
+    return state.status !== "ready" || state.values.actOnReviewChanges;
+  };
   const dir = dataDir();
   const mcp = installBridge(dir);
   // The daemon session behind `paseo` lives as long as this subprocess; any hook or handler hands it over.
@@ -71,7 +76,7 @@ export default function contribute(server: PluginServerContext) {
   const lastOutputs = new LastOutputs(dir);
   const gh = findGh();
   if (!gh) console.error("[asks] gh not found; PR asks will show no live status");
-  const watcher = gh ? new PrWatcher(store, service, ghFetcher(gh)) : null;
+  const watcher = gh ? new PrWatcher(store, service, ghFetcher(gh), actOnReviewChanges) : null;
   // Short-lived classifier agents the plugin starts itself; its hooks leave them alone.
   const helpers = new Set<string>();
   const classifierFor = paseoClassifier(requirePaseo, helpers);
