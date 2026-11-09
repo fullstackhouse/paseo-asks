@@ -163,10 +163,14 @@ describe("phase 2", () => {
   });
 
   it("raises a fresh review ask when the open one belongs to a gone owner", async () => {
-    await service.callTool("gone", "ask_create", {
+    await store.create({
+      workspaceId: WS,
+      ownerAgentId: "gone",
       kind: "followup",
       title: "Address review comments on PR #30",
       links: [{ label: "PR #30", url: "https://github.com/o/r/pull/30" }],
+      actions: [],
+      heldReview: true,
     });
     await store.update(WS, "A1", { orphaned: true });
     await prAsk(true);
@@ -217,6 +221,54 @@ describe("phase 2", () => {
     expect(held).toContain("Do not start on it yourself");
     expect(held).toContain("Do not give your own asks an action that starts the review");
     expect(held.replace(/\n  - "CHANGES_REQUESTED".*\n/, "\n")).toBe(told.replace(/\n  - "CHANGES_REQUESTED".*\n/, "\n"));
+  });
+
+  it("raises a review ask when the setting is turned off after changes were requested", async () => {
+    await prAsk(true);
+    let held = false;
+    const watcher = new PrWatcher(store, service, async () => pr({ reviewDecision: "CHANGES_REQUESTED" }), async () => !held);
+    await watcher.refresh();
+    expect(store.list(WS)).toHaveLength(1);
+
+    held = true;
+    await watcher.refresh();
+    expect(store.list(WS).map((ask) => ask.title)).toEqual(["Merge PR #30", "Address review comments on PR #30"]);
+  });
+
+  it("does not bring a closed review ask back on every poll, only for a new round of changes", async () => {
+    await prAsk(true);
+    let next = pr({ reviewDecision: "CHANGES_REQUESTED" });
+    const watcher = new PrWatcher(store, service, async () => next, async () => false);
+    await watcher.refresh();
+    await service.act({ workspaceId: WS, id: "A2", verb: "drop" });
+    await watcher.refresh();
+    await watcher.refresh();
+    expect(store.list(WS).filter((ask) => ask.heldReview).map((ask) => ask.status)).toEqual(["dropped"]);
+
+    next = pr({ reviewDecision: "REVIEW_REQUIRED" });
+    await watcher.refresh();
+    next = pr({ reviewDecision: "CHANGES_REQUESTED" });
+    await watcher.refresh();
+    expect(store.list(WS).filter((ask) => ask.heldReview).map((ask) => ask.status)).toEqual(["dropped", "open"]);
+  });
+
+  it("does not poll the PR again for a held review's own ask", async () => {
+    await prAsk(true);
+    const fetched: string[] = [];
+    const watcher = new PrWatcher(
+      store,
+      service,
+      async (url) => {
+        fetched.push(url);
+        return pr({ reviewDecision: "CHANGES_REQUESTED" });
+      },
+      async () => false,
+    );
+    await watcher.refresh();
+    expect(store.list(WS)).toHaveLength(2);
+    fetched.length = 0;
+    await watcher.refresh();
+    expect(fetched).toEqual(["https://github.com/o/r/pull/30"]);
   });
 
   it("still tells the owner about checks and merges while holding reviews", async () => {

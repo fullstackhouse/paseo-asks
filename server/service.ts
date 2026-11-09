@@ -216,22 +216,21 @@ export class AsksService {
     return { sent: this.outbox.pending(agentId).length === 0 };
   }
 
-  /** Requested changes the human holds back: an ask whose button starts the work, owned by the PR ask's agent. */
-  async raiseReview(prAsk: Ask, pr: PrState): Promise<Ask> {
-    const title = `Address review comments on PR #${pr.number}`;
-    const open = this.store
+  /**
+   * Requested changes the human holds back: an ask whose button starts the work, owned by the PR ask's agent.
+   * One per round: a closed one comes back only when `newRound` (the review moved into changes requested again).
+   */
+  async raiseReview(prAsk: Ask, pr: PrState, { newRound }: { newRound: boolean }): Promise<Ask | null> {
+    const raised = this.store
       .list(prAsk.workspaceId)
-      .find(
-        (ask) =>
-          // Another or a gone owner's ask can't take the work, so the button must reach this owner.
-          ask.ownerAgentId === prAsk.ownerAgentId &&
-          !ask.orphaned &&
-          OPEN_STATUSES.includes(ask.status) &&
-          ask.title === title &&
-          prUrlOf(ask) === pr.url,
-      );
+      // Another or a gone owner's ask can't take the work, so the button must reach this owner.
+      .filter((ask) => ask.heldReview && ask.ownerAgentId === prAsk.ownerAgentId && !ask.orphaned && prUrlOf(ask) === pr.url);
+    const open = raised.find((ask) => OPEN_STATUSES.includes(ask.status));
     if (open) return open;
+    if (raised.length && !newRound) return null;
+    const title = `Address review comments on PR #${pr.number}`;
     return this.store.create({
+      heldReview: true,
       workspaceId: prAsk.workspaceId,
       ownerAgentId: prAsk.ownerAgentId,
       kind: "followup",

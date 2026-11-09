@@ -55,6 +55,8 @@ export const AskSchema = z.object({
   orphaned: z.boolean().optional(),
   /** Tell the owner when the linked PR changes (merged, closed, checks, review). */
   subscribe: z.boolean().optional(),
+  /** Raised by the plugin for requested changes the human holds back; its PR is not polled for it. */
+  heldReview: z.boolean().optional(),
   /** Live state of the first GitHub PR in links, refreshed by the plugin. */
   pr: PrStateSchema.optional(),
   /** The side chat opened to talk this ask through. */

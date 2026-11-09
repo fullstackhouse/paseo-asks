@@ -64,5 +64,6 @@ export function changesNewlyRequested(before: PrState, after: PrState): boolean 
 }
 
 export function watchedAsks(asks: readonly Ask[]): Ask[] {
-  return asks.filter((ask) => OPEN_STATUSES.includes(ask.status) && prUrlOf(ask));
+  // A held review's ask links the same PR as the PR ask it came from, so polling it would only repeat that call.
+  return asks.filter((ask) => OPEN_STATUSES.includes(ask.status) && !ask.heldReview && prUrlOf(ask));
 }
