@@ -12,7 +12,7 @@ import { CLASSIFIER_PROMPT, NUDGE, paseoClassifier, shouldNudge } from "./server
 import { Outbox, type Courier } from "./server/outbox";
 import { dataDir } from "./server/paths";
 import { isAsksPermission } from "./server/permissions";
-import { AsksService, INSTRUCTIONS, TOOLS } from "./server/service";
+import { AsksService, instructions, TOOLS } from "./server/service";
 import { AskStore } from "./server/store";
 import { PrWatcher } from "./server/watcher";
 import { activeWorkspaces } from "./server/workspaces";
@@ -160,7 +160,8 @@ export default function contribute(server: PluginServerContext) {
   });
 
   const listening = listen(dir, {
-    "/instructions": async () => ({ instructions: INSTRUCTIONS }),
+    // Read when an agent's MCP session starts, so a changed setting reaches agents started or resumed after it.
+    "/instructions": async () => ({ instructions: instructions({ actOnReviewChanges: await actOnReviewChanges() }) }),
     "/tools": async () => ({ tools: TOOLS }),
     "/call": async ({ agentId, cwd, name, arguments: args }) => {
       const result = await service.callTool(agentId ?? (cwd ? await callerIn(cwd) : null), name, args);

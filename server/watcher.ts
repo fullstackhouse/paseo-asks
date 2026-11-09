@@ -34,7 +34,8 @@ export class PrWatcher {
         console.error(`[asks] gh pr view failed for ${ask.workspaceId}/${ask.id}`, error instanceof Error ? error.message : error);
         continue;
       }
-      const holdReview = !actOnReviews && ask.pr !== undefined && changesNewlyRequested(ask.pr, pr);
+      // A PR that already has changes requested when its ask is first seen is held too; the agent was told not to start on it.
+      const holdReview = !actOnReviews && (ask.pr ? changesNewlyRequested(ask.pr, pr) : pr.reviewDecision === "CHANGES_REQUESTED");
       const change = ask.pr ? describePrChange(ask.pr, pr, { review: !holdReview }) : null;
       const current = this.store.get(ask.workspaceId, ask.id);
       if (!current) continue;

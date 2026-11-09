@@ -8,7 +8,7 @@ import { seedPrompt } from "../server/discuss";
 import { describePrChange, summarizeChecks } from "../server/github";
 import { latestReply } from "../server/last-output";
 import { Outbox, type Courier } from "../server/outbox";
-import { AsksService } from "../server/service";
+import { AsksService, instructions } from "../server/service";
 import { AskStore } from "../server/store";
 import { PrWatcher } from "../server/watcher";
 
@@ -198,6 +198,24 @@ describe("phase 2", () => {
     await outbox.flush();
     expect(store.list(WS)).toHaveLength(1);
     expect(sent).toEqual([]);
+  });
+
+  it("raises a review ask for a PR that already has changes requested when its ask is first seen", async () => {
+    await prAsk(true);
+    const watcher = new PrWatcher(store, service, async () => pr({ reviewDecision: "CHANGES_REQUESTED" }), async () => false);
+    await watcher.refresh();
+    await outbox.flush();
+    expect(sent).toEqual([]);
+    expect(store.list(WS).map((ask) => ask.title)).toEqual(["Merge PR #30", "Address review comments on PR #30"]);
+  });
+
+  it("tells agents to leave requested changes to the human only while reviews are held", () => {
+    const told = instructions();
+    const held = instructions({ actOnReviewChanges: false });
+    expect(told).toContain('"CHANGES_REQUESTED": address the comments, or report what you will not change, and push.');
+    expect(held).not.toContain('"CHANGES_REQUESTED": address the comments');
+    expect(held).toContain("Do not start on it yourself");
+    expect(held.replace(/\n  - "CHANGES_REQUESTED".*\n/, "\n")).toBe(told.replace(/\n  - "CHANGES_REQUESTED".*\n/, "\n"));
   });
 
   it("still tells the owner about checks and merges while holding reviews", async () => {
