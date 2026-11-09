@@ -215,6 +215,7 @@ describe("phase 2", () => {
     expect(told).toContain('"CHANGES_REQUESTED": address the comments, or report what you will not change, and push.');
     expect(held).not.toContain('"CHANGES_REQUESTED": address the comments');
     expect(held).toContain("Do not start on it yourself");
+    expect(held).toContain("Do not give your own asks an action that starts the review");
     expect(held.replace(/\n  - "CHANGES_REQUESTED".*\n/, "\n")).toBe(told.replace(/\n  - "CHANGES_REQUESTED".*\n/, "\n"));
   });
 

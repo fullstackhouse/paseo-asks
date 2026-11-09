@@ -5,7 +5,7 @@ import type { Outbox } from "./outbox";
 import type { AskStore, NewAsk } from "./store";
 
 const ADDRESS_REVIEW = `  - "CHANGES_REQUESTED": address the comments, or report what you will not change, and push. Then ask_update the same ask with a send action to re-request the review, not a Merge action.`;
-const HOLD_REVIEW = `  - "CHANGES_REQUESTED": the human decides when the review is worked. Do not start on it yourself: Paseo raises an "Address review comments on PR #N" ask, and its button sends you the work. Then address the comments, or report what you will not change, and push, and ask_update the PR ask with a send action to re-request the review, not a Merge action.`;
+const HOLD_REVIEW = `  - "CHANGES_REQUESTED": the human decides when the review is worked. Do not start on it yourself: Paseo raises an "Address review comments on PR #N" ask, and its button sends you the work. Do not give your own asks an action that starts the review; that ask carries it. When its prompt arrives, address the comments, or report what you will not change, push, and ask_update the PR ask with a send action to re-request the review, not a Merge action.`;
 
 /** The agent's standing rules. With review changes held, an agent that sees CHANGES_REQUESTED itself must wait for the human too. */
 export const instructions = ({ actOnReviewChanges = true } = {}) => `Asks are the human's list of what you need from them, shown in Paseo outside this chat, with buttons that answer you.
