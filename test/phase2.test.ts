@@ -8,7 +8,7 @@ import { seedPrompt } from "../server/discuss";
 import { describePrChange, summarizeChecks } from "../server/github";
 import { latestReply } from "../server/last-output";
 import { Outbox, type Courier } from "../server/outbox";
-import { AsksService } from "../server/service";
+import { AsksService, instructions } from "../server/service";
 import { AskStore } from "../server/store";
 import { PrWatcher } from "../server/watcher";
 
@@ -120,6 +120,178 @@ describe("phase 2", () => {
     await outbox.flush();
     expect(sent).toEqual([]);
     expect(store.get(WS, "A1")).toMatchObject({ updatedAt: before, pr: { checks: "failing" } });
+  });
+
+  it("leaves the review out of a change when asked to", () => {
+    const before = pr({ checks: "pending" });
+    const after = pr({ checks: "failing", reviewDecision: "CHANGES_REQUESTED" });
+    expect(describePrChange(before, after, { review: false })).toBe("PR #30 checks failing");
+    expect(describePrChange(pr(), pr({ reviewDecision: "CHANGES_REQUESTED" }), { review: false })).toBeNull();
+  });
+
+  it("holds requested changes as an ask instead of telling the owner, once per open ask", async () => {
+    await prAsk(true);
+    let next = pr();
+    const watcher = new PrWatcher(store, service, async () => next, async () => false);
+    await watcher.refresh();
+
+    next = pr({ reviewDecision: "CHANGES_REQUESTED" });
+    await watcher.refresh();
+    await outbox.flush();
+    expect(sent).toEqual([]);
+    const raised = store.list(WS).filter((ask) => ask.id !== "A1");
+    expect(raised).toMatchObject([
+      {
+        ownerAgentId: OWNER,
+        kind: "followup",
+        status: "open",
+        title: "Address review comments on PR #30",
+        links: [{ url: "https://github.com/o/r/pull/30" }],
+        actions: [{ kind: "send", label: "Address review comments" }],
+      },
+    ]);
+
+    next = pr({ reviewDecision: "REVIEW_REQUIRED" });
+    await watcher.refresh();
+    next = pr({ reviewDecision: "CHANGES_REQUESTED" });
+    await watcher.refresh();
+    expect(store.list(WS)).toHaveLength(2);
+
+    await service.act({ workspaceId: WS, id: raised[0]!.id, verb: "action", actionId: raised[0]!.actions[0]!.id });
+    await outbox.flush();
+    expect(sent.at(-1)).toContain("Address the review comments on PR #30 (https://github.com/o/r/pull/30) and push");
+  });
+
+  it("raises a fresh review ask when the open one belongs to a gone owner", async () => {
+    await store.create({
+      workspaceId: WS,
+      ownerAgentId: "gone",
+      kind: "followup",
+      title: "Address review comments on PR #30",
+      links: [{ label: "PR #30", url: "https://github.com/o/r/pull/30" }],
+      actions: [],
+      heldReview: true,
+    });
+    await store.update(WS, "A1", { orphaned: true });
+    await prAsk(true);
+    let next = pr();
+    const watcher = new PrWatcher(store, service, async () => next, async () => false);
+    await watcher.refresh();
+    next = pr({ reviewDecision: "CHANGES_REQUESTED" });
+    await watcher.refresh();
+    expect(store.list(WS).filter((ask) => ask.title.startsWith("Address")).map((ask) => ask.ownerAgentId)).toEqual(["gone", OWNER]);
+  });
+
+  it("raises nothing for an ask the human closed while gh was running", async () => {
+    await prAsk(true);
+    let next = pr();
+    let closeDuringFetch = false;
+    const watcher = new PrWatcher(
+      store,
+      service,
+      async () => {
+        if (closeDuringFetch) await store.update(WS, "A1", { status: "dropped" });
+        return next;
+      },
+      async () => false,
+    );
+    await watcher.refresh();
+    next = pr({ checks: "failing", reviewDecision: "CHANGES_REQUESTED" });
+    closeDuringFetch = true;
+    await watcher.refresh();
+    await outbox.flush();
+    expect(store.list(WS)).toHaveLength(1);
+    expect(sent).toEqual([]);
+  });
+
+  it("raises a review ask for a PR that already has changes requested when its ask is first seen", async () => {
+    await prAsk(true);
+    const watcher = new PrWatcher(store, service, async () => pr({ reviewDecision: "CHANGES_REQUESTED" }), async () => false);
+    await watcher.refresh();
+    await outbox.flush();
+    expect(sent).toEqual([]);
+    expect(store.list(WS).map((ask) => ask.title)).toEqual(["Merge PR #30", "Address review comments on PR #30"]);
+  });
+
+  it("tells agents to leave requested changes to the human only while reviews are held", () => {
+    const told = instructions();
+    const held = instructions({ actOnReviewChanges: false });
+    expect(told).toContain('"CHANGES_REQUESTED": address the comments, or report what you will not change, and push.');
+    expect(held).not.toContain('"CHANGES_REQUESTED": address the comments');
+    expect(held).toContain("Do not start on it yourself");
+    expect(held).toContain("Do not give your own asks an action that starts the review");
+    expect(held.replace(/\n  - "CHANGES_REQUESTED".*\n/, "\n")).toBe(told.replace(/\n  - "CHANGES_REQUESTED".*\n/, "\n"));
+  });
+
+  it("raises a review ask when the setting is turned off after changes were requested", async () => {
+    await prAsk(true);
+    let held = false;
+    const watcher = new PrWatcher(store, service, async () => pr({ reviewDecision: "CHANGES_REQUESTED" }), async () => !held);
+    await watcher.refresh();
+    expect(store.list(WS)).toHaveLength(1);
+
+    held = true;
+    await watcher.refresh();
+    expect(store.list(WS).map((ask) => ask.title)).toEqual(["Merge PR #30", "Address review comments on PR #30"]);
+  });
+
+  it("does not bring a closed review ask back on every poll, only for a new round of changes", async () => {
+    await prAsk(true);
+    let next = pr({ reviewDecision: "CHANGES_REQUESTED" });
+    const watcher = new PrWatcher(store, service, async () => next, async () => false);
+    await watcher.refresh();
+    await service.act({ workspaceId: WS, id: "A2", verb: "drop" });
+    await watcher.refresh();
+    await watcher.refresh();
+    expect(store.list(WS).filter((ask) => ask.heldReview).map((ask) => ask.status)).toEqual(["dropped"]);
+
+    next = pr({ reviewDecision: "REVIEW_REQUIRED" });
+    await watcher.refresh();
+    next = pr({ reviewDecision: "CHANGES_REQUESTED" });
+    await watcher.refresh();
+    expect(store.list(WS).filter((ask) => ask.heldReview).map((ask) => ask.status)).toEqual(["dropped", "open"]);
+  });
+
+  it("does not poll the PR again for a held review's own ask", async () => {
+    await prAsk(true);
+    const fetched: string[] = [];
+    const watcher = new PrWatcher(
+      store,
+      service,
+      async (url) => {
+        fetched.push(url);
+        return pr({ reviewDecision: "CHANGES_REQUESTED" });
+      },
+      async () => false,
+    );
+    await watcher.refresh();
+    expect(store.list(WS)).toHaveLength(2);
+    fetched.length = 0;
+    await watcher.refresh();
+    expect(fetched).toEqual(["https://github.com/o/r/pull/30"]);
+  });
+
+  it("still tells the owner about checks and merges while holding reviews", async () => {
+    await prAsk(true);
+    let next = pr();
+    const watcher = new PrWatcher(store, service, async () => next, async () => false);
+    await watcher.refresh();
+    next = pr({ checks: "failing", reviewDecision: "CHANGES_REQUESTED" });
+    await watcher.refresh();
+    await outbox.flush();
+    expect(sent).toEqual(["[asks] A1 (Merge PR #30) PR #30 checks failing."]);
+  });
+
+  it("tells the owner about requested changes by default", async () => {
+    await prAsk(true);
+    let next = pr();
+    const watcher = new PrWatcher(store, service, async () => next);
+    await watcher.refresh();
+    next = pr({ reviewDecision: "CHANGES_REQUESTED" });
+    await watcher.refresh();
+    await outbox.flush();
+    expect(sent).toEqual(["[asks] A1 (Merge PR #30) PR #30 review: changes requested."]);
+    expect(store.list(WS)).toHaveLength(1);
   });
 
   it("seeds a side chat with the ask, its option ids, and the owner's latest reply", async () => {

@@ -1,10 +1,14 @@
 import { z } from "zod";
-import { ACTION_KINDS, ASK_KINDS, ASK_STATUSES, OPEN_STATUSES, prUrlOf, type Ask } from "../shared/asks";
+import { ACTION_KINDS, ASK_KINDS, ASK_STATUSES, OPEN_STATUSES, prUrlOf, type Ask, type PrState } from "../shared/asks";
 import { REFRESH } from "./nudge";
 import type { Outbox } from "./outbox";
 import type { AskStore, NewAsk } from "./store";
 
-export const INSTRUCTIONS = `Asks are the human's list of what you need from them, shown in Paseo outside this chat, with buttons that answer you.
+const ADDRESS_REVIEW = `  - "CHANGES_REQUESTED": address the comments, or report what you will not change, and push. Then ask_update the same ask with a send action to re-request the review, not a Merge action.`;
+const HOLD_REVIEW = `  - "CHANGES_REQUESTED": the human decides when the review is worked. Do not start on it yourself: Paseo raises an "Address review comments on PR #N" ask, and its button sends you the work. Do not give your own asks an action that starts the review; that ask carries it. When its prompt arrives, address the comments, or report what you will not change, push, and ask_update the PR ask with a send action to re-request the review, not a Merge action.`;
+
+/** The agent's standing rules. With review changes held, an agent that sees CHANGES_REQUESTED itself must wait for the human too. */
+export const instructions = ({ actOnReviewChanges = true } = {}) => `Asks are the human's list of what you need from them, shown in Paseo outside this chat, with buttons that answer you.
 - Rule: never end a turn with a question, a choice or a request for the human in chat alone. Record it with ask_create and point to it ("see A3").
 - Whenever you need the human — reviewers or a merge for a PR, a decision, approval of a follow-up, a manual step you cannot do (an OAuth click, a vendor console), or an answer — call ask_create, then refer to it by id in chat ("see A3"). Do not leave it only in the chat.
 - Follow-ups count even when nothing blocks you: work you recommend or defer ("worth doing next time", "out of scope here") gets a followup ask with a send action whose prompt starts that work, or it is lost when this chat is archived. Instructions against offering more work in your reply do not apply: the ask replaces the offer. Skip it only if you would advise against doing the work at all.
@@ -15,7 +19,7 @@ export const INSTRUCTIONS = `Asks are the human's list of what you need from the
 - PRs: one subscribed ask per PR, shaped by gh pr view --json reviewDecision,statusCheckRollup. No Merge action while checks are pending or failing.
   - Empty or "APPROVED", checks passing: the PR is ready. A "Merge" send action, and no review ask.
   - "REVIEW_REQUIRED": the human's move is choosing who reviews it. Title it "Request review on PR #N", with one send action per candidate reviewer (2-4, from CODEOWNERS, recent reviewers of the touched files, or collaborators; recommend one), each prompt naming who ("Request review on PR #30 from alice"). If the human can merge past the review (gh api graphql -f query='{repository(owner:"OWNER",name:"REPO"){pullRequest(number:N){viewerCanMergeAsAdmin}}}' is true), add a send action "Merge with --admin" next to them.
-  - "CHANGES_REQUESTED": address the comments, or report what you will not change, and push. Then ask_update the same ask with a send action to re-request the review, not a Merge action.
+${actOnReviewChanges ? ADDRESS_REVIEW : HOLD_REVIEW}
   - Request or re-request a review only when the human clicks. Doing it does not finish the ask: keep it in progress, not resolved, so its subscription tells you about the review. Once the review is approved and checks pass, ask_update the same ask to a "Merge" send action.
 - The human may talk an ask through in a side chat; its outcome reaches you as an [asks] message like any other answer.
 - Answers arrive as messages starting with [asks]. Act on them. After finishing work a send action gave you, call ask_resolve (a requested PR review is not finished until it is approved; see PRs).
@@ -210,6 +214,31 @@ export class AsksService {
     this.message(agentId, workspaceId, REFRESH);
     await this.outbox.flush(agentId);
     return { sent: this.outbox.pending(agentId).length === 0 };
+  }
+
+  /**
+   * Requested changes the human holds back: an ask whose button starts the work, owned by the PR ask's agent.
+   * One per round: a closed one comes back only when `newRound` (the review moved into changes requested again).
+   */
+  async raiseReview(prAsk: Ask, pr: PrState, { newRound }: { newRound: boolean }): Promise<Ask | null> {
+    const raised = this.store
+      .list(prAsk.workspaceId)
+      // Another or a gone owner's ask can't take the work, so the button must reach this owner.
+      .filter((ask) => ask.heldReview && ask.ownerAgentId === prAsk.ownerAgentId && !ask.orphaned && prUrlOf(ask) === pr.url);
+    const open = raised.find((ask) => OPEN_STATUSES.includes(ask.status));
+    if (open) return open;
+    if (raised.length && !newRound) return null;
+    const title = `Address review comments on PR #${pr.number}`;
+    return this.store.create({
+      heldReview: true,
+      workspaceId: prAsk.workspaceId,
+      ownerAgentId: prAsk.ownerAgentId,
+      kind: "followup",
+      title,
+      body: `A reviewer requested changes on PR #${pr.number}. The agent has not been told: it starts on them when you press **Address review comments**.`,
+      links: [{ label: `PR #${pr.number}`, url: pr.url }],
+      actions: [{ label: "Address review comments", kind: "send", prompt: `Address the review comments on PR #${pr.number} (${pr.url}) and push` }],
+    });
   }
 
   private async create(workspaceId: string, agentId: string, input: z.output<typeof CreateInput>): Promise<Ask> {

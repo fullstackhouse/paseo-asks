@@ -1,5 +1,5 @@
-import { prUrlOf, type Ask } from "../shared/asks";
-import { describePrChange, watchedAsks, type FetchPr } from "./github";
+import { OPEN_STATUSES, prUrlOf, type Ask } from "../shared/asks";
+import { changesNewlyRequested, describePrChange, watchedAsks, type FetchPr } from "./github";
 import type { AsksService } from "./service";
 import type { AskStore } from "./store";
 
@@ -11,6 +11,8 @@ export class PrWatcher {
     private readonly store: AskStore,
     private readonly service: AsksService,
     private readonly fetchPr: FetchPr,
+    /** False when the human wants requested changes held as an ask rather than sent to the agent. */
+    private readonly actOnReviewChanges: () => Promise<boolean> = async () => true,
   ) {}
 
   refresh(only?: Pick<Ask, "workspaceId" | "id">): Promise<void> {
@@ -22,6 +24,8 @@ export class PrWatcher {
 
   private async refreshNow(only?: Pick<Ask, "workspaceId" | "id">): Promise<void> {
     const asks = watchedAsks(this.store.list(only?.workspaceId)).filter((ask) => !only || ask.id === only.id);
+    if (!asks.length) return;
+    const actOnReviews = await this.actOnReviewChanges();
     for (const ask of asks) {
       let pr;
       try {
@@ -30,13 +34,17 @@ export class PrWatcher {
         console.error(`[asks] gh pr view failed for ${ask.workspaceId}/${ask.id}`, error instanceof Error ? error.message : error);
         continue;
       }
-      const change = ask.pr ? describePrChange(ask.pr, pr) : null;
+      // Held whenever changes are requested, not only on the change into it: the setting may have been turned off
+      // afterwards, and agents told to wait for the Address ask must get one.
+      const holdReview = !actOnReviews && pr.reviewDecision === "CHANGES_REQUESTED";
+      const change = ask.pr ? describePrChange(ask.pr, pr, { review: !holdReview }) : null;
       const current = this.store.get(ask.workspaceId, ask.id);
       if (!current) continue;
       await this.store.update(ask.workspaceId, ask.id, { pr }, { touch: false });
-      if (change && current.subscribe && !current.orphaned) {
-        this.service.notify(current, `[asks] ${current.id} (${current.title}) ${change}.`);
-      }
+      // The human may have closed the ask while gh was running.
+      if (!current.subscribe || current.orphaned || !OPEN_STATUSES.includes(current.status)) continue;
+      if (change) this.service.notify(current, `[asks] ${current.id} (${current.title}) ${change}.`);
+      if (holdReview) await this.service.raiseReview(current, pr, { newRound: ask.pr !== undefined && changesNewlyRequested(ask.pr, pr) });
     }
   }
 }

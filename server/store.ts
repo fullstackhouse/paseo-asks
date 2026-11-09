@@ -7,7 +7,7 @@ interface WorkspaceFile {
   asks: Ask[];
 }
 
-export type NewAsk = Pick<Ask, "workspaceId" | "ownerAgentId" | "kind" | "title" | "body" | "links" | "subscribe"> & {
+export type NewAsk = Pick<Ask, "workspaceId" | "ownerAgentId" | "kind" | "title" | "body" | "links" | "subscribe" | "heldReview"> & {
   actions: Omit<Action, "id">[];
 };
 

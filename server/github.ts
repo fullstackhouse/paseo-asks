@@ -49,16 +49,21 @@ export function summarizeChecks(items: CheckItem[]): PrState["checks"] {
 }
 
 /** What changed between two snapshots, in words an agent can act on; null when nothing it cares about did. */
-export function describePrChange(before: PrState, after: PrState): string | null {
+export function describePrChange(before: PrState, after: PrState, { review = true } = {}): string | null {
   const changes: string[] = [];
   if (before.state !== after.state) changes.push(after.state === "MERGED" ? "merged" : after.state === "CLOSED" ? "closed without merging" : "reopened");
   if (before.checks !== after.checks && (after.checks === "failing" || after.checks === "passing")) changes.push(`checks ${after.checks}`);
-  if (before.reviewDecision !== after.reviewDecision && after.reviewDecision) {
+  if (review && before.reviewDecision !== after.reviewDecision && after.reviewDecision) {
     changes.push(`review: ${after.reviewDecision.toLowerCase().replace(/_/g, " ")}`);
   }
   return changes.length ? `PR #${after.number} ${changes.join(", ")}` : null;
 }
 
+export function changesNewlyRequested(before: PrState, after: PrState): boolean {
+  return before.reviewDecision !== "CHANGES_REQUESTED" && after.reviewDecision === "CHANGES_REQUESTED";
+}
+
 export function watchedAsks(asks: readonly Ask[]): Ask[] {
-  return asks.filter((ask) => OPEN_STATUSES.includes(ask.status) && prUrlOf(ask));
+  // A held review's ask links the same PR as the PR ask it came from, so polling it would only repeat that call.
+  return asks.filter((ask) => OPEN_STATUSES.includes(ask.status) && !ask.heldReview && prUrlOf(ask));
 }
