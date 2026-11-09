@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { awaitsYou, type PrState } from "../shared/asks";
+import { awaitsYou, waitingCount, type PrState } from "../shared/asks";
 
 const pr = (state: PrState["state"]): PrState => ({
   number: 1,
@@ -25,5 +25,23 @@ describe("awaitsYou", () => {
   it("skips open asks about a PR that is already merged or closed", () => {
     expect(awaitsYou({ status: "open", pr: pr("MERGED") })).toBe(false);
     expect(awaitsYou({ status: "open", pr: pr("CLOSED") })).toBe(false);
+  });
+});
+
+describe("waitingCount", () => {
+  const asks = [
+    { status: "open", workspaceId: "w1" },
+    { status: "open", workspaceId: "w2" },
+    { status: "open", workspaceId: "w2", pr: pr("MERGED") },
+    { status: "in_progress", workspaceId: "w1" },
+  ] as const;
+
+  it("counts asks waiting on you", () => {
+    expect(waitingCount(asks, new Set())).toBe(2);
+  });
+
+  it("leaves out asks in snoozed workspaces", () => {
+    expect(waitingCount(asks, new Set(["w2"]))).toBe(1);
+    expect(waitingCount(asks, new Set(["w1", "w2"]))).toBe(0);
   });
 });

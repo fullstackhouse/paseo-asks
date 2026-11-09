@@ -7,7 +7,7 @@ Every agent created after the plugin is installed gets an `asks` MCP server with
 ## Where you see asks
 
 - **Asks** panel in each workspace.
-- **Asks** screen in the sidebar, with every workspace's asks and a count of what is waiting.
+- **Asks** screen in the sidebar, with every workspace's asks and a count of what is waiting. Snoozed workspaces stay out of the count.
 - Inline in the agent's chat: each ask appears where the agent created, updated or resolved it, kept up to date, with open asks expanded and their buttons ready. Agents create the ask at the end of their reply, so the buttons sit right below the explanation, with the ask's full text under them.
 - **Asks** pill in every agent's composer, showing an inbox icon and its open count, 0 when there are none. Pressing it lists that agent's asks and offers **Refresh asks**, which tells the agent to bring them up to date.
 

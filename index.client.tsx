@@ -13,7 +13,8 @@ import { useEffect } from "react";
 import { Text } from "react-native";
 import { AgentAsks, AskCard, AsksView, POLL_MS, useAsks } from "./client/AsksView";
 import { SettingsScreen } from "./client/SettingsScreen";
-import { awaitsYou, listAsks } from "./shared/asks";
+import { observeSnoozedWorkspaces, useSnoozedWorkspaceIds } from "./client/snoozed";
+import { awaitsYou, listAsks, waitingCount } from "./shared/asks";
 import { ASK_CARD, AskCardSchema, askCardFor, type AskCard as AskCardData } from "./shared/timeline";
 
 function WorkspacePanel({ theme, layout, workspaceId, navigation }: PluginWorkspacePanelProps) {
@@ -62,7 +63,8 @@ function attentionColor(theme: PluginSidebarItemProps["theme"]): string {
 
 function SidebarItem({ theme, currentScreen, openScreen }: PluginSidebarItemProps) {
   const asks = useAsks();
-  const waiting = asks.data?.asks.filter(awaitsYou).length ?? 0;
+  const snoozed = useSnoozedWorkspaceIds();
+  const waiting = waitingCount(asks.data?.asks ?? [], snoozed);
   return (
     <SidebarRow
       icon="Inbox"
@@ -199,5 +201,10 @@ export default function contribute(client: PluginClientContext) {
     },
   });
   client.addTimelineRenderer({ ...ASK_CARD, schema: AskCardSchema, Component: TimelineCard });
-  return contributePills(client);
+  const stopPills = contributePills(client);
+  const stopSnoozed = observeSnoozedWorkspaces(client, "asks");
+  return () => {
+    stopPills();
+    stopSnoozed();
+  };
 }

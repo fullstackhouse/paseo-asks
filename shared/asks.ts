@@ -73,6 +73,11 @@ export function awaitsYou(ask: Pick<Ask, "status" | "pr">): boolean {
   return ask.status === "open" && (!ask.pr || ask.pr.state === "OPEN");
 }
 
+/** The sidebar counter: asks waiting on you, leaving out workspaces you snoozed. */
+export function waitingCount(asks: readonly Pick<Ask, "status" | "pr" | "workspaceId">[], snoozed: ReadonlySet<string>): number {
+  return asks.filter((ask) => awaitsYou(ask) && !snoozed.has(ask.workspaceId)).length;
+}
+
 export const listAsks = defineRpc({
   name: "asks.list",
   input: z.object({ workspaceId: z.string().optional(), includeClosed: z.boolean().optional() }),
