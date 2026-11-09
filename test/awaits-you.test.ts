@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { awaitsYou, waitingCount, type PrState } from "../shared/asks";
+import { awaitsYou, waitingCount, type PrState, type Ask } from "../shared/asks";
+
+import { askQueue } from "../client/queue";
 
 const pr = (state: PrState["state"]): PrState => ({
   number: 1,
@@ -19,7 +21,8 @@ describe("awaitsYou", () => {
   });
 
   it("skips asks the agent is working on or that are closed", () => {
-    for (const status of ["in_progress", "done", "dropped"] as const) expect(awaitsYou({ status })).toBe(false);
+    for (const status of ["in_progress", "done", "dropped"] as const)
+      expect(awaitsYou({ status })).toBe(false);
   });
 
   it("skips open asks about a PR that is already merged or closed", () => {
@@ -43,5 +46,60 @@ describe("waitingCount", () => {
   it("leaves out asks in snoozed workspaces", () => {
     expect(waitingCount(asks, new Set(["w2"]))).toBe(1);
     expect(waitingCount(asks, new Set(["w1", "w2"]))).toBe(0);
+  });
+});
+
+describe("main ask queue", () => {
+  const snoozed = new Set(["later"]);
+  const ask = (id: string, fields: Partial<Ask> = {}): Ask => ({
+    id,
+    workspaceId: "workspace",
+    ownerAgentId: "agent",
+    title: id,
+    kind: "decision",
+    status: "open",
+    actions: [],
+    links: [],
+    createdAt: "2026-11-09T00:00:00Z",
+    updatedAt: "2026-11-09T00:00:00Z",
+    ...fields,
+  });
+
+  it("uses the sidebar attention rules and keeps excluded asks accessible", () => {
+    const asks = [
+      ask("decision"),
+      ask("pr", { pr: pr("OPEN") }),
+      ask("working", { status: "in_progress" }),
+      ask("merged", { pr: pr("MERGED") }),
+      ask("closed", { pr: pr("CLOSED") }),
+      ask("later", { workspaceId: "later" }),
+      ask("working-later", { workspaceId: "later", status: "in_progress" }),
+      ask("merged-working", { status: "in_progress", pr: pr("MERGED") }),
+      ask("done", { status: "done" }),
+      ask("dropped", { status: "dropped" }),
+    ];
+    const queue = askQueue(asks, snoozed);
+    expect(queue.needs_you.map((item) => item.id)).toEqual(["decision", "pr"]);
+    expect(queue.needs_you).toHaveLength(waitingCount(asks, snoozed));
+    expect(queue.in_progress.map((item) => item.id)).toEqual(["working"]);
+    expect(queue.other.map((item) => item.id)).toEqual([
+      "merged",
+      "closed",
+      "later",
+      "working-later",
+      "merged-working",
+    ]);
+  });
+
+  it("orders each view by newest update without changing the input", () => {
+    const asks = [ask("older"), ask("newer", { updatedAt: "2026-11-09T01:00:00Z" })];
+    expect(askQueue(asks, snoozed).needs_you.map((item) => item.id)).toEqual(["newer", "older"]);
+    expect(asks.map((item) => item.id)).toEqual(["older", "newer"]);
+  });
+
+  it("moves an ask back to Needs you when its workspace wakes", () => {
+    const asks = [ask("later", { workspaceId: "later" })];
+    expect(askQueue(asks, snoozed).needs_you).toHaveLength(0);
+    expect(askQueue(asks, new Set()).needs_you).toHaveLength(1);
   });
 });

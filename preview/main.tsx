@@ -19,10 +19,34 @@ const theme = {
   },
 };
 
-function Frame(props: { id: string; title: string; width: number; height: number; children: React.ReactNode }) {
+function Frame(props: {
+  id: string;
+  title: string;
+  width: number;
+  height: number;
+  children: React.ReactNode;
+}) {
   return (
-    <View testID={props.id} style={{ width: props.width, height: props.height, borderRadius: 12, overflow: "hidden", borderWidth: 1, borderColor: theme.colors.border }}>
-      <View style={{ paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface1 }}>
+    <View
+      testID={props.id}
+      style={{
+        width: props.width,
+        height: props.height,
+        borderRadius: 12,
+        overflow: "hidden",
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+      }}
+    >
+      <View
+        style={{
+          paddingHorizontal: 16,
+          paddingVertical: 10,
+          borderBottomWidth: 1,
+          borderColor: theme.colors.border,
+          backgroundColor: theme.colors.surface1,
+        }}
+      >
         <Text style={{ color: theme.colors.foreground, fontWeight: "600" }}>{props.title}</Text>
       </View>
       <View style={{ flex: 1 }}>{props.children}</View>
@@ -32,6 +56,9 @@ function Frame(props: { id: string; title: string; width: number; height: number
 
 createRoot(document.getElementById("root")!).render(
   <QueryClientProvider client={new QueryClient()}>
+    <Frame id="main" title="Asks" width={1120} height={760}>
+      <AsksView theme={theme} compact={false} openAgent={() => {}} />
+    </Frame>
     <Frame id="panel" title="Asks · shop-api" width={620} height={620}>
       <AsksView theme={theme} compact={false} workspaceId="api" openAgent={() => {}} />
     </Frame>
@@ -42,9 +69,10 @@ createRoot(document.getElementById("root")!).render(
       <View style={{ padding: 16, gap: 12, backgroundColor: theme.colors.surface0, flex: 1 }}>
         <AskCard theme={theme} compact={false} agentId="main" askId="A2" verb="update" />
         <Text style={{ color: theme.colors.foreground, lineHeight: 20 }}>
-          The checkout rework writes the cart on every click, so where carts live has to be settled before the CartStore
-          interface is fixed. Today they sit in a 4 KB session cookie and long carts get cut short. Redis is fast but
-          loses carts on eviction; Postgres keeps them and lets us report on abandoned carts. I recommend Postgres.
+          The checkout rework writes the cart on every click, so where carts live has to be settled
+          before the CartStore interface is fixed. Today they sit in a 4 KB session cookie and long
+          carts get cut short. Redis is fast but loses carts on eviction; Postgres keeps them and
+          lets us report on abandoned carts. I recommend Postgres.
         </Text>
         <AskCard theme={theme} compact={false} agentId="main" askId="A3" verb="create" />
         <Text style={{ color: theme.colors.foreground }}>See A3.</Text>

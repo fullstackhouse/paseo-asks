@@ -11,6 +11,26 @@ const base = { links: [], actions: [], createdAt: ago(300) };
 export const asks: Ask[] = [
   {
     ...base,
+    id: "A8",
+    workspaceId: "api",
+    ownerAgentId: "main",
+    kind: "review",
+    status: "open",
+    title: "Post the review for the already merged checkout migration",
+    pr: {
+      number: 21,
+      url: "https://github.com/acme/shop-api/pull/21",
+      state: "MERGED",
+      isDraft: false,
+      reviewDecision: "APPROVED",
+      checks: "passing",
+      mergeable: "UNKNOWN",
+      fetchedAt: ago(1),
+    },
+    updatedAt: ago(600),
+  },
+  {
+    ...base,
     id: "A3",
     workspaceId: "api",
     ownerAgentId: "main",
@@ -48,7 +68,15 @@ export const asks: Ask[] = [
     status: "open",
     title: "PR #29 Stripe webhook retries is ready",
     links: [{ label: "PR #29", url: "https://github.com/acme/shop-api/pull/29" }],
-    actions: [{ id: "a1", label: "Merge (squash)", kind: "send", prompt: "Merge PR #29 with squash", recommended: true }],
+    actions: [
+      {
+        id: "a1",
+        label: "Merge (squash)",
+        kind: "send",
+        prompt: "Merge PR #29 with squash",
+        recommended: true,
+      },
+    ],
     pr: {
       number: 29,
       url: "https://github.com/acme/shop-api/pull/29",
@@ -71,7 +99,12 @@ export const asks: Ask[] = [
     status: "open",
     title: "File an issue for the flaky tax-rate test?",
     actions: [
-      { id: "a1", label: "File the issue", kind: "send", prompt: "File an issue for the flaky tax-rate test" },
+      {
+        id: "a1",
+        label: "File the issue",
+        kind: "send",
+        prompt: "File an issue for the flaky tax-rate test",
+      },
       { id: "a2", label: "Not now", kind: "resolve" },
     ],
     updatedAt: ago(170),

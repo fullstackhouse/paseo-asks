@@ -4,10 +4,20 @@ import { Icon, ScrollView, TextInput, useToast } from "@getpaseo/plugin/client/r
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState, type ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
-import { actOnAsk, discussAsk, listAsks, refreshAsks, type Action, type Ask, type PrState } from "../shared/asks";
+import {
+  actOnAsk,
+  discussAsk,
+  listAsks,
+  refreshAsks,
+  type Action,
+  type Ask,
+  type PrState,
+} from "../shared/asks";
 import { displaySettings } from "../shared/settings";
 import type { AskCard as AskCardData } from "../shared/timeline";
 import { Markdown, openLink } from "./Markdown";
+import { askQueue, type QueueFilter } from "./queue";
+import { useSnoozedWorkspaceIds } from "./snoozed";
 
 export const POLL_MS = 4000;
 
@@ -39,22 +49,195 @@ export function useAsks(workspaceId?: string, includeClosed = false) {
   });
 }
 
-export function AsksView({ theme, compact, workspaceId, openAgent }: ViewProps) {
+export function AsksView(props: ViewProps) {
+  return props.workspaceId ? <WorkspaceAsks {...props} /> : <MainAsks {...props} />;
+}
+
+const FILTERS: { id: QueueFilter; label: string; description: string; empty: string }[] = [
+  {
+    id: "needs_you",
+    label: "Needs you",
+    description: "Decisions and actions waiting on you.",
+    empty: "Nothing waiting on you. In-progress work and other asks are in their own views.",
+  },
+  {
+    id: "in_progress",
+    label: "In progress",
+    description: "Work agents are already handling.",
+    empty: "No asks in progress.",
+  },
+  {
+    id: "other",
+    label: "Other",
+    description: "Asks from snoozed workspaces or linked to merged or closed PRs.",
+    empty: "No other open asks.",
+  },
+];
+
+function MainAsks({ theme, compact, openAgent }: ViewProps) {
+  const styles = useMemo(() => makeStyles(theme, compact), [theme, compact]);
+  const asks = useAsks();
+  const snoozed = useSnoozedWorkspaceIds();
+  const [filter, setFilter] = useState<QueueFilter>("needs_you");
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const queue = useMemo(() => askQueue(asks.data?.asks ?? [], snoozed), [asks.data, snoozed]);
+  const selected = FILTERS.find((item) => item.id === filter)!;
+
+  if (asks.isPending) return <Message styles={styles} text="Loading asks…" />;
+  if (asks.isError)
+    return <Message styles={styles} text={`Could not load asks: ${asks.error.message}`} danger />;
+
+  return (
+    <ScrollView style={styles.screen} contentContainerStyle={styles.queueContent}>
+      <View style={styles.queueWidth}>
+        <View style={styles.filters}>
+          {FILTERS.map((item) => (
+            <Pressable
+              key={item.id}
+              accessibilityRole="button"
+              accessibilityLabel={`${item.label}, ${queue[item.id].length} asks`}
+              accessibilityState={{ selected: filter === item.id }}
+              onPress={() => {
+                setFilter(item.id);
+                setExpanded(null);
+              }}
+              style={({ pressed }) => [
+                styles.filter,
+                filter === item.id && styles.filterSelected,
+                pressed && styles.queuePressed,
+              ]}
+            >
+              <Text style={[styles.filterText, filter === item.id && styles.filterTextSelected]}>
+                {item.label}
+              </Text>
+              <Text style={[styles.filterCount, filter === item.id && styles.filterTextSelected]}>
+                {queue[item.id].length}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        <Text style={styles.queueDescription}>{selected.description}</Text>
+        {queue[filter].length === 0 ? (
+          <View style={styles.queueEmpty}>
+            <Icon
+              name={filter === "needs_you" ? "Check" : "Inbox"}
+              size={20}
+              color={theme.colors.foregroundMuted}
+            />
+            <Text style={styles.queueEmptyText}>{selected.empty}</Text>
+          </View>
+        ) : (
+          <View style={styles.queueList}>
+            {queue[filter].map((ask) => {
+              const key = `${ask.workspaceId}/${ask.id}`;
+              return (
+                <QueueRow
+                  key={key}
+                  ask={ask}
+                  workspaceName={asks.data.workspaceNames?.[ask.workspaceId] ?? ask.workspaceId}
+                  snoozed={snoozed.has(ask.workspaceId)}
+                  styles={styles}
+                  theme={theme}
+                  expanded={expanded === key}
+                  onToggle={() => setExpanded(expanded === key ? null : key)}
+                  openAgent={openAgent}
+                />
+              );
+            })}
+          </View>
+        )}
+      </View>
+    </ScrollView>
+  );
+}
+
+function QueueRow(props: {
+  ask: Ask;
+  workspaceName: string;
+  snoozed: boolean;
+  styles: Styles;
+  theme: PluginTheme;
+  expanded: boolean;
+  onToggle(): void;
+  openAgent?: (agentId: string) => void;
+}) {
+  const { ask, workspaceName, snoozed, styles, theme, expanded } = props;
+  const [hovered, setHovered] = useState(false);
+  return (
+    <View style={styles.queueItem}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${ask.title}, ${workspaceName}`}
+        accessibilityHint="Show details and actions"
+        accessibilityState={{ expanded }}
+        onPress={props.onToggle}
+        onHoverIn={() => setHovered(true)}
+        onHoverOut={() => setHovered(false)}
+        style={({ pressed }) => [
+          styles.queueRow,
+          (hovered || pressed || expanded) && styles.queuePressed,
+        ]}
+      >
+        <View style={styles.queueIcon}>
+          <Icon name={KIND_ICONS[ask.kind]} size={16} color={theme.colors.foregroundMuted} />
+        </View>
+        <View style={styles.queueText}>
+          <Text style={styles.queueTitle}>{ask.title}</Text>
+          <View style={styles.queueMeta}>
+            <Text style={styles.queueWorkspace} numberOfLines={1}>
+              {workspaceName}
+            </Text>
+            <Text style={styles.id}>{ask.id}</Text>
+            <Text style={styles.age}>{age(ask.updatedAt)}</Text>
+            {ask.pr && <PrBadge pr={ask.pr} styles={styles} />}
+            {snoozed && <Text style={styles.age}>Snoozed</Text>}
+            {ask.orphaned && <Text style={styles.orphaned}>Agent archived</Text>}
+          </View>
+        </View>
+        <View style={styles.queueIcon}>
+          <Icon
+            name={expanded ? "ChevronUp" : "ChevronDown"}
+            size={16}
+            color={theme.colors.foregroundMuted}
+          />
+        </View>
+      </Pressable>
+      {expanded && (
+        <View style={styles.queueDetail}>
+          <AskDetail {...props} actionsFirst />
+        </View>
+      )}
+    </View>
+  );
+}
+
+function WorkspaceAsks({ theme, compact, workspaceId, openAgent }: ViewProps) {
   const styles = useMemo(() => makeStyles(theme, compact), [theme, compact]);
   const asks = useAsks(workspaceId);
   const [expanded, setExpanded] = useState<string | null>(null);
 
   if (asks.isPending) return <Message styles={styles} text="Loading asks…" />;
-  if (asks.isError) return <Message styles={styles} text={`Could not load asks: ${asks.error.message}`} danger />;
+  if (asks.isError)
+    return <Message styles={styles} text={`Could not load asks: ${asks.error.message}`} danger />;
   const all = asks.data.asks;
-  if (all.length === 0) return <Message styles={styles} text={workspaceId ? "Nothing waiting on you here." : "Nothing waiting on you."} />;
+  if (all.length === 0)
+    return (
+      <Message
+        styles={styles}
+        text={workspaceId ? "Nothing waiting on you here." : "Nothing waiting on you."}
+      />
+    );
 
-  const groups = workspaceId ? [[workspaceId, all] as const] : [...groupBy(all, (ask) => ask.workspaceId)];
+  const groups = workspaceId
+    ? [[workspaceId, all] as const]
+    : [...groupBy(all, (ask) => ask.workspaceId)];
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       {groups.map(([groupId, items]) => (
         <View key={groupId} style={styles.group}>
-          {!workspaceId && <Text style={styles.workspace}>{asks.data.workspaceNames?.[groupId] ?? groupId}</Text>}
+          {!workspaceId && (
+            <Text style={styles.workspace}>{asks.data.workspaceNames?.[groupId] ?? groupId}</Text>
+          )}
           <StatusSections
             asks={items}
             styles={styles}
@@ -80,7 +263,15 @@ export function AsksView({ theme, compact, workspaceId, openAgent }: ViewProps) 
 }
 
 /** Splits asks into what waits on the human and what the agent is already doing. */
-function StatusSections({ asks, styles, renderRow }: { asks: Ask[]; styles: Styles; renderRow: (ask: Ask) => ReactNode }) {
+function StatusSections({
+  asks,
+  styles,
+  renderRow,
+}: {
+  asks: Ask[];
+  styles: Styles;
+  renderRow: (ask: Ask) => ReactNode;
+}) {
   return (
     <>
       {(["open", "in_progress"] as const).map((status) => {
@@ -88,7 +279,9 @@ function StatusSections({ asks, styles, renderRow }: { asks: Ask[]; styles: Styl
         if (rows.length === 0) return null;
         return (
           <View key={status} style={styles.section}>
-            <Text style={styles.sectionTitle}>{status === "open" ? "NEEDS YOU" : "IN PROGRESS"}</Text>
+            <Text style={styles.sectionTitle}>
+              {status === "open" ? "NEEDS YOU" : "IN PROGRESS"}
+            </Text>
             {rows.map(renderRow)}
           </View>
         );
@@ -113,12 +306,18 @@ export function AgentAsks(props: {
   const toast = useToast();
   const mutation = useMutation({
     mutationFn: () => refresh({ agentId }),
-    onSuccess: ({ sent }) => toast.show(sent ? "Asked the agent to update its asks." : "The agent will update its asks when its turn ends."),
+    onSuccess: ({ sent }) =>
+      toast.show(
+        sent
+          ? "Asked the agent to update its asks."
+          : "The agent will update its asks when its turn ends.",
+      ),
     onError: (error) => toast.error(error instanceof Error ? error.message : String(error)),
   });
 
   if (asks.isPending) return <Message styles={styles} text="Loading asks…" />;
-  if (asks.isError) return <Message styles={styles} text={`Could not load asks: ${asks.error.message}`} danger />;
+  if (asks.isError)
+    return <Message styles={styles} text={`Could not load asks: ${asks.error.message}`} danger />;
   const mine = asks.data.asks.filter((ask) => ask.ownerAgentId === agentId);
   return (
     <View style={styles.popover}>
@@ -151,26 +350,44 @@ export function AgentAsks(props: {
   );
 }
 
-const VERBS: Record<AskCardData["verb"], string> = { create: "Asked", update: "Updated", resolve: "Resolved" };
+const VERBS: Record<AskCardData["verb"], string> = {
+  create: "Asked",
+  update: "Updated",
+  resolve: "Resolved",
+};
 
 /**
  * An ask shown in the agent chat where the agent created, updated or resolved it. Open asks start expanded.
  * The chat around it already explains the ask, so its buttons come first, then its body, folded if the setting says so.
  */
 export function AskCard(
-  props: { theme: PluginTheme; compact: boolean; agentId: string; openAgent?: (agentId: string) => void } & AskCardData,
+  props: {
+    theme: PluginTheme;
+    compact: boolean;
+    agentId: string;
+    openAgent?: (agentId: string) => void;
+  } & AskCardData,
 ) {
   const { theme, compact, agentId, askId, verb, openAgent } = props;
   const styles = useMemo(() => makeStyles(theme, compact), [theme, compact]);
   const workspaceId = useAgent(agentId, (agent) => agent.workspaceId);
   // Every card in a chat shares this one query, so a long chat still polls once.
   const asks = useAsks(workspaceId ?? undefined, true);
-  const ask = asks.data?.asks.find((candidate) => candidate.workspaceId === workspaceId && candidate.id === askId);
+  const ask = asks.data?.asks.find(
+    (candidate) => candidate.workspaceId === workspaceId && candidate.id === askId,
+  );
   const [toggled, setToggled] = useState<boolean | null>(null);
   const expanded = toggled ?? ask?.status === "open";
   const settings = useSettings(displaySettings);
 
-  const note = !workspaceId || asks.isPending ? "loading…" : asks.isError ? "could not load" : !ask ? "not found" : null;
+  const note =
+    !workspaceId || asks.isPending
+      ? "loading…"
+      : asks.isError
+        ? "could not load"
+        : !ask
+          ? "not found"
+          : null;
   return (
     <View style={styles.inline}>
       <Text style={styles.muted}>
@@ -259,7 +476,10 @@ function AskDetail({
       act({ workspaceId: ask.workspaceId, id: ask.id, note, ...input }),
     onSuccess: ({ notified }) => {
       setNote("");
-      if (!notified) toast.show(`${ask.id} closed; its agent is gone, so nobody was told.`, { variant: "warning" });
+      if (!notified)
+        toast.show(`${ask.id} closed; its agent is gone, so nobody was told.`, {
+          variant: "warning",
+        });
       void queryClient.invalidateQueries({ queryKey: ["asks"] });
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : String(error)),
@@ -302,7 +522,9 @@ function AskDetail({
           <Text style={styles.link}>{bodyOpened ? "Hide details" : "Details"}</Text>
         </Pressable>
       ) : null}
-      {bodyShown && ask.bodyBlocks?.length ? <Markdown blocks={ask.bodyBlocks} theme={theme} /> : null}
+      {bodyShown && ask.bodyBlocks?.length ? (
+        <Markdown blocks={ask.bodyBlocks} theme={theme} />
+      ) : null}
       {ask.links.map((link) => (
         <Pressable key={link.url} accessibilityRole="link" onPress={() => openLink(link.url)}>
           <Text style={styles.link}>{link.label} ↗</Text>
@@ -310,7 +532,9 @@ function AskDetail({
       ))}
       {ask.pr && <PrDetail pr={ask.pr} styles={styles} />}
       {ask.orphaned && (
-        <Text style={styles.orphaned}>The agent that raised this is archived. Closing it here notifies nobody.</Text>
+        <Text style={styles.orphaned}>
+          The agent that raised this is archived. Closing it here notifies nobody.
+        </Text>
       )}
       {!actionsFirst && actions}
       <TextInput
@@ -322,25 +546,57 @@ function AskDetail({
         multiline
       />
       <View style={styles.buttons}>
-        <Button styles={styles} label="Reply" disabled={mutation.isPending || !note.trim()} onPress={() => mutation.mutate({ verb: "reply" })} />
-        <Button styles={styles} label="Done" disabled={mutation.isPending} onPress={() => mutation.mutate({ verb: "done" })} />
-        <Button styles={styles} label="Drop" disabled={mutation.isPending} onPress={() => mutation.mutate({ verb: "drop" })} />
+        <Button
+          styles={styles}
+          label="Reply"
+          disabled={mutation.isPending || !note.trim()}
+          onPress={() => mutation.mutate({ verb: "reply" })}
+        />
+        <Button
+          styles={styles}
+          label="Done"
+          disabled={mutation.isPending}
+          onPress={() => mutation.mutate({ verb: "done" })}
+        />
+        <Button
+          styles={styles}
+          label="Drop"
+          disabled={mutation.isPending}
+          onPress={() => mutation.mutate({ verb: "drop" })}
+        />
         {!ask.orphaned && (
           <Button
             styles={styles}
-            label={discussion.isPending ? "Opening…" : ask.discussionAgentId ? "Open discussion" : "Discuss"}
+            label={
+              discussion.isPending
+                ? "Opening…"
+                : ask.discussionAgentId
+                  ? "Open discussion"
+                  : "Discuss"
+            }
             disabled={discussion.isPending || mutation.isPending}
             onPress={() => discussion.mutate()}
           />
         )}
-        {openAgent && ask.ownerAgentId !== viewingAgentId && <Button styles={styles} label="Open chat" onPress={() => openAgent(ask.ownerAgentId)} />}
+        {openAgent && ask.ownerAgentId !== viewingAgentId && (
+          <Button styles={styles} label="Open chat" onPress={() => openAgent(ask.ownerAgentId)} />
+        )}
       </View>
     </View>
   );
 }
 
-const PR_STATE: Record<PrState["state"], string> = { OPEN: "open", MERGED: "merged", CLOSED: "closed" };
-const CHECKS: Record<PrState["checks"], string> = { passing: "checks ✓", failing: "checks ✗", pending: "checks …", none: "" };
+const PR_STATE: Record<PrState["state"], string> = {
+  OPEN: "open",
+  MERGED: "merged",
+  CLOSED: "closed",
+};
+const CHECKS: Record<PrState["checks"], string> = {
+  passing: "checks ✓",
+  failing: "checks ✗",
+  pending: "checks …",
+  none: "",
+};
 
 function PrBadge({ pr, styles }: { pr: PrState; styles: Styles }) {
   const tone =
@@ -349,7 +605,8 @@ function PrBadge({ pr, styles }: { pr: PrState; styles: Styles }) {
       : pr.state === "MERGED" || pr.checks === "passing"
         ? styles.good
         : styles.muted;
-  const label = pr.state === "OPEN" ? (pr.isDraft ? "draft" : CHECKS[pr.checks] || "open") : PR_STATE[pr.state];
+  const label =
+    pr.state === "OPEN" ? (pr.isDraft ? "draft" : CHECKS[pr.checks] || "open") : PR_STATE[pr.state];
   return <Text style={[styles.badge, tone]}>{label}</Text>;
 }
 
@@ -363,7 +620,13 @@ function PrDetail({ pr, styles }: { pr: PrState; styles: Styles }) {
   return <Text style={styles.prDetail}>{parts.join(" · ")}</Text>;
 }
 
-function Button(props: { styles: Styles; label: string; onPress(): void; primary?: boolean; disabled?: boolean }) {
+function Button(props: {
+  styles: Styles;
+  label: string;
+  onPress(): void;
+  primary?: boolean;
+  disabled?: boolean;
+}) {
   const { styles } = props;
   return (
     <Pressable
@@ -371,9 +634,15 @@ function Button(props: { styles: Styles; label: string; onPress(): void; primary
       accessibilityLabel={props.label}
       disabled={props.disabled}
       onPress={props.onPress}
-      style={[styles.button, props.primary && styles.buttonPrimary, props.disabled && styles.buttonDisabled]}
+      style={[
+        styles.button,
+        props.primary && styles.buttonPrimary,
+        props.disabled && styles.buttonDisabled,
+      ]}
     >
-      <Text style={props.primary ? styles.buttonPrimaryText : styles.buttonText}>{props.label}</Text>
+      <Text style={props.primary ? styles.buttonPrimaryText : styles.buttonText}>
+        {props.label}
+      </Text>
     </Pressable>
   );
 }
@@ -404,6 +673,64 @@ function makeStyles(theme: PluginTheme, compact: boolean) {
   return {
     screen: { flex: 1, backgroundColor: colors.surface0 },
     content: { padding: compact ? 12 : 16, gap: 16 },
+    queueContent: { paddingHorizontal: compact ? 12 : 32, paddingVertical: compact ? 16 : 24 },
+    queueWidth: { width: "100%" as const, maxWidth: 960, alignSelf: "center" as const },
+    filters: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: 4 },
+    filter: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      gap: 8,
+      paddingHorizontal: compact ? 10 : 14,
+      minHeight: compact ? 44 : 36,
+      borderRadius: 6,
+    },
+    filterSelected: { backgroundColor: colors.surface2 },
+    filterText: { color: colors.foregroundMuted, fontSize: 14 },
+    filterTextSelected: { color: colors.foreground },
+    filterCount: {
+      color: colors.foregroundMuted,
+      fontSize: 12,
+      fontVariant: ["tabular-nums" as const],
+    },
+    queueDescription: {
+      color: colors.foregroundMuted,
+      fontSize: 13,
+      lineHeight: 20,
+      marginTop: 12,
+      marginBottom: 24,
+    },
+    queueList: { borderTopWidth: 1, borderTopColor: colors.border },
+    queueItem: { borderBottomWidth: 1, borderBottomColor: colors.border },
+    queueRow: {
+      flexDirection: "row" as const,
+      alignItems: "flex-start" as const,
+      gap: 12,
+      paddingHorizontal: compact ? 8 : 12,
+      paddingVertical: 16,
+    },
+    queuePressed: { backgroundColor: colors.surface1 },
+    queueIcon: { paddingTop: 2 },
+    queueText: { flex: 1, minWidth: 0, gap: 8 },
+    queueTitle: { color: colors.foreground, fontSize: 14, lineHeight: 21 },
+    queueMeta: {
+      flexDirection: "row" as const,
+      flexWrap: "wrap" as const,
+      alignItems: "center" as const,
+      gap: 8,
+    },
+    queueWorkspace: {
+      color: colors.foregroundMuted,
+      fontSize: 12,
+      flexShrink: 1,
+      maxWidth: "100%" as const,
+    },
+    queueDetail: {
+      paddingLeft: compact ? 0 : 28,
+      paddingRight: compact ? 0 : 12,
+      paddingBottom: 8,
+    },
+    queueEmpty: { flexDirection: "row" as const, gap: 12, paddingVertical: 24 },
+    queueEmptyText: { color: colors.foregroundMuted, fontSize: 14, lineHeight: 21, flex: 1 },
     // The host popover already pads, scrolls and caps the size (420×440); sizing it here again clips it.
     popover: { gap: 8 },
     inline: { gap: 6, paddingVertical: 4 },
@@ -411,9 +738,19 @@ function makeStyles(theme: PluginTheme, compact: boolean) {
     section: { gap: 6 },
     workspace: { color: colors.foreground, fontSize: 15, fontWeight: "600" as const },
     sectionTitle: { color: colors.foregroundMuted, fontSize: 11, letterSpacing: 0.5 },
-    card: { borderWidth: 1, borderColor: colors.border, borderRadius: 8, backgroundColor: colors.surface1 },
+    card: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 8,
+      backgroundColor: colors.surface1,
+    },
     cardExpanded: { borderColor: colors.accent },
-    row: { flexDirection: "row" as const, alignItems: "center" as const, gap: 8, padding: compact ? 12 : 10 },
+    row: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      gap: 8,
+      padding: compact ? 12 : 10,
+    },
     id: { color: colors.foregroundMuted, fontSize: 12, fontVariant: ["tabular-nums" as const] },
     title: { color: colors.foreground, flex: 1, fontSize: 14 },
     age: { color: colors.foregroundMuted, fontSize: 12 },
