@@ -162,6 +162,44 @@ describe("phase 2", () => {
     expect(sent.at(-1)).toContain("Address the review comments on PR #30 (https://github.com/o/r/pull/30) and push");
   });
 
+  it("raises a fresh review ask when the open one belongs to a gone owner", async () => {
+    await service.callTool("gone", "ask_create", {
+      kind: "followup",
+      title: "Address review comments on PR #30",
+      links: [{ label: "PR #30", url: "https://github.com/o/r/pull/30" }],
+    });
+    await store.update(WS, "A1", { orphaned: true });
+    await prAsk(true);
+    let next = pr();
+    const watcher = new PrWatcher(store, service, async () => next, async () => false);
+    await watcher.refresh();
+    next = pr({ reviewDecision: "CHANGES_REQUESTED" });
+    await watcher.refresh();
+    expect(store.list(WS).filter((ask) => ask.title.startsWith("Address")).map((ask) => ask.ownerAgentId)).toEqual(["gone", OWNER]);
+  });
+
+  it("raises nothing for an ask the human closed while gh was running", async () => {
+    await prAsk(true);
+    let next = pr();
+    let closeDuringFetch = false;
+    const watcher = new PrWatcher(
+      store,
+      service,
+      async () => {
+        if (closeDuringFetch) await store.update(WS, "A1", { status: "dropped" });
+        return next;
+      },
+      async () => false,
+    );
+    await watcher.refresh();
+    next = pr({ checks: "failing", reviewDecision: "CHANGES_REQUESTED" });
+    closeDuringFetch = true;
+    await watcher.refresh();
+    await outbox.flush();
+    expect(store.list(WS)).toHaveLength(1);
+    expect(sent).toEqual([]);
+  });
+
   it("still tells the owner about checks and merges while holding reviews", async () => {
     await prAsk(true);
     let next = pr();

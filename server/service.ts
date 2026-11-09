@@ -217,7 +217,15 @@ export class AsksService {
     const title = `Address review comments on PR #${pr.number}`;
     const open = this.store
       .list(prAsk.workspaceId)
-      .find((ask) => OPEN_STATUSES.includes(ask.status) && ask.title === title && prUrlOf(ask) === pr.url);
+      .find(
+        (ask) =>
+          // Another or a gone owner's ask can't take the work, so the button must reach this owner.
+          ask.ownerAgentId === prAsk.ownerAgentId &&
+          !ask.orphaned &&
+          OPEN_STATUSES.includes(ask.status) &&
+          ask.title === title &&
+          prUrlOf(ask) === pr.url,
+      );
     if (open) return open;
     return this.store.create({
       workspaceId: prAsk.workspaceId,
