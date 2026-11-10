@@ -9,7 +9,7 @@
   },
   "devDependencies": {
     "@anthropic-ai/claude-code": "2.1.304",
-    "@getpaseo/cli": "0.13.0",
+    "@getpaseo/cli": "0.15.3",
     "@types/node": "^24.19.2",
     "typescript": "^5.9.3",
     "vitest": "^5.0.5"
