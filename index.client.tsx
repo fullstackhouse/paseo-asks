@@ -102,40 +102,40 @@ const asksPopover: Extract<PluginButtonBehavior, { kind: "popover" }> & { presen
   Content: PillPopover,
 };
 
-/** The pill's face beside its inbox icon: how many asks wait on you, 0 so a missing one is noticed. */
+/** The pill's face beside its inbox icon: how many asks in its workspace wait on you, 0 so a missing one is noticed. */
 function pillLabel(count: number): string {
   return String(count);
 }
 
 /** A composer pill per agent with its open asks; pressing it shows them and a Refresh. */
 function contributePills(client: PluginClientContext): () => void {
-  const pills = new Map<string, PluginButtonRegistration>();
+  const pills = new Map<string, { workspaceId: string; pill: PluginButtonRegistration }>();
   const lifetime = new AbortController();
 
   const register = (agent: { id: string; workspaceId?: string | null }) => {
     if (lifetime.signal.aborted || !agent.workspaceId || pills.has(agent.id)) return;
     const { id: agentId, workspaceId } = agent;
-    pills.set(
-      agentId,
-      client.addComposerPill({
+    pills.set(agentId, {
+      workspaceId,
+      pill: client.addComposerPill({
         id: "asks",
         workspaceId,
         agentId,
         button: { title: "Asks", icon: "Inbox", label: pillLabel(0), behavior: asksPopover },
       }),
-    );
+    });
   };
   const drop = (agentId: string) => {
-    pills.get(agentId)?.remove();
+    pills.get(agentId)?.pill.remove();
     pills.delete(agentId);
   };
 
   const refreshCounts = async () => {
     const { asks } = await client.rpc(listAsks, {});
     const counts = new Map<string, number>();
-    for (const ask of asks) if (awaitsYou(ask)) counts.set(ask.ownerAgentId, (counts.get(ask.ownerAgentId) ?? 0) + 1);
-    for (const [agentId, pill] of pills) {
-      pill.update({ label: pillLabel(counts.get(agentId) ?? 0) });
+    for (const ask of asks) if (awaitsYou(ask)) counts.set(ask.workspaceId, (counts.get(ask.workspaceId) ?? 0) + 1);
+    for (const { workspaceId, pill } of pills.values()) {
+      pill.update({ label: pillLabel(counts.get(workspaceId) ?? 0) });
     }
   };
   const timer = setInterval(() => void refreshCounts().catch(() => undefined), POLL_MS * 2);
@@ -171,7 +171,14 @@ function contributePills(client: PluginClientContext): () => void {
 
 export default function contribute(client: PluginClientContext) {
   openAgentViaScreen = (agentId) => client.openScreen({ screenId: "asks", params: { open: agentId } });
-  client.addWorkspacePanel({ id: "asks", title: "Asks", icon: "Inbox", context: "workspace", Component: WorkspacePanel });
+  client.addWorkspacePanel({
+    id: "asks",
+    title: "Asks",
+    icon: "Inbox",
+    context: "workspace",
+    locations: ["workspace", "explorer"],
+    Component: WorkspacePanel,
+  });
   client.addScreen({ id: "asks", title: "Asks", Component: GlobalScreen });
   client.addSettingsScreen({ id: "asks", title: "Asks", icon: "Inbox", Component: SettingsScreen });
   client.addSidebarHeaderItem({ id: "asks", title: "Asks", Component: SidebarItem });

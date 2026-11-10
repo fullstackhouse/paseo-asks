@@ -291,7 +291,7 @@ function StatusSections({
   );
 }
 
-/** One agent's asks and a Refresh that asks it to bring them up to date, for the composer pill's popover. */
+/** The workspace's asks, this agent's first, and a Refresh that asks this agent to bring its own up to date, for the composer pill's side panel. */
 export function AgentAsks(props: {
   theme: PluginTheme;
   compact: boolean;
@@ -319,12 +319,13 @@ export function AgentAsks(props: {
   if (asks.isPending) return <Message styles={styles} text="Loading asks…" />;
   if (asks.isError)
     return <Message styles={styles} text={`Could not load asks: ${asks.error.message}`} danger />;
-  const mine = asks.data.asks.filter((ask) => ask.ownerAgentId === agentId);
+  const own = (ask: Ask) => (ask.ownerAgentId === agentId ? 0 : 1);
+  const ordered = [...asks.data.asks].sort((a, b) => own(a) - own(b));
   return (
     <View style={styles.popover}>
-      {mine.length === 0 && <Text style={styles.muted}>This agent has no open asks.</Text>}
+      {ordered.length === 0 && <Text style={styles.muted}>No open asks in this workspace.</Text>}
       <StatusSections
-        asks={mine}
+        asks={ordered}
         styles={styles}
         renderRow={(ask) => (
           <AskRow
