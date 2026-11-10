@@ -15,19 +15,13 @@ const pr = (state: PrState["state"]): PrState => ({
 });
 
 describe("awaitsYou", () => {
-  it("counts open asks with no PR or an open PR", () => {
+  it("counts open asks", () => {
     expect(awaitsYou({ status: "open" })).toBe(true);
-    expect(awaitsYou({ status: "open", pr: pr("OPEN") })).toBe(true);
   });
 
   it("skips asks the agent is working on or that are closed", () => {
     for (const status of ["in_progress", "done", "dropped"] as const)
       expect(awaitsYou({ status })).toBe(false);
-  });
-
-  it("skips open asks about a PR that is already merged or closed", () => {
-    expect(awaitsYou({ status: "open", pr: pr("MERGED") })).toBe(false);
-    expect(awaitsYou({ status: "open", pr: pr("CLOSED") })).toBe(false);
   });
 });
 
@@ -40,7 +34,7 @@ describe("waitingCount", () => {
   ] as const;
 
   it("counts asks waiting on you", () => {
-    expect(waitingCount(asks, new Set())).toBe(2);
+    expect(waitingCount(asks, new Set())).toBe(3);
   });
 
   it("leaves out asks in snoozed workspaces", () => {
@@ -65,7 +59,7 @@ describe("main ask queue", () => {
     ...fields,
   });
 
-  it("uses the sidebar attention rules and keeps excluded asks accessible", () => {
+  it("uses the sidebar attention rules and keeps snoozed asks accessible", () => {
     const asks = [
       ask("decision"),
       ask("pr", { pr: pr("OPEN") }),
@@ -79,16 +73,10 @@ describe("main ask queue", () => {
       ask("dropped", { status: "dropped" }),
     ];
     const queue = askQueue(asks, snoozed);
-    expect(queue.needs_you.map((item) => item.id)).toEqual(["decision", "pr"]);
+    expect(queue.needs_you.map((item) => item.id)).toEqual(["decision", "pr", "merged", "closed"]);
     expect(queue.needs_you).toHaveLength(waitingCount(asks, snoozed));
-    expect(queue.in_progress.map((item) => item.id)).toEqual(["working"]);
-    expect(queue.other.map((item) => item.id)).toEqual([
-      "merged",
-      "closed",
-      "later",
-      "working-later",
-      "merged-working",
-    ]);
+    expect(queue.in_progress.map((item) => item.id)).toEqual(["working", "merged-working"]);
+    expect(queue.other.map((item) => item.id)).toEqual(["later", "working-later"]);
   });
 
   it("orders each view by newest update without changing the input", () => {
