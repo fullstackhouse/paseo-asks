@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { Outbox, type AgentState, type Courier } from "../server/outbox";
 import { AsksService } from "../server/service";
 import { AskStore } from "../server/store";
+import { AskSchema } from "../shared/asks";
 
 class FakeCourier implements Courier {
   states = new Map<string, AgentState>();
@@ -37,7 +38,9 @@ describe("asks", () => {
     store = new AskStore(dir);
     courier = new FakeCourier();
     outbox = new Outbox(dir, courier, async (deliveries) => {
-      for (const delivery of deliveries) if (delivery.askId) await store.update(delivery.workspaceId, delivery.askId, { orphaned: true });
+      for (const delivery of deliveries)
+        if (delivery.askId)
+          await store.update(delivery.workspaceId, delivery.askId, { orphaned: true });
     });
     service = new AsksService(store, outbox, async (agentId) => (agentId === AGENT ? WS : null));
   });
@@ -53,10 +56,21 @@ describe("asks", () => {
 
   it("numbers asks per workspace and persists them", async () => {
     const first = await service.callTool(AGENT, "ask_create", decision);
-    const second = await service.callTool(AGENT, "ask_create", { kind: "followup", title: "File issue for retention switch" });
+    const second = await service.callTool(AGENT, "ask_create", {
+      kind: "followup",
+      title: "File issue for retention switch",
+    });
     expect(first.text).toMatch(/^A1 \[open\] decision/);
     expect(second.text).toMatch(/^A2 /);
     expect(new AskStore(dir).list(WS).map((ask) => ask.id)).toEqual(["A1", "A2"]);
+  });
+
+  it("preserves Markdown source through creation, persistence and the response schema", async () => {
+    const body =
+      "# Plan\n\n```mermaid\nflowchart LR\nA --> B\n```\n\n[Guide][guide]\n\n[guide]: https://example.com";
+    await service.callTool(AGENT, "ask_create", { ...decision, body });
+    const [ask] = new AskStore(dir).list(WS);
+    expect(AskSchema.parse(ask).body).toBe(body);
   });
 
   it("rejects a decision without two options, and a call with no agent id", async () => {
@@ -68,7 +82,13 @@ describe("asks", () => {
   it("delivers a human's choice to the owning agent once, and only after its turn ends", async () => {
     await service.callTool(AGENT, "ask_create", decision);
     courier.states.set(AGENT, "running");
-    const { ask, notified } = await service.act({ workspaceId: WS, id: "A1", verb: "action", actionId: "a2", note: "and update AGENTS.md" });
+    const { ask, notified } = await service.act({
+      workspaceId: WS,
+      id: "A1",
+      verb: "action",
+      actionId: "a2",
+      note: "and update AGENTS.md",
+    });
     await outbox.flush();
     expect(ask.status).toBe("done");
     expect(ask.outcome).toMatchObject({ label: "b: squash-only", by: "human" });
@@ -79,7 +99,9 @@ describe("asks", () => {
     await outbox.flush(AGENT);
     await outbox.flush(AGENT);
     expect(courier.sent).toHaveLength(1);
-    expect(courier.sent[0]!.text).toBe('[asks] A1 (Squash-only merges?) resolved: b: squash-only. Note from the human: "and update AGENTS.md"');
+    expect(courier.sent[0]!.text).toBe(
+      '[asks] A1 (Squash-only merges?) resolved: b: squash-only. Note from the human: "and update AGENTS.md"',
+    );
   });
 
   it("batches several answers into one message", async () => {
@@ -100,14 +122,22 @@ describe("asks", () => {
       title: "PR #30 ready",
       actions: [{ label: "Merge", kind: "send", prompt: "Merge PR #30 with squash" }],
     });
-    const { ask } = await service.act({ workspaceId: WS, id: "A1", verb: "action", actionId: "a1" });
+    const { ask } = await service.act({
+      workspaceId: WS,
+      id: "A1",
+      verb: "action",
+      actionId: "a1",
+    });
     await outbox.flush();
     expect(ask.status).toBe("in_progress");
     expect(courier.sent[0]!.text).toContain("Merge PR #30 with squash");
     expect(courier.sent[0]!.text).toContain("call ask_resolve for A1");
 
     await service.callTool(AGENT, "ask_resolve", { id: "A1", note: "merged" });
-    expect(store.get(WS, "A1")).toMatchObject({ status: "done", outcome: { by: "agent", note: "merged" } });
+    expect(store.get(WS, "A1")).toMatchObject({
+      status: "done",
+      outcome: { by: "agent", note: "merged" },
+    });
     expect(courier.sent).toHaveLength(1);
   });
 
@@ -117,7 +147,13 @@ describe("asks", () => {
       title: "Request review on PR #30",
       links: [{ label: "PR #30", url: "https://github.com/example/shop/pull/30" }],
       subscribe: true,
-      actions: [{ label: "Request review from alice", kind: "send", prompt: "Request review on PR #30 from alice" }],
+      actions: [
+        {
+          label: "Request review from alice",
+          kind: "send",
+          prompt: "Request review on PR #30 from alice",
+        },
+      ],
     });
     await service.callTool(AGENT, "ask_create", {
       kind: "pr",
@@ -144,10 +180,17 @@ describe("asks", () => {
     await service.callTool(AGENT, "ask_update", { id: "A1", body: "Working on it" });
     expect(store.get(WS, "A1")!.status).toBe("in_progress");
 
-    await service.callTool(AGENT, "ask_update", { id: "A1", actions: [{ label: "I merged it", kind: "resolve" }] });
+    await service.callTool(AGENT, "ask_update", {
+      id: "A1",
+      actions: [{ label: "I merged it", kind: "resolve" }],
+    });
     expect(store.get(WS, "A1")!.status).toBe("open");
 
-    await service.callTool(AGENT, "ask_update", { id: "A1", actions: [{ label: "Retry", kind: "send" }], status: "in_progress" });
+    await service.callTool(AGENT, "ask_update", {
+      id: "A1",
+      actions: [{ label: "Retry", kind: "send" }],
+      status: "in_progress",
+    });
     expect(store.get(WS, "A1")!.status).toBe("in_progress");
   });
 
@@ -183,7 +226,11 @@ describe("asks", () => {
     await service.callTool(AGENT, "ask_create", decision);
     await service.callTool(AGENT, "ask_create", { kind: "question", title: "Other" });
     await service.callTool(AGENT, "ask_update", { id: "A2", status: "dropped" });
-    expect((await service.callTool(AGENT, "ask_list", {})).text).toBe("A1 [open] decision: Squash-only merges?");
-    expect((await service.callTool(AGENT, "ask_list", { status: "all" })).text.split("\n")).toHaveLength(2);
+    expect((await service.callTool(AGENT, "ask_list", {})).text).toBe(
+      "A1 [open] decision: Squash-only merges?",
+    );
+    expect(
+      (await service.callTool(AGENT, "ask_list", { status: "all" })).text.split("\n"),
+    ).toHaveLength(2);
   });
 });

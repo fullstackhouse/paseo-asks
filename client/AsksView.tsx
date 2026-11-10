@@ -15,7 +15,8 @@ import {
 } from "../shared/asks";
 import { displaySettings } from "../shared/settings";
 import type { AskCard as AskCardData } from "../shared/timeline";
-import { Markdown, openLink } from "./Markdown";
+import { Markdown } from "@getpaseo/plugin/client/ui";
+import { openLink } from "./open-link";
 import { askQueue, type QueueFilter } from "./queue";
 import { useSnoozedWorkspaceIds } from "./snoozed";
 
@@ -449,7 +450,6 @@ function AskRow(props: {
 function AskDetail({
   ask,
   styles,
-  theme,
   openAgent,
   viewingAgentId,
   actionsFirst = false,
@@ -457,7 +457,6 @@ function AskDetail({
 }: {
   ask: Ask;
   styles: Styles;
-  theme: PluginTheme;
   openAgent?: (agentId: string) => void;
   viewingAgentId?: string;
   /** Show the action buttons above the body. */
@@ -517,14 +516,12 @@ function AskDetail({
   return (
     <View style={styles.detail}>
       {actionsFirst && actions}
-      {foldBody && ask.bodyBlocks?.length ? (
+      {foldBody && ask.body?.trim() ? (
         <Pressable accessibilityRole="button" onPress={() => setBodyOpened(!bodyOpened)}>
           <Text style={styles.link}>{bodyOpened ? "Hide details" : "Details"}</Text>
         </Pressable>
       ) : null}
-      {bodyShown && ask.bodyBlocks?.length ? (
-        <Markdown blocks={ask.bodyBlocks} theme={theme} />
-      ) : null}
+      {bodyShown && ask.body?.trim() ? <Markdown>{ask.body}</Markdown> : null}
       {ask.links.map((link) => (
         <Pressable key={link.url} accessibilityRole="link" onPress={() => openLink(link.url)}>
           <Text style={styles.link}>{link.label} ↗</Text>
