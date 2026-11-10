@@ -1,6 +1,5 @@
 import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
-import { BlockSchema } from "./markdown";
 
 export const ASK_KINDS = ["decision", "review", "pr", "followup", "action", "question"] as const;
 export const ASK_STATUSES = ["open", "in_progress", "done", "dropped"] as const;
@@ -45,8 +44,6 @@ export const AskSchema = z.object({
   kind: z.enum(ASK_KINDS),
   title: z.string(),
   body: z.string().optional(),
-  /** `body` parsed for rendering; filled by the server when listing, never stored. */
-  bodyBlocks: z.array(BlockSchema).optional(),
   actions: z.array(ActionSchema),
   links: z.array(LinkSchema),
   status: z.enum(ASK_STATUSES),
@@ -74,7 +71,10 @@ export function awaitsYou(ask: Pick<Ask, "status" | "pr">): boolean {
 }
 
 /** The sidebar counter: asks waiting on you, leaving out workspaces you snoozed. */
-export function waitingCount(asks: readonly Pick<Ask, "status" | "pr" | "workspaceId">[], snoozed: ReadonlySet<string>): number {
+export function waitingCount(
+  asks: readonly Pick<Ask, "status" | "pr" | "workspaceId">[],
+  snoozed: ReadonlySet<string>,
+): number {
   return asks.filter((ask) => awaitsYou(ask) && !snoozed.has(ask.workspaceId)).length;
 }
 
@@ -118,5 +118,8 @@ export const refreshAsks = defineRpc({
 const PR_URL = /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+/;
 
 export function prUrlOf(ask: Pick<Ask, "links">): string | undefined {
-  return ask.links.map((link) => link.url).find((url) => PR_URL.test(url))?.match(PR_URL)?.[0];
+  return ask.links
+    .map((link) => link.url)
+    .find((url) => PR_URL.test(url))
+    ?.match(PR_URL)?.[0];
 }

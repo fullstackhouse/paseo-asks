@@ -5,9 +5,8 @@ import { AgentDirectory, pickCaller } from "./server/agents";
 import { installBridge } from "./server/bridge";
 import { discuss } from "./server/discuss";
 import { findGh, ghFetcher } from "./server/github";
-import { LastOutputs } from "./server/last-output";
+import { LastOutputs, latestTurn } from "./server/last-output";
 import { listen } from "./server/listener";
-import { toBlocks } from "./server/markdown";
 import { CLASSIFIER_PROMPT, NUDGE, paseoClassifier, shouldNudge } from "./server/nudge";
 import { Outbox, type Courier } from "./server/outbox";
 import { dataDir } from "./server/paths";
@@ -52,7 +51,10 @@ export default function contribute(server: PluginServerContext) {
       filter: { statuses: ["running"], includeBackground: true },
       page: { limit: 200 },
     });
-    return pickCaller(entries.map((entry) => entry.agent), cwd);
+    return pickCaller(
+      entries.map((entry) => entry.agent),
+      cwd,
+    );
   };
   const store = new AskStore(dir);
   const courier: Courier = {
@@ -63,13 +65,16 @@ export default function contribute(server: PluginServerContext) {
       return handle.status === "running" || handle.status === "initializing" ? "running" : "idle";
     },
     async send(agentId, text, messageId) {
-      await requirePaseo().agents.ref(agentId).send(text, { messageId, activeTurnBehavior: "steer" });
+      await requirePaseo()
+        .agents.ref(agentId)
+        .send(text, { messageId, activeTurnBehavior: "steer" });
     },
   };
   const outbox = new Outbox(dir, courier, async (deliveries) => {
     for (const { workspaceId, askId } of deliveries) {
       const ask = askId ? store.get(workspaceId, askId) : undefined;
-      if (ask && OPEN_STATUSES.includes(ask.status)) await store.update(workspaceId, ask.id, { orphaned: true });
+      if (ask && OPEN_STATUSES.includes(ask.status))
+        await store.update(workspaceId, ask.id, { orphaned: true });
     }
   });
   const service = new AsksService(store, outbox, (agentId) => agents.workspaceOf(agentId));
@@ -84,31 +89,40 @@ export default function contribute(server: PluginServerContext) {
   server.before("agent.create", ({ request }, { paseo: api }) => {
     capture(api);
     if (request.config.systemPrompt === CLASSIFIER_PROMPT) return request;
-    return { ...request, config: { ...request.config, mcpServers: { ...request.config.mcpServers, asks: mcp } } };
+    return {
+      ...request,
+      config: { ...request.config, mcpServers: { ...request.config.mcpServers, asks: mcp } },
+    };
   });
   server.before("agent.session_open", ({ request }, { paseo: api }) => {
     capture(api);
-    if (request.workspaceId && !helpers.has(request.agentId)) agents.remember(request.agentId, request.workspaceId);
+    if (request.workspaceId && !helpers.has(request.agentId))
+      agents.remember(request.agentId, request.workspaceId);
   });
   server.on("agent.created", ({ agent }, { paseo: api }) => {
     capture(api);
     if (agent.workspaceId && !helpers.has(agent.id)) agents.remember(agent.id, agent.workspaceId);
   });
-  server.on("agent.turn_ended", ({ agent, outcome, timeline }, { paseo: api }) => {
+  server.on("agent.turn_ended", async ({ agent, outcome }, { paseo: api }) => {
     capture(api);
     if (helpers.has(agent.id)) return;
-    lastOutputs.record(agent.id, timeline);
     void outbox.flush(agent.id);
+    const timeline = await latestTurn(api.agents.ref(agent.id).timeline);
+    lastOutputs.record(agent.id, timeline);
     // Agents sometimes ask in chat and skip ask_create; one reminder per such turn. Side chats talk to the human directly.
-    const sideChat = store.list(agent.workspaceId ?? undefined).some((ask) => ask.discussionAgentId === agent.id);
+    const sideChat = store
+      .list(agent.workspaceId ?? undefined)
+      .some((ask) => ask.discussionAgentId === agent.id);
     if (outcome.kind !== "completed" || !agent.workspaceId || sideChat) return;
     const workspaceId = agent.workspaceId;
-    void shouldNudge(timeline, classifierFor(agent.id)).then(async (nudge) => {
-      // The classifier takes a few seconds; a reminder after the human has moved on would be stale.
-      if (!nudge || (await courier.state(agent.id)) !== "idle") return;
-      service.message(agent.id, workspaceId, NUDGE);
-      await outbox.flush(agent.id);
-    }).catch(() => {});
+    void shouldNudge(timeline, classifierFor(agent.id))
+      .then(async (nudge) => {
+        // The classifier takes a few seconds; a reminder after the human has moved on would be stale.
+        if (!nudge || (await courier.state(agent.id)) !== "idle") return;
+        service.message(agent.id, workspaceId, NUDGE);
+        await outbox.flush(agent.id);
+      })
+      .catch(() => {});
   });
   // Plan mode (the side chat's read-only mode) and Codex prompt even for preapproved MCP tools. The asks
   // tools only touch asks, so answer those prompts here instead of interrupting the human.
@@ -116,11 +130,16 @@ export default function contribute(server: PluginServerContext) {
     capture(api);
     // A classifier only needs to answer; never let it put a prompt in front of the human.
     if (helpers.has(agent.id)) {
-      await api.agents.ref(agent.id).respondToPermission({ requestId: request.id, response: { behavior: "deny", message: "Answer without tools." } });
+      await api.agents.ref(agent.id).respondToPermission({
+        requestId: request.id,
+        response: { behavior: "deny", message: "Answer without tools." },
+      });
       return;
     }
     if (!isAsksPermission(request)) return;
-    await api.agents.ref(agent.id).respondToPermission({ requestId: request.id, response: { behavior: "allow" } });
+    await api.agents
+      .ref(agent.id)
+      .respondToPermission({ requestId: request.id, response: { behavior: "allow" } });
   });
   server.on("agent.archived", ({ agent }, { paseo: api }) => {
     capture(api);
@@ -131,14 +150,16 @@ export default function contribute(server: PluginServerContext) {
     capture(api);
     const asks = store
       .list(workspaceId)
-      .filter((ask) => includeClosed || OPEN_STATUSES.includes(ask.status))
-      .map((ask) => (ask.body ? { ...ask, bodyBlocks: toBlocks(ask.body) } : ask));
+      .filter((ask) => includeClosed || OPEN_STATUSES.includes(ask.status));
     asks.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     if (workspaceId) return { asks };
     // The global screen has no workspace context, so client state hooks can't resolve names there.
     // Background and archived asks remain available by workspace, but stay out of the global queue.
     const live = await activeWorkspaces(api);
-    return { asks: asks.filter((ask) => live.has(ask.workspaceId)), workspaceNames: Object.fromEntries(live) };
+    return {
+      asks: asks.filter((ask) => live.has(ask.workspaceId)),
+      workspaceNames: Object.fromEntries(live),
+    };
   });
   server.handle(actOnAsk, (input, { paseo: api }) => {
     capture(api);
@@ -151,7 +172,11 @@ export default function contribute(server: PluginServerContext) {
   const startDiscussion = (api: PaseoApi, workspaceId: string, id: string, note?: string) => {
     const ask = store.get(workspaceId, id);
     if (!ask) throw new Error(`No ask ${id} in this workspace`);
-    return discuss({ paseo: api, store, mcp, lastOutput: (agentId) => lastOutputs.get(agentId) }, ask, note);
+    return discuss(
+      { paseo: api, store, mcp, lastOutput: (agentId) => lastOutputs.get(agentId) },
+      ask,
+      note,
+    );
   };
   server.handle(discussAsk, ({ workspaceId, id, note }, { paseo: api }) => {
     capture(api);
@@ -160,11 +185,18 @@ export default function contribute(server: PluginServerContext) {
 
   const listening = listen(dir, {
     // Read when an agent's MCP session starts, so a changed setting reaches agents started or resumed after it.
-    "/instructions": async () => ({ instructions: instructions({ actOnReviewChanges: await actOnReviewChanges() }) }),
+    "/instructions": async () => ({
+      instructions: instructions({ actOnReviewChanges: await actOnReviewChanges() }),
+    }),
     "/tools": async () => ({ tools: TOOLS }),
     "/call": async ({ agentId, cwd, name, arguments: args }) => {
-      const result = await service.callTool(agentId ?? (cwd ? await callerIn(cwd) : null), name, args);
-      if (!result.isError && (name === "ask_create" || name === "ask_update")) void watcher?.refresh();
+      const result = await service.callTool(
+        agentId ?? (cwd ? await callerIn(cwd) : null),
+        name,
+        args,
+      );
+      if (!result.isError && (name === "ask_create" || name === "ask_update"))
+        void watcher?.refresh();
       return result;
     },
     // The same disposal the UI does, for scripts and terminal use.

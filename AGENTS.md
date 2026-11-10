@@ -5,9 +5,9 @@ Paseo plugin: agents record what they need from the human (asks) via MCP; Paseo 
 ## Layout
 
 - `index.server.ts` wires everything. `server/`: `store` (one JSON per workspace), `outbox` (disk-backed, holds messages until the agent's turn ends), `service` (MCP tools + human actions + agent instructions), `bridge` (stdio MCP script, written to the data dir at start), `listener` (localhost HTTP the bridge calls), `agents` (agentId → workspaceId), `discuss` (read-only side chat, child of the owner), `github` + `watcher` (live PR state via `gh`, subscriptions), `last-output` (each agent's latest reply, seeds side chats).
-- `client/` + `index.client.tsx`: React Native only (runs on mobile). Colors from `theme.colors`. Open URLs with `openExternalUrl` (default browser); `window.open` opens an unauthenticated in-app Paseo window. Client code can import only host modules, so ask bodies are parsed on the server (`server/markdown.ts`, mdast + GFM) and `asks.list` returns them as `bodyBlocks` (`shared/markdown.ts`); the client only renders them, showing unknown blocks as source.
+- `client/` + `index.client.tsx`: React Native only (runs on mobile). Colors from `theme.colors`. Open URLs with `openExternalUrl` (default browser); `window.open` opens an unauthenticated in-app Paseo window. Render ask bodies with `Markdown` from `@getpaseo/plugin/client/ui`. Pass the original source; do not add a plugin parser or renderer.
 - `shared/asks.ts`: Zod schemas and RPC contracts. The sidebar count (`waitingCount`) skips snoozed workspaces: `client/snoozed.ts` observes `paseo.workspaces` and `shared/snooze.ts` keeps the ids; hosts without snooze omit `snoozedAt`. `shared/settings.ts`: host-wide display settings, edited in `client/SettingsScreen.tsx`.
-- `preview/`: own package.json; renders `client/` with react-native-web and mocked host modules for screenshots (`docs/*.png`). Not shipped.
+- `preview/`: own package.json; renders `client/` with react-native-web and mocked host modules for screenshots (`docs/*.png`). Not shipped. Markdown is shown as source there; verify diagrams and rich text in Paseo.
 
 ## Load-bearing facts (Paseo 0.12)
 
@@ -16,6 +16,7 @@ Paseo plugin: agents record what they need from the human (asks) via MCP; Paseo 
 - `useWorkspace`/`useAgent` throw outside a workspace panel (e.g. the global Asks screen); resolve names on the server instead.
 - Plugin server code cannot write settings, so clients poll (`POLL_MS`).
 - Claude plan mode prompts even for `toolPolicy.preapproved` MCP tools; the server auto-allows `mcp__asks__*` via `agent.permission_requested`.
+- Turn-end hooks carry no timeline on current Paseo. Fetch the latest turn on demand before recording the reply or checking for an unrecorded ask.
 - Nudge classifier = child agent via `agents.create` (owner's provider, cheapest model, `outputSchema`, `autoArchive`). Plan mode makes it explore and call AskUserQuestion; Claude fences the JSON in prose, so parse loosely.
 - Plugin subprocess runs under Paseo's Electron helper: the bridge runs with `ELECTRON_RUN_AS_NODE=1`.
 
