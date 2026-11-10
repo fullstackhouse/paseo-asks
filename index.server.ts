@@ -136,9 +136,8 @@ export default function contribute(server: PluginServerContext) {
     asks.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     if (workspaceId) return { asks };
     // The global screen has no workspace context, so client state hooks can't resolve names there.
-    // Asks of archived workspaces stay on disk but are hidden; if the daemon can't say which are live, show all.
-    const live = await activeWorkspaces(api).catch(() => null);
-    if (!live) return { asks };
+    // Background and archived asks remain available by workspace, but stay out of the global queue.
+    const live = await activeWorkspaces(api);
     return { asks: asks.filter((ask) => live.has(ask.workspaceId)), workspaceNames: Object.fromEntries(live) };
   });
   server.handle(actOnAsk, (input, { paseo: api }) => {

@@ -4,7 +4,7 @@ import { activeWorkspaces } from "../server/workspaces";
 type Api = Parameters<typeof activeWorkspaces>[0];
 
 describe("activeWorkspaces", () => {
-  it("follows every page and asks for background workspaces too", async () => {
+  it("follows every page without including background workspaces", async () => {
     const pages: Record<string, { ids: string[]; next: string | null }> = {
       "": { ids: ["wks_1", "wks_2"], next: "c1" },
       c1: { ids: ["wks_3"], next: null },
@@ -31,6 +31,9 @@ describe("activeWorkspaces", () => {
       ["wks_3", "name of wks_3"],
     ]);
     expect(requests).toHaveLength(2);
-    expect(requests[0]).toMatchObject({ includeBackground: true, filter: { includeBackground: true } });
+    for (const request of requests) {
+      expect(request).not.toHaveProperty("includeBackground", true);
+      expect(request).not.toHaveProperty("filter.includeBackground", true);
+    }
   });
 });
