@@ -5,7 +5,7 @@ import { AgentDirectory, pickCaller } from "./server/agents";
 import { installBridge } from "./server/bridge";
 import { discuss } from "./server/discuss";
 import { findGh, ghFetcher } from "./server/github";
-import { LastOutputs } from "./server/last-output";
+import { LastOutputs, latestTurn } from "./server/last-output";
 import { listen } from "./server/listener";
 import { CLASSIFIER_PROMPT, NUDGE, paseoClassifier, shouldNudge } from "./server/nudge";
 import { Outbox, type Courier } from "./server/outbox";
@@ -103,11 +103,12 @@ export default function contribute(server: PluginServerContext) {
     capture(api);
     if (agent.workspaceId && !helpers.has(agent.id)) agents.remember(agent.id, agent.workspaceId);
   });
-  server.on("agent.turn_ended", ({ agent, outcome, timeline }, { paseo: api }) => {
+  server.on("agent.turn_ended", async ({ agent, outcome }, { paseo: api }) => {
     capture(api);
     if (helpers.has(agent.id)) return;
-    lastOutputs.record(agent.id, timeline);
     void outbox.flush(agent.id);
+    const timeline = await latestTurn(api.agents.ref(agent.id).timeline);
+    lastOutputs.record(agent.id, timeline);
     // Agents sometimes ask in chat and skip ask_create; one reminder per such turn. Side chats talk to the human directly.
     const sideChat = store
       .list(agent.workspaceId ?? undefined)
@@ -129,12 +130,10 @@ export default function contribute(server: PluginServerContext) {
     capture(api);
     // A classifier only needs to answer; never let it put a prompt in front of the human.
     if (helpers.has(agent.id)) {
-      await api.agents
-        .ref(agent.id)
-        .respondToPermission({
-          requestId: request.id,
-          response: { behavior: "deny", message: "Answer without tools." },
-        });
+      await api.agents.ref(agent.id).respondToPermission({
+        requestId: request.id,
+        response: { behavior: "deny", message: "Answer without tools." },
+      });
       return;
     }
     if (!isAsksPermission(request)) return;
