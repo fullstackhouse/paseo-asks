@@ -222,15 +222,17 @@ describe("asks", () => {
     expect((await service.act({ workspaceId: WS, id: "A1", verb: "done" })).notified).toBe(false);
   });
 
-  it("lists only open asks by default, and only the caller's with scope mine", async () => {
+  it("lists active asks (open and in progress) by default, labelled by status", async () => {
     await service.callTool(AGENT, "ask_create", decision);
     await service.callTool(AGENT, "ask_create", { kind: "question", title: "Other" });
+    await service.callTool(AGENT, "ask_create", { kind: "followup", title: "Later" });
     await service.callTool(AGENT, "ask_update", { id: "A2", status: "dropped" });
-    expect((await service.callTool(AGENT, "ask_list", {})).text).toBe(
-      "A1 [open] decision: Squash-only merges?",
-    );
+    await service.callTool(AGENT, "ask_update", { id: "A3", status: "in_progress" });
+    const active = ["A1 [open] decision: Squash-only merges?", "A3 [in_progress] followup: Later"];
+    expect((await service.callTool(AGENT, "ask_list", {})).text.split("\n")).toEqual(active);
+    expect((await service.callTool(AGENT, "ask_list", { status: "active" })).text.split("\n")).toEqual(active);
     expect(
       (await service.callTool(AGENT, "ask_list", { status: "all" })).text.split("\n"),
-    ).toHaveLength(2);
+    ).toHaveLength(3);
   });
 });
