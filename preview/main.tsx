@@ -75,7 +75,6 @@ createRoot(document.getElementById("root")!).render(
           lets us report on abandoned carts. I recommend Postgres.
         </Text>
         <AskCard theme={theme} compact={false} agentId="main" askId="A3" verb="create" />
-        <Text style={{ color: theme.colors.foreground }}>See A3.</Text>
       </View>
     </Frame>
   </QueryClientProvider>,
