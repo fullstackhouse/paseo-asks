@@ -65,14 +65,14 @@ export type Ask = z.infer<typeof AskSchema>;
 
 export const OPEN_STATUSES: readonly Ask["status"][] = ["open", "in_progress"];
 
-/** Waits on the human: open, and not about a PR that is already merged or closed (its owner just hasn't closed it yet). */
-export function awaitsYou(ask: Pick<Ask, "status" | "pr">): boolean {
-  return ask.status === "open" && (!ask.pr || ask.pr.state === "OPEN");
+/** Waits on the human: open. A linked PR's state says nothing about it; the owner closes the ask when its work is done. */
+export function awaitsYou(ask: Pick<Ask, "status">): boolean {
+  return ask.status === "open";
 }
 
 /** The sidebar counter: asks waiting on you, leaving out workspaces you snoozed. */
 export function waitingCount(
-  asks: readonly Pick<Ask, "status" | "pr" | "workspaceId">[],
+  asks: readonly Pick<Ask, "status" | "workspaceId">[],
   snoozed: ReadonlySet<string>,
 ): number {
   return asks.filter((ask) => awaitsYou(ask) && !snoozed.has(ask.workspaceId)).length;
