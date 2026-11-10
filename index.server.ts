@@ -14,7 +14,7 @@ import { isAsksPermission } from "./server/permissions";
 import { AsksService, instructions, TOOLS } from "./server/service";
 import { AskStore } from "./server/store";
 import { PrWatcher } from "./server/watcher";
-import { activeWorkspaces } from "./server/workspaces";
+import { activeWorkspaces, isBackground } from "./server/workspaces";
 import { displaySettings, reviewSettings } from "./shared/settings";
 
 const FLUSH_EVERY_MS = 20_000;
@@ -115,6 +115,7 @@ export default function contribute(server: PluginServerContext) {
       .some((ask) => ask.discussionAgentId === agent.id);
     if (outcome.kind !== "completed" || !agent.workspaceId || sideChat) return;
     const workspaceId = agent.workspaceId;
+    if (await isBackground(api, workspaceId)) return;
     void shouldNudge(timeline, classifierFor(agent.id))
       .then(async (nudge) => {
         // The classifier takes a few seconds; a reminder after the human has moved on would be stale.

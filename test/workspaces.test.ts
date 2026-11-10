@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activeWorkspaces } from "../server/workspaces";
+import { activeWorkspaces, isBackground } from "../server/workspaces";
 
 type Api = Parameters<typeof activeWorkspaces>[0];
 
@@ -35,5 +35,28 @@ describe("activeWorkspaces", () => {
       expect(request).not.toHaveProperty("includeBackground", true);
       expect(request).not.toHaveProperty("filter.includeBackground", true);
     }
+  });
+});
+
+describe("isBackground", () => {
+  const apiWith = (refresh: () => Promise<unknown>) =>
+    ({ workspaces: { ref: () => ({ refresh }) } }) as unknown as Parameters<typeof isBackground>[0];
+
+  it("is true only for a background workspace", async () => {
+    expect(await isBackground(apiWith(async () => ({ id: "wks_1", background: true })), "wks_1")).toBe(true);
+    expect(await isBackground(apiWith(async () => ({ id: "wks_1", background: false })), "wks_1")).toBe(false);
+    expect(await isBackground(apiWith(async () => ({ id: "wks_1" })), "wks_1")).toBe(false);
+    expect(await isBackground(apiWith(async () => null), "wks_1")).toBe(false);
+  });
+
+  it("counts an unreadable workspace as visible", async () => {
+    expect(
+      await isBackground(
+        apiWith(async () => {
+          throw new Error("daemon gone");
+        }),
+        "wks_1",
+      ),
+    ).toBe(false);
   });
 });
