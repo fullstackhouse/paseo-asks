@@ -72,9 +72,11 @@ const CHEAP_MODEL = /haiku|mini|flash|lite|nano/i;
 const MAX_REPLY_CHARS = 8_000;
 const CLASSIFIER_TIMEOUT_MS = 60_000;
 
-/** Providers may wrap the structured answer in a code fence or prose. */
+/** Providers may wrap the structured answer in a code fence or prose ("set `waitsOnHuman` to **true**"). */
+const ANSWER = /waitsOnHuman\b(?:\W+(?:to|is|be|should|=))*\W*(true|false)\b/i;
+
 export function parseAnswer(text: string): boolean | null {
-  const match = /waitsOnHuman\W*(true|false)/i.exec(text);
+  const match = ANSWER.exec(text);
   return match ? match[1] === "true" : null;
 }
 
