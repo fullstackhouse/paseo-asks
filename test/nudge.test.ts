@@ -101,6 +101,10 @@ describe("parseAnswer", () => {
       false,
     );
     expect(parseAnswer("**waitsOnHuman: true**\n\nThe reply asks the human to choose.")).toBe(true);
+    // Haiku on Claude ignores outputSchema and answers in prose (seen live).
+    expect(parseAnswer("Set `waitsOnHuman` to **true**. The reply ends with a question to the human.")).toBe(true);
+    expect(parseAnswer("waitsOnHuman should be false: it only reports.")).toBe(false);
+    expect(parseAnswer("waitsOnHuman is unclear; true and false both fit.")).toBe(null);
     expect(parseAnswer("I think yes.")).toBe(null);
   });
 });
