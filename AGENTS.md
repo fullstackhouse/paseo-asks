@@ -16,7 +16,7 @@ Paseo plugin: agents record what they need from the human (asks) via MCP; Paseo 
 - `useWorkspace`/`useAgent` throw outside a workspace panel (e.g. the global Asks screen); resolve names on the server instead.
 - Plugin server code cannot write settings, so clients poll (`POLL_MS`).
 - Claude plan mode prompts even for `toolPolicy.preapproved` MCP tools; the server auto-allows `mcp__asks__*` via `agent.permission_requested`.
-- Turn-end hooks carry no timeline on current Paseo. Fetch the latest turn on demand before recording the reply or checking for an unrecorded ask.
+- Turn-end hooks carry no timeline. Read the turn with the host's `latestTurn` (`@getpaseo/plugin/server`, FSH hosts from `0bd77c5`; typed locally in `server/host-sdk.ts` until the npm SDK has it) before recording the reply or checking for an unrecorded ask.
 - Nudge classifier = child agent via `agents.create` (owner's provider, cheapest model, `outputSchema`, `autoArchive`). Plan mode makes it explore and call AskUserQuestion; Claude fences the JSON in prose, so parse loosely.
 - Plugin subprocess runs under Paseo's Electron helper: the bridge runs with `ELECTRON_RUN_AS_NODE=1`.
 

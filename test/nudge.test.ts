@@ -9,7 +9,6 @@ import { AsksService } from "../server/service";
 import { pickCaller } from "../server/agents";
 import { isAsksPermission } from "../server/permissions";
 import { AskStore } from "../server/store";
-import { latestTurn } from "../server/last-output";
 
 const user = (text: string) => ({ type: "user_message", text }) as AgentTimelineItem;
 const reply = (text: string) => ({ type: "assistant_message", text }) as AgentTimelineItem;
@@ -189,46 +188,5 @@ describe("pickCaller", () => {
     );
     expect(pickCaller([agent("a", "/w"), agent("b", "/w")], "/w")).toBe(null);
     expect(pickCaller([agent("a", "/w", "running"), agent("b", "/w", "running")], "/w")).toBe(null);
-  });
-});
-
-describe("latestTurn", () => {
-  it("reads older pages until the current user message, retaining ask tool calls", async () => {
-    const options: unknown[] = [];
-    const pages = [
-      {
-        entries: [{ provider: "claude", item: reply("Which one?") }],
-        hasOlder: true,
-        startCursor: { epoch: "e", seq: 4 },
-      },
-      {
-        entries: [reply("Earlier."), user("go"), tool("mcp__asks__ask_create")].map((item) => ({
-          provider: "claude",
-          item,
-        })),
-        hasOlder: true,
-        startCursor: { epoch: "e", seq: 1 },
-      },
-    ];
-    const items = await latestTurn({
-      refetch: async (option) => {
-        options.push(option);
-        return pages.shift()!;
-      },
-    });
-    expect(items).toEqual([user("go"), tool("mcp__asks__ask_create"), reply("Which one?")]);
-    expect(await shouldNudge(items, async () => true)).toBe(false);
-    expect(options).toEqual([
-      { direction: "tail", limit: 50 },
-      { direction: "before", cursor: { epoch: "e", seq: 4 }, limit: 50 },
-    ]);
-  });
-
-  it("stops at the oldest page when there is no user message", async () => {
-    expect(
-      await latestTurn({
-        refetch: async () => ({ entries: [], hasOlder: false, startCursor: null }),
-      }),
-    ).toEqual([]);
   });
 });
