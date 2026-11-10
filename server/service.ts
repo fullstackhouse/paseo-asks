@@ -24,6 +24,7 @@ ${actOnReviewChanges ? ADDRESS_REVIEW : HOLD_REVIEW}
   - Request or re-request a review only when the human clicks. Doing it does not finish the ask: keep it in progress, not resolved, so its subscription tells you about the review. Once the review is approved and checks pass, ask_update the same ask to a "Merge" send action.
 - The human may talk an ask through in a side chat; its outcome reaches you as an [asks] message like any other answer.
 - Answers arrive as messages starting with [asks]. Act on them. After finishing work a send action gave you, call ask_resolve (a requested PR review is not finished until it is approved; see PRs).
+- Status says whose move it is. open: the human's; the ask shows its buttons and counts as waiting on them. in_progress: yours, after the human acted; buttons are hidden. When the next move is the human's again (a merge, a review, a label, an answer), ask_update it with the action they need, which sets it back to open; never point them to a button on an in-progress ask. In chat, use these names: "waiting on you" for open, "in progress" for in_progress.
 - Keep asks true: ask_update when facts change, ask_resolve or status "dropped" when the human is no longer needed. Check ask_list before creating a duplicate.
 - Your own to-do list stays in your task tool. Asks are only for things whose next move is the human's.`;
 
@@ -55,7 +56,7 @@ const UpdateInput = z.object({
 });
 const ResolveInput = z.object({ id: z.string(), actionId: z.string().optional(), note: z.string().optional() });
 const ListInput = z.object({
-  status: z.enum(["open", "all"]).default("open"),
+  status: z.enum(["active", "all"]).default("active"),
   scope: z.enum(["workspace", "mine"]).default("workspace"),
 });
 
@@ -77,7 +78,7 @@ export const TOOLS = [
   },
   {
     name: "ask_list",
-    description: "List asks in your workspace (or only yours). Defaults to open ones.",
+    description: "List asks in your workspace (or only yours). Defaults to active ones: open (waiting on the human) or in_progress (yours).",
     inputSchema: z.toJSONSchema(ListInput, { io: "input" }),
   },
 ];
