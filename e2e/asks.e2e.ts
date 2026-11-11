@@ -83,18 +83,18 @@ describe("asks in a real Paseo daemon", () => {
     expect(await sandbox.timeline(agent)).not.toMatch(NUDGED);
   });
 
-  it("explains a decision in chat before creating its ask", async () => {
+  it("creates a decision's ask, then ends the turn on its explanation", async () => {
     const agent = await sandbox.run(
       "Our shop keeps carts in a 4 KB session cookie and long carts get cut short. Compare keeping carts in Redis or in Postgres in a short paragraph, recommend one, and leave the choice to me. Do not read or write any files.",
     );
     await sandbox.settle(agent);
 
     expect(sandbox.asks()).toContainEqual(expect.objectContaining({ kind: "decision", ownerAgentId: agent }));
-    // The ask's buttons render where ask_create was called, so the explanation must come before it and little after.
+    // A collapsed turn shows only its last message, so the explanation follows the ask and ends the turn.
     const turn = (await sandbox.timeline(agent)).split(/^\[User\].*$/m).at(-1) ?? "";
-    const [before, after = ""] = turn.split("[mcp__asks__ask_create]");
-    expect(before).toMatch(/Postgres/);
-    expect(after.split("\n").slice(1).filter((line) => line.trim() && !line.startsWith("[")).length).toBeLessThanOrEqual(1);
+    const after = turn.split("[mcp__asks__ask_create]").at(-1) ?? "";
+    expect(turn).toContain("[mcp__asks__ask_create]");
+    expect(after).toMatch(/Postgres/);
   });
 
   it("logs no plugin errors", async () => {
