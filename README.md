@@ -26,6 +26,7 @@ PR asks show live status from `gh`: open, merged or closed, checks, review decis
 - an **Asks** screen in the sidebar, covering every workspace, with a count of what's waiting (asks in snoozed workspaces still list but leave the count);
 - **inline in the agent's chat**, where it called `ask_create`, `ask_update` or `ask_resolve`: the tool row becomes the ask itself, live, open asks expanded with their buttons first, then the body (**Settings → Plugins → Asks** can fold the body behind a **Details** link). Agents are told to create the ask before their final reply, so the turn ends on their answer, which a collapsed turn keeps visible;
 - a question-bubble pill in every agent's composer with the workspace's waiting count (0 when there are none). Pressing it lists the workspace's asks, that agent's first (others with **Open chat**), with a **Refresh asks** button that tells the agent to bring them up to date: create asks it skipped, and update or resolve stale ones.
+- on FSH Paseo desktop, a workspace summary item per workspace (count, and whether asks wait on you). With the host setting **Entering a workspace opens the Explorer sidebar**, entering a workspace with a new waiting ask opens the Asks panel in Explorer. Hosts without `addWorkspaceSummaryItem` skip it.
 
 ## How it works
 

@@ -15,7 +15,8 @@ import { AsksMessage } from "./client/AsksMessage";
 import { AgentAsks, AskCard, AsksView, POLL_MS, useAsks } from "./client/AsksView";
 import { SettingsScreen } from "./client/SettingsScreen";
 import { observeSnoozedWorkspaces, useSnoozedWorkspaceIds } from "./client/snoozed";
-import { awaitsYou, listAsks, waitingCount } from "./shared/asks";
+import { listAsks, waitingByWorkspace, waitingCount } from "./shared/asks";
+import { createWorkspaceSummaries } from "./client/summary";
 import { ASKS_MESSAGE, AsksMessageSchema, parseAsksMessage, type AsksMessage as AsksMessageData } from "./shared/messages";
 import { ASK_CARD, AskCardSchema, askCardFor, type AskCard as AskCardData } from "./shared/timeline";
 
@@ -116,6 +117,7 @@ function pillLabel(count: number): string {
 /** A composer pill per agent with its open asks; pressing it shows them and a Refresh. */
 function contributePills(client: PluginClientContext): () => void {
   const pills = new Map<string, { workspaceId: string; pill: PluginButtonRegistration }>();
+  const summaries = createWorkspaceSummaries(client);
   const lifetime = new AbortController();
 
   const register = (agent: { id: string; workspaceId?: string | null }) => {
@@ -138,11 +140,13 @@ function contributePills(client: PluginClientContext): () => void {
 
   const refreshCounts = async () => {
     const { asks } = await client.rpc(listAsks, {});
-    const counts = new Map<string, number>();
-    for (const ask of asks) if (awaitsYou(ask)) counts.set(ask.workspaceId, (counts.get(ask.workspaceId) ?? 0) + 1);
+    const waiting = waitingByWorkspace(asks);
     for (const { workspaceId, pill } of pills.values()) {
-      pill.update({ label: pillLabel(counts.get(workspaceId) ?? 0) });
+      pill.update({ label: pillLabel(waiting.get(workspaceId)?.count ?? 0) });
     }
+    // Every workspace with waiting asks, even one whose agents are gone, plus ones already reported, so a count drops to 0.
+    const workspaceIds = new Set([...waiting.keys(), ...summaries.workspaceIds()]);
+    for (const workspaceId of workspaceIds) summaries.set(workspaceId, waiting.get(workspaceId));
   };
   const timer = setInterval(() => void refreshCounts().catch(() => undefined), POLL_MS * 2);
 
@@ -172,6 +176,7 @@ function contributePills(client: PluginClientContext): () => void {
     lifetime.abort();
     clearInterval(timer);
     for (const agentId of [...pills.keys()]) drop(agentId);
+    summaries.clear();
   };
 }
 

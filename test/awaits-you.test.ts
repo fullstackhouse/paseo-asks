@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { awaitsYou, waitingCount, type PrState, type Ask } from "../shared/asks";
+import { awaitsYou, waitingByWorkspace, waitingCount, type PrState, type Ask } from "../shared/asks";
 
 import { askQueue } from "../client/queue";
 
@@ -89,5 +89,24 @@ describe("main ask queue", () => {
     const asks = [ask("later", { workspaceId: "later" })];
     expect(askQueue(asks, snoozed).needs_you).toHaveLength(0);
     expect(askQueue(asks, new Set()).needs_you).toHaveLength(1);
+  });
+});
+
+describe("waitingByWorkspace", () => {
+  const ask = (id: string, workspaceId: string, status: Ask["status"], createdAt: string) => ({
+    id,
+    workspaceId,
+    status,
+    createdAt,
+  });
+
+  it("counts open asks per workspace and keeps the newest id", () => {
+    const result = waitingByWorkspace([
+      ask("a1", "w1", "open", "2026-11-11T10:00:00Z"),
+      ask("a2", "w1", "open", "2026-11-11T11:00:00Z"),
+      ask("a3", "w1", "done", "2026-11-11T12:00:00Z"),
+      ask("b1", "w2", "in_progress", "2026-11-11T09:00:00Z"),
+    ]);
+    expect([...result]).toEqual([["w1", { count: 2, newestId: "a2" }]]);
   });
 });
