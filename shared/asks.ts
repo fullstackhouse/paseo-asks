@@ -80,6 +80,23 @@ export function waitingCount(
   return asks.filter((ask) => awaitsYou(ask) && !snoozed.has(ask.workspaceId)).length;
 }
 
+/** Per workspace: how many asks wait on you and the newest one's id, which changes when a new ask arrives. */
+export function waitingByWorkspace(
+  asks: readonly Pick<Ask, "id" | "status" | "workspaceId" | "createdAt">[],
+): Map<string, { count: number; newestId: string }> {
+  const result = new Map<string, { count: number; newestId: string; newestAt: string }>();
+  for (const ask of asks) {
+    if (!awaitsYou(ask)) continue;
+    const entry = result.get(ask.workspaceId);
+    if (!entry) result.set(ask.workspaceId, { count: 1, newestId: ask.id, newestAt: ask.createdAt });
+    else {
+      entry.count++;
+      if (ask.createdAt > entry.newestAt) Object.assign(entry, { newestId: ask.id, newestAt: ask.createdAt });
+    }
+  }
+  return new Map([...result].map(([id, { count, newestId }]) => [id, { count, newestId }]));
+}
+
 export const listAsks = defineRpc({
   name: "asks.list",
   input: z.object({ workspaceId: z.string().optional(), includeClosed: z.boolean().optional() }),
