@@ -16,7 +16,7 @@ export function AsksMessage({ theme, askId, title, event, note }: { theme: Plugi
     <View style={styles.row}>
       <View style={styles.bubble}>
         <View style={styles.head}>
-          <Icon name="Inbox" size={12} color={theme.colors.foregroundMuted} />
+          <Icon name="MessageCircleQuestionMark" size={12} color={theme.colors.foregroundMuted} />
           <Text style={styles.headText} numberOfLines={1}>
             {askId ? `${askId}${title ? ` · ${title}` : ""}` : "Asks"}
           </Text>

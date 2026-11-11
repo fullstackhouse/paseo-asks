@@ -69,7 +69,7 @@ function SidebarItem({ theme, currentScreen, openScreen }: PluginSidebarItemProp
   const waiting = waitingCount(asks.data?.asks ?? [], snoozed);
   return (
     <SidebarRow
-      icon="Inbox"
+      icon="MessageCircleQuestionMark"
       active={currentScreen?.screenId === "asks"}
       onPress={() => openScreen({ screenId: "asks" })}
       trailing={waiting > 0 ? <Text style={{ color: attentionColor(theme), fontSize: 12, fontWeight: "600" }}>{waiting}</Text> : undefined}
@@ -108,7 +108,7 @@ const asksPopover: Extract<PluginButtonBehavior, { kind: "popover" }> & { presen
   Content: PillPopover,
 };
 
-/** The pill's face beside its inbox icon: how many asks in its workspace wait on you, 0 so a missing one is noticed. */
+/** The pill's face beside its question icon: how many asks in its workspace wait on you, 0 so a missing one is noticed. */
 function pillLabel(count: number): string {
   return String(count);
 }
@@ -127,7 +127,7 @@ function contributePills(client: PluginClientContext): () => void {
         id: "asks",
         workspaceId,
         agentId,
-        button: { title: "Asks", icon: "Inbox", label: pillLabel(0), behavior: asksPopover },
+        button: { title: "Asks", icon: "MessageCircleQuestionMark", label: pillLabel(0), behavior: asksPopover },
       }),
     });
   };
@@ -180,18 +180,18 @@ export default function contribute(client: PluginClientContext) {
   client.addWorkspacePanel({
     id: "asks",
     title: "Asks",
-    icon: "Inbox",
+    icon: "MessageCircleQuestionMark",
     context: "workspace",
     locations: ["workspace", "explorer"],
     Component: WorkspacePanel,
   });
   client.addScreen({ id: "asks", title: "Asks", Component: GlobalScreen });
-  client.addSettingsScreen({ id: "asks", title: "Asks", icon: "Inbox", Component: SettingsScreen });
+  client.addSettingsScreen({ id: "asks", title: "Asks", icon: "MessageCircleQuestionMark", Component: SettingsScreen });
   client.addSidebarHeaderItem({ id: "asks", title: "Asks", Component: SidebarItem });
   client.addCommandCenterItem({
     id: "open-asks",
     title: "Open asks for this workspace",
-    icon: "Inbox",
+    icon: "MessageCircleQuestionMark",
     context: "workspace",
     keywords: ["asks", "decisions", "inbox"],
     onSelect: ({ openPanel }) => openPanel("asks"),
@@ -199,7 +199,7 @@ export default function contribute(client: PluginClientContext) {
   client.addCommandCenterItem({
     id: "open-all-asks",
     title: "Open asks across workspaces",
-    icon: "Inbox",
+    icon: "MessageCircleQuestionMark",
     context: "global",
     keywords: ["asks", "decisions", "inbox"],
     onSelect: ({ openScreen }) => openScreen({ screenId: "asks" }),
