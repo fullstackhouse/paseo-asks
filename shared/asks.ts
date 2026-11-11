@@ -56,6 +56,8 @@ export const AskSchema = z.object({
   heldReview: z.boolean().optional(),
   /** Live state of the first GitHub PR in links, refreshed by the plugin. */
   pr: PrStateSchema.optional(),
+  /** When the owner was last reminded that this ask sat in progress at the end of its turn. */
+  remindedAt: z.string().optional(),
   /** The side chat opened to talk this ask through. */
   discussionAgentId: z.string().optional(),
   createdAt: z.string(),

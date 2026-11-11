@@ -166,8 +166,8 @@ describe("asks", () => {
     await outbox.flush();
 
     const [watched, unwatched] = courier.sent.map((message) => message.text);
-    expect(watched).toContain("leave the ask in progress");
-    expect(unwatched).not.toContain("leave the ask in progress");
+    expect(watched).toContain("keep the ask in progress instead of resolving it");
+    expect(unwatched).not.toContain("keep the ask in progress");
   });
 
   it("new options on an in-progress ask hand it back to the human", async () => {
@@ -191,7 +191,8 @@ describe("asks", () => {
       actions: [{ label: "Retry", kind: "send" }],
       status: "in_progress",
     });
-    expect(store.get(WS, "A1")!.status).toBe("in_progress");
+    // Buttons on an in-progress ask can't be clicked, so an explicit in_progress doesn't hide them.
+    expect(store.get(WS, "A1")!.status).toBe("open");
   });
 
   it("survives a restart with messages still pending", async () => {

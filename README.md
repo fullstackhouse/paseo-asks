@@ -13,7 +13,7 @@ Asks is a [Paseo](https://paseo.sh) plugin. It lifts what your agents need from 
 ## What you can do with an ask
 
 - **Pick an option.** A decision's options are buttons, and the agent's recommendation is starred. The agent gets `[asks] A3 resolved: b: squash-only`.
-- **Hand work back.** A PR or follow-up offers actions such as "Merge (squash)". Pressing one sends the agent that exact instruction and shows the ask as *in progress* until the agent closes it.
+- **Hand work back.** A PR or follow-up offers actions such as "Merge (squash)". Pressing one sends the agent that exact instruction and shows the ask as *in progress* until the agent closes it. An in-progress ask hides its buttons, so it goes back to waiting on you when the agent gives it new actions, when the agent is archived, or after a day with the agent not running. An agent whose turn ends while it holds an in-progress ask gets one reminder to reopen it if the next move is yours.
 - **Reply, mark done, or drop.** A note can go along with any of these.
 - **Discuss.** Opens a side chat about this one ask. It's a child of the main agent, starts read-only (plan mode), and already knows the ask and the main agent's latest reply. Talk it through there. When you settle it, the side chat closes the ask, and the main agent gets the outcome as one message: `[asks] A3 resolved in a side chat: … Summary: …`. Only the main agent ever changes the checkout.
 - **Open chat.** Jumps to the agent that raised the ask.

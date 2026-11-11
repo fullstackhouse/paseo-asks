@@ -35,6 +35,15 @@ describe("asks in a real Paseo daemon", () => {
     expect(timeline).toMatch(/\[User\] \[asks\][^\n]*Merge PR #7 with squash/);
   });
 
+  it("reminds an agent whose turn ends with the ask still in progress", async () => {
+    const [ask] = sandbox.asks();
+    // PR #7 doesn't exist, so the agent can't finish the merge and ends its turn holding the ask.
+    const timeline = await sandbox.waitForTimeline(ask.ownerAgentId!, /\[User\] \[asks\] Your turn ended with A1 \(Merge PR #7\) in progress/);
+    expect(timeline).toMatch(/Your turn ended with A1/);
+    await sandbox.settle(ask.ownerAgentId!);
+    expect(sandbox.asks().find((candidate) => candidate.id === "A1")?.status).not.toBe("in_progress");
+  });
+
   it("nudges a question left in chat without an ask", async () => {
     const agent = await sandbox.run(
       'Reply with exactly this sentence and nothing else, without using any tools: "The migration plan is ready. Should I run it tonight?"',
