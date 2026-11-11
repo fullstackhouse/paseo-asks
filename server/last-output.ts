@@ -1,6 +1,5 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { PaseoAgentTimelineHandle, PaseoAgentTimelineRefetchOptions } from "@getpaseo/client";
 import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 
 const MAX_CHARS = 8000;
@@ -36,24 +35,4 @@ export function latestReply(timeline: readonly AgentTimelineItem[]): string {
     if (item.type === "assistant_message") parts.unshift(item.text);
   }
   return parts.join("").trim().slice(-MAX_CHARS);
-}
-
-type TimelinePage = Pick<
-  Awaited<ReturnType<PaseoAgentTimelineHandle["refetch"]>>,
-  "hasOlder" | "startCursor"
-> & { entries: { item: AgentTimelineItem }[] };
-
-/** Turn hooks no longer include history; read back only as far as the latest user message. */
-export async function latestTurn(source: {
-  refetch(options: PaseoAgentTimelineRefetchOptions): Promise<TimelinePage>;
-}): Promise<AgentTimelineItem[]> {
-  const items: AgentTimelineItem[] = [];
-  let page = await source.refetch({ direction: "tail", limit: 50 });
-  for (;;) {
-    items.unshift(...page.entries.map((entry) => entry.item));
-    const boundary = items.findLastIndex((item) => item.type === "user_message");
-    if (boundary >= 0) return items.slice(boundary);
-    if (!page.hasOlder || !page.startCursor) return items;
-    page = await source.refetch({ direction: "before", cursor: page.startCursor, limit: 50 });
-  }
 }

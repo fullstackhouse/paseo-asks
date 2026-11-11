@@ -3,13 +3,14 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "pretest": "node fsh-host.mjs",
     "test": "vitest run",
+    "prerecord": "node fsh-host.mjs",
     "record": "E2E_MODE=record vitest run",
     "typecheck": "tsc -p tsconfig.json"
   },
   "devDependencies": {
     "@anthropic-ai/claude-code": "2.1.304",
-    "@getpaseo/cli": "0.15.3",
     "@types/node": "^24.19.2",
     "typescript": "^5.9.3",
     "vitest": "^5.0.5"
