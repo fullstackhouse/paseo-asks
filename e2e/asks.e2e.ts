@@ -35,6 +35,15 @@ describe("asks in a real Paseo daemon", () => {
     expect(timeline).toMatch(/\[User\] \[asks\][^\n]*Merge PR #7 with squash/);
   });
 
+  it("reminds an agent whose turn ends with the ask still in progress", async () => {
+    const [ask] = sandbox.asks();
+    // PR #7 doesn't exist, so the agent can't finish the merge and ends its turn holding the ask.
+    const timeline = await sandbox.waitForTimeline(ask.ownerAgentId!, /\[User\] \[asks\] Your turn ended with A1 \(Merge PR #7\) in progress/);
+    expect(timeline).toMatch(/Your turn ended with A1/);
+    await sandbox.settle(ask.ownerAgentId!);
+    expect(sandbox.asks().find((candidate) => candidate.id === "A1")?.status).not.toBe("in_progress");
+  });
+
   it("nudges a question left in chat without an ask", async () => {
     const agent = await sandbox.run(
       'Reply with exactly this sentence and nothing else, without using any tools: "The migration plan is ready. Should I run it tonight?"',
@@ -74,18 +83,18 @@ describe("asks in a real Paseo daemon", () => {
     expect(await sandbox.timeline(agent)).not.toMatch(NUDGED);
   });
 
-  it("explains a decision in chat before creating its ask", async () => {
+  it("creates a decision's ask, then ends the turn on its explanation", async () => {
     const agent = await sandbox.run(
       "Our shop keeps carts in a 4 KB session cookie and long carts get cut short. Compare keeping carts in Redis or in Postgres in a short paragraph, recommend one, and leave the choice to me. Do not read or write any files.",
     );
     await sandbox.settle(agent);
 
     expect(sandbox.asks()).toContainEqual(expect.objectContaining({ kind: "decision", ownerAgentId: agent }));
-    // The ask's buttons render where ask_create was called, so the explanation must come before it and little after.
+    // A collapsed turn shows only its last message, so the explanation follows the ask and ends the turn.
     const turn = (await sandbox.timeline(agent)).split(/^\[User\].*$/m).at(-1) ?? "";
-    const [before, after = ""] = turn.split("[mcp__asks__ask_create]");
-    expect(before).toMatch(/Postgres/);
-    expect(after.split("\n").slice(1).filter((line) => line.trim() && !line.startsWith("[")).length).toBeLessThanOrEqual(1);
+    const after = turn.split("[mcp__asks__ask_create]").at(-1) ?? "";
+    expect(turn).toContain("[mcp__asks__ask_create]");
+    expect(after).toMatch(/Postgres/);
   });
 
   it("logs no plugin errors", async () => {

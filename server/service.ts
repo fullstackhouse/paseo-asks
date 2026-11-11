@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ACTION_KINDS, ASK_KINDS, ASK_STATUSES, OPEN_STATUSES, prUrlOf, type Ask, type PrState } from "../shared/asks";
 import { REFRESH } from "./nudge";
+import { isStale, needsReminder, stuckReminder } from "./stuck";
 import type { Outbox } from "./outbox";
 import type { AskStore, NewAsk } from "./store";
 
@@ -107,8 +108,9 @@ export class AsksService {
           const { id, ...patch } = UpdateInput.parse(args);
           const ask = this.require(workspaceId, id);
           checkActions(patch.actions ?? []);
-          // Fresh options on an ask the agent was working on hand it back to the human; the UI shows buttons only on open asks.
-          if (patch.actions?.length && !patch.status && ask.status === "in_progress") patch.status = "open";
+          // Fresh options hand the ask back to the human: the UI shows buttons only on open asks, so actions on an
+          // in-progress ask can't be clicked. Applies even when the agent asks for in_progress explicitly.
+          if (patch.actions?.length && (patch.status ?? ask.status) === "in_progress") patch.status = "open";
           const updated = await this.store.update(workspaceId, id, patch);
           if (agentId !== ask.ownerAgentId && !ask.orphaned && patch.status && patch.status !== ask.status) {
             this.notify(ask, `[asks] ${ask.id} (${ask.title}) marked ${patch.status.replace("_", " ")} in a side chat.`);
@@ -169,7 +171,7 @@ export class AsksService {
         if (action.kind === "send") {
           next = await this.store.update(ask.workspaceId, ask.id, { status: "in_progress" });
           // Resolving drops the ask from the PR watcher, so a review request resolved here would never hear the approval.
-          const watched = ask.subscribe && prUrlOf(ask) ? " If the PR still waits on the human after it (a review requested, not yet approved), leave the ask in progress instead: resolving it ends its PR updates." : "";
+          const watched = ask.subscribe && prUrlOf(ask) ? " If the PR then waits on someone other than the human (CI, a reviewer you requested), keep the ask in progress instead of resolving it: resolving ends its PR updates. If it waits on the human (a label, an approval, a merge only they can do), ask_update it with the action they need, which sets it back to open." : "";
           message = `${head} "${action.label}": ${action.prompt ?? action.label}.${noted} When it is done, call ask_resolve for ${ask.id}.${watched}`;
         } else {
           const outcome = { actionId: action.id, label: action.label, note, by: "human" as const, at };
@@ -201,6 +203,34 @@ export class AsksService {
   notify(ask: Ask, text: string): void {
     this.outbox.enqueue({ agentId: ask.ownerAgentId, workspaceId: ask.workspaceId, askId: ask.id, text });
     void this.outbox.flush(ask.ownerAgentId);
+  }
+
+  /** The owner ended a turn holding in-progress asks that wait on nobody else: one reminder per change of each. */
+  async remindStuck(agentId: string, workspaceId: string): Promise<void> {
+    const stuck = this.store.list(workspaceId).filter((ask) => ask.ownerAgentId === agentId && needsReminder(ask));
+    if (!stuck.length) return;
+    const at = new Date().toISOString();
+    for (const ask of stuck) await this.store.update(workspaceId, ask.id, { remindedAt: at }, { touch: false });
+    this.message(agentId, workspaceId, stuckReminder(stuck));
+  }
+
+  /** Hand the owner's in-progress asks back to the human: it is gone, so nobody is working on them. */
+  async releaseOwner(agentId: string): Promise<Ask[]> {
+    const held = this.store.list().filter((ask) => ask.ownerAgentId === agentId && ask.status === "in_progress");
+    return Promise.all(held.map((ask) => this.store.update(ask.workspaceId, ask.id, { status: "open" })));
+  }
+
+  /** Reopen in-progress asks whose owner is not running and has left them untouched for a day. */
+  async reopenStale(isRunning: (agentId: string) => Promise<boolean>, now = new Date()): Promise<Ask[]> {
+    const running = new Map<string, boolean>();
+    const reopened: Ask[] = [];
+    for (const ask of this.store.list()) {
+      if (ask.status !== "in_progress") continue;
+      if (!running.has(ask.ownerAgentId)) running.set(ask.ownerAgentId, await isRunning(ask.ownerAgentId).catch(() => true));
+      if (isStale(ask, now, running.get(ask.ownerAgentId)!))
+        reopened.push(await this.store.update(ask.workspaceId, ask.id, { status: "open" }));
+    }
+    return reopened;
   }
 
   /** Queue a message about asks in general. The same text already waiting is not queued twice. */

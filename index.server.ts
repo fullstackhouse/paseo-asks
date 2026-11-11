@@ -19,6 +19,7 @@ import { displaySettings, reviewSettings } from "./shared/settings";
 
 const FLUSH_EVERY_MS = 20_000;
 const PR_EVERY_MS = 120_000;
+const STALE_EVERY_MS = 60 * 60 * 1000;
 
 export default function contribute(server: PluginServerContext) {
   server.registerSettings(displaySettings);
@@ -73,8 +74,9 @@ export default function contribute(server: PluginServerContext) {
   const outbox = new Outbox(dir, courier, async (deliveries) => {
     for (const { workspaceId, askId } of deliveries) {
       const ask = askId ? store.get(workspaceId, askId) : undefined;
+      // Nobody will hear a click, but the human still has to see what it was waiting on.
       if (ask && OPEN_STATUSES.includes(ask.status))
-        await store.update(workspaceId, ask.id, { orphaned: true });
+        await store.update(workspaceId, ask.id, { orphaned: true, status: "open" });
     }
   });
   const service = new AsksService(store, outbox, (agentId) => agents.workspaceOf(agentId));
@@ -116,6 +118,10 @@ export default function contribute(server: PluginServerContext) {
     if (outcome.kind !== "completed" || !agent.workspaceId || sideChat) return;
     const workspaceId = agent.workspaceId;
     if (await isBackground(api, workspaceId)) return;
+    void service
+      .remindStuck(agent.id, workspaceId)
+      .then(() => outbox.flush(agent.id))
+      .catch(() => {});
     void shouldNudge(timeline, classifierFor(agent.id))
       .then(async (nudge) => {
         // The classifier takes a few seconds; a reminder after the human has moved on would be stale.
@@ -145,6 +151,7 @@ export default function contribute(server: PluginServerContext) {
   server.on("agent.archived", ({ agent }, { paseo: api }) => {
     capture(api);
     void outbox.flush(agent.id);
+    void service.releaseOwner(agent.id);
   });
 
   server.handle(listAsks, async ({ workspaceId, includeClosed }, { paseo: api }) => {
@@ -213,11 +220,19 @@ export default function contribute(server: PluginServerContext) {
   }, FLUSH_EVERY_MS);
 
   const prTimer = setInterval(() => void watcher?.refresh(), PR_EVERY_MS);
+  // Also the backlog sweep: the first run after start reopens asks that went stale before this existed.
+  const reopenStale = () => {
+    if (paseo) void service.reopenStale(async (agentId) => (await courier.state(agentId)) === "running");
+  };
+  const staleTimer = setInterval(reopenStale, STALE_EVERY_MS);
+  const firstStale = setTimeout(reopenStale, PR_EVERY_MS);
   void watcher?.refresh();
 
   return async () => {
     clearInterval(timer);
     clearInterval(prTimer);
+    clearInterval(staleTimer);
+    clearTimeout(firstStale);
     (await listening).close();
   };
 }

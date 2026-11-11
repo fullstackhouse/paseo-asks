@@ -12,7 +12,7 @@ export type NewAsk = Pick<Ask, "workspaceId" | "ownerAgentId" | "kind" | "title"
 };
 
 export type AskPatch = Partial<
-  Pick<Ask, "title" | "body" | "links" | "status" | "outcome" | "orphaned" | "ownerAgentId" | "subscribe" | "pr" | "discussionAgentId">
+  Pick<Ask, "title" | "body" | "links" | "status" | "outcome" | "orphaned" | "ownerAgentId" | "subscribe" | "pr" | "discussionAgentId" | "remindedAt">
 > & {
   actions?: Omit<Action, "id">[];
 };
