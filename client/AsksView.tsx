@@ -121,7 +121,7 @@ function MainAsks({ theme, compact, openAgent }: ViewProps) {
         {queue[filter].length === 0 ? (
           <View style={styles.queueEmpty}>
             <Icon
-              name={filter === "needs_you" ? "Check" : "Inbox"}
+              name={filter === "needs_you" ? "Check" : "MessageCircleQuestionMark"}
               size={20}
               color={theme.colors.foregroundMuted}
             />
