@@ -11,10 +11,12 @@ import type {
 import { SidebarRow } from "@getpaseo/plugin/client/ui";
 import { useEffect } from "react";
 import { Text } from "react-native";
+import { AsksMessage } from "./client/AsksMessage";
 import { AgentAsks, AskCard, AsksView, POLL_MS, useAsks } from "./client/AsksView";
 import { SettingsScreen } from "./client/SettingsScreen";
 import { observeSnoozedWorkspaces, useSnoozedWorkspaceIds } from "./client/snoozed";
 import { awaitsYou, listAsks, waitingCount } from "./shared/asks";
+import { ASKS_MESSAGE, AsksMessageSchema, parseAsksMessage, type AsksMessage as AsksMessageData } from "./shared/messages";
 import { ASK_CARD, AskCardSchema, askCardFor, type AskCard as AskCardData } from "./shared/timeline";
 
 function WorkspacePanel({ theme, layout, workspaceId, navigation }: PluginWorkspacePanelProps) {
@@ -78,6 +80,10 @@ function SidebarItem({ theme, currentScreen, openScreen }: PluginSidebarItemProp
 function TimelineCard(props: PluginTimelineItemProps<AskCardData>) {
   const { theme, layout, agentId, item } = props;
   return <AskCard theme={theme} compact={layout.compact} agentId={agentId} openAgent={agentOpener(props)} {...item.data} />;
+}
+
+function TimelineMessage({ theme, item }: PluginTimelineItemProps<AsksMessageData>) {
+  return <AsksMessage theme={theme} {...item.data} />;
 }
 
 function PillPopover(props: PluginButtonContentProps) {
@@ -208,6 +214,16 @@ export default function contribute(client: PluginClientContext) {
     },
   });
   client.addTimelineRenderer({ ...ASK_CARD, schema: AskCardSchema, Component: TimelineCard });
+  // An [asks] message reads as what the human did; the agent still gets the instructions in its text.
+  client.addTimelineTransformer({
+    id: "asks-messages",
+    query: { itemType: "user_message" },
+    transform: ({ item }) => {
+      const data = parseAsksMessage(item.text);
+      return data && { items: [{ type: "plugin", ...ASKS_MESSAGE, data }] };
+    },
+  });
+  client.addTimelineRenderer({ ...ASKS_MESSAGE, schema: AsksMessageSchema, Component: TimelineMessage });
   const stopPills = contributePills(client);
   const stopSnoozed = observeSnoozedWorkspaces(client, "asks");
   return () => {
