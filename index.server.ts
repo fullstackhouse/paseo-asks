@@ -79,7 +79,12 @@ export default function contribute(server: PluginServerContext) {
         await store.update(workspaceId, ask.id, { orphaned: true, status: "open" });
     }
   });
-  const service = new AsksService(store, outbox, (agentId) => agents.workspaceOf(agentId));
+  const service = new AsksService(
+    store,
+    outbox,
+    (agentId) => agents.workspaceOf(agentId),
+    (workspaceId) => (paseo ? isBackground(paseo, workspaceId) : Promise.resolve(false)),
+  );
   const lastOutputs = new LastOutputs(dir);
   const gh = findGh();
   if (!gh) console.error("[asks] gh not found; PR asks will show no live status");

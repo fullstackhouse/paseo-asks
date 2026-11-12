@@ -89,11 +89,21 @@ export interface ToolResult {
   isError?: boolean;
 }
 
+/** What an agent in a background workspace gets back instead of an ask. */
+export const BACKGROUND_SKIP =
+  "Skipped: this workspace runs in the background (an automated run hidden from the sidebar), so nobody reads asks here. Put what you have in your final reply. Asks work again once the human opens this chat.";
+
 export class AsksService {
   constructor(
     private readonly store: AskStore,
     private readonly outbox: Outbox,
     private readonly workspaceOf: (agentId: string) => Promise<string | null>,
+    /**
+     * Background workspaces (hidden from the sidebar, e.g. Inbox review runs) get no asks: nobody watches them, and
+     * whatever the run produced already shows where it was started from. The tool stays, since an agent's tools are
+     * fixed when it is created and the human may take the run over later.
+     */
+    private readonly isBackground: (workspaceId: string) => Promise<boolean> = async () => false,
   ) {}
 
   async callTool(agentId: string | null, name: string, args: unknown): Promise<ToolResult> {
@@ -101,6 +111,7 @@ export class AsksService {
       if (!agentId) throw new Error("PASEO_AGENT_ID is not set for this agent, so the ask has no owner");
       const workspaceId = await this.workspaceOf(agentId);
       if (!workspaceId) throw new Error(`Agent ${agentId} has no workspace`);
+      if (await this.isBackground(workspaceId)) return { text: BACKGROUND_SKIP };
       switch (name) {
         case "ask_create":
           return render(await this.create(workspaceId, agentId, CreateInput.parse(args)));
