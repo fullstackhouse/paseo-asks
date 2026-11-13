@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { Outbox, type AgentState, type Courier } from "../server/outbox";
-import { AsksService } from "../server/service";
+import { AsksService, BACKGROUND_SKIP } from "../server/service";
 import { AskStore } from "../server/store";
 import { AskSchema } from "../shared/asks";
 
@@ -71,6 +71,16 @@ describe("asks", () => {
     await service.callTool(AGENT, "ask_create", { ...decision, body });
     const [ask] = new AskStore(dir).list(WS);
     expect(AskSchema.parse(ask).body).toBe(body);
+  });
+
+  it("records nothing for an agent in a background workspace, and tells it so", async () => {
+    let background = true;
+    const scoped = new AsksService(store, outbox, async () => WS, async () => background);
+    expect(await scoped.callTool(AGENT, "ask_create", decision)).toEqual({ text: BACKGROUND_SKIP });
+    expect(store.list(WS)).toEqual([]);
+    // The human opened the run's chat, so it isn't background any more.
+    background = false;
+    expect((await scoped.callTool(AGENT, "ask_create", decision)).text).toMatch(/^A1 /);
   });
 
   it("rejects a decision without two options, and a call with no agent id", async () => {

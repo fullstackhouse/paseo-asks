@@ -11,6 +11,7 @@ Paseo plugin: agents record what they need from the human (asks) via MCP; Paseo 
 
 ## Load-bearing facts (Paseo 0.12)
 
+- Background workspaces (`workspace.background`, e.g. Inbox runs before the human opens them) get no asks: every tool call returns `BACKGROUND_SKIP` and stores nothing, and the unrecorded-ask nudge skips them. The tools stay, because an agent's tools are fixed at creation and the human may take the run over.
 - The stdio bridge inherits `PASEO_AGENT_ID` from the agent process; that is how a tool call knows its caller. The HTTP MCP option cannot do this.
 - `agents.ref(id).send()` interrupts a running turn unless `activeTurnBehavior: "steer"`. The outbox also waits for idle.
 - `useWorkspace`/`useAgent` throw outside a workspace panel (e.g. the global Asks screen); resolve names on the server instead.
