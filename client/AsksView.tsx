@@ -2,7 +2,7 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { useAgent, useRpc, useSettings } from "@getpaseo/plugin/client";
 import { Icon, ScrollView, TextInput, useToast } from "@getpaseo/plugin/client/react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState, type ReactNode } from "react";
+import { useContext, useMemo, useState, type ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 import {
   actOnAsk,
@@ -16,6 +16,7 @@ import {
 import { displaySettings } from "../shared/settings";
 import type { AskCard as AskCardData } from "../shared/timeline";
 import { Markdown } from "@getpaseo/plugin/client/ui";
+import { OpenPrContext } from "./inbox";
 import { openLink } from "./open-link";
 import { askQueue, type QueueFilter } from "./queue";
 import { useSnoozedWorkspaceIds } from "./snoozed";
@@ -466,6 +467,7 @@ function AskDetail({
   foldBody?: boolean;
 }) {
   const act = useRpc(actOnAsk);
+  const openPr = useContext(OpenPrContext);
   const queryClient = useQueryClient();
   const toast = useToast();
   const [note, setNote] = useState("");
@@ -578,6 +580,9 @@ function AskDetail({
         )}
         {openAgent && ask.ownerAgentId !== viewingAgentId && (
           <Button styles={styles} label="Open chat" onPress={() => openAgent(ask.ownerAgentId)} />
+        )}
+        {openPr && ask.pr && (
+          <Button styles={styles} label="Open in Inbox" onPress={() => openPr(ask.pr!.url)} />
         )}
       </View>
     </View>
