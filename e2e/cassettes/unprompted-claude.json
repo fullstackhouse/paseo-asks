@@ -1,0 +1,416 @@
+{
+  "entries": [
+    {
+      "key": "550cc7222fdde8d8",
+      "request": {
+        "model": "claude-haiku-5-5",
+        "system": "You are a Claude agent, built on Anthropic's Claude Agent SDK.\n\nYou are an agent working with the user toward their goal",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "Add an MIT LICENSE file for Acme Ltd, 2026, and commit it. I have not decided yet whether we should use Apache-2.0 instead; recommend one, and I will make the call."
+              }
+            ]
+          }
+        ]
+      },
+      "status": 200,
+      "contentType": "text/event-stream",
+      "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_011CgzvdjjFFMaWERdTV9NNj\",\"type\":\"message\",\"role\":\"assistant\",\"container\":null,\"content\":[],\"model\":\"anthropic/claude-haiku-5.5\",\"stop_reason\":null,\"stop_details\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":2,\"output_tokens\":8,\"output_tokens_details\":null,\"cache_creation_input_tokens\":7914,\"cache_read_input_tokens\":13024,\"cache_creation\":{\"ephemeral_5m_input_tokens\":7914,\"ephemeral_1h_input_tokens\":0},\"inference_geo\":\"global\",\"server_tool_use\":null,\"service_tier\":\"standard\",\"speed\":\"standard\"},\"provider\":\"Claude Platform on AWS\"}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"CAQS9wgKEAgTGAI4AUIIdGhpbmtpbmcSDEAzG8DmWDoRpvv4vBoMeJM6BRgQMeB7q1vbIjBJ2Br5eQAUM550bUjaeypSgrsluBXXzr4ySoKBepOOTgoylc7+Y6/YW1JJfZc9NBkqlAhIP/fEmESaUzpUU7f6TC6SOWVzn3/HpmpgE3pWQs4Bfv/Cx7mMpD/g+lHSc0iFaHwVm6jE0qp8KPFj8rDK0ORqVGxIvYPclLVbh2wkiaEe53K6VOIeaLnbDztlugq8vQTJKK5P86XaCbKM/QY3dEq1g+SyVTdti2h23KQZNGz5vQxzaWyvpbMF8RXXbnaVCT5uGqvnR39yadE3YfWRsmv1HtSbpYeVWgsZHjtx6eZDTTxXakdNeLse5837A9354LEVuMRNDimz8iDEKsRW5iW+riTIvt39h+sr/gtRkaLUcQcVZVBebFgpbo6UE6JdJbOLIp28OwSvBCskGdb5DQa1jMtOV+nnkVlzRUxLk/3KNbqcT/5iNBwLcMyHS1P9v4/fnVbkU55h1AHI5nSKZwxbPmCVrsMh52SEkQdaApO47prIBR8UfXaveyTgyjkItcKK1gISF6moydwi+FoVFFcQA1dACdamV1Q2L3RZ5Bls4GDmOLPP5DsFM17Rfmuzl+IdO93bVJ+shkch4kpZzSH686TskgtQ7dJlYb0LQU4UcArgNQWcovlo1pzYcwHp0Se48FVoYix1l1AhC/dEc45NfsYiOmALJUUUZ49/hIkOM5OQlrrEsjJ05u6eanbA/EyYOv9vUgdJRMVhtKcgdRI5iFGw5nuTeDWHNBlOJcmgREJNPvOBg7afnLpP8wApWslOsOZqpYd3yOflhK23Y8+dANVY6NPWQRuZ7+f+j/hHgezNbErRgAG6TcwDwG1hSIqPeesbfzsNzpoPWVfe/BVmsg+YxD64ju2zNq5+pTBnuzkxk3vu4CzC7/G7e/a9DAQEGdnre3VyJWUFRmBSCn/6oTX2WS9sv6zX9Btkp/EB+HVuICCGJZbJHWZE4Oty6toTRWFXbVvMJpnclCWg9vDNpbGvzcOAGyQxXcD7N71oQzJ/VV35n1wB2Xqb7vrT/ZTgbi/sCBA9mA2iYrvzB/ExQMImeXUmF1dHzrSiTet3u4ufEFjdNz5ETzsz3LqPgzoTXfqQypPNhc/ZJLjW2N42tm5PVqy4cktNaPrOPcFA0p7YvLq0nA1gIC8N6s2CuyQEz58zWCfSCpU6VLy0HGh4AzDA8JcuTciXVhJlIMx/UUSpLAt2JLZvkVJxYQ0UXTOsL8U0Ao4PAY1a21I19kXSuHbIhs8oC7qpJh/iictwXNLGXDneP0jvNotV83s+DtyWYmXm58GA9Wtu1K1kmqwivkYoXOdPTe56JoSLSV5YD7yw/0LBx4MHXvweeyb5uLhV/mYqKk1xFTFEhwgi1ADZuZNWuhKj3TI2J2ud2MRehLIV6R+L4LFCCYqhu6aAHrwz2sQMgyqzDLoA4kAQ5LckGvWI9VNNaS/5gwTvbn1VCsg2OTAYAQ==.eyJlbmRwb2ludF9zbHVnIjoiYW50aHJvcGljL2NsYXVkZS1oYWlrdS01LjUtMjAyNjEwMDd8Y2xhdWRlLW9uLWF3cyJ9\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_01X79fRvMYUskTM94gZQLiDx\",\"caller\":{\"type\":\"direct\"},\"name\":\"Bash\",\"input\":{}}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"command\\\": \\\"cd __E2E_ROOT__/project && git status --short && ls -la && git log --oneline -3; git config user.name; git config user.email\\\", \\\"description\\\": \\\"Check repo state, files, and git identity\\\"}\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"container\":null,\"stop_details\":null,\"stop_reason\":\"tool_use\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":2,\"output_tokens\":351,\"output_tokens_details\":{\"thinking_tokens\":183},\"cache_creation_input_tokens\":7914,\"cache_read_input_tokens\":13024,\"cache_creation\":{\"ephemeral_5m_input_tokens\":7914,\"ephemeral_1h_input_tokens\":0},\"server_tool_use\":null,\"service_tier\":\"standard\",\"speed\":\"standard\",\"cost\":0.00129519,\"is_byok\":false,\"cost_details\":{\"upstream_inference_cost\":0.00129519,\"upstream_inference_prompt_cost\":0.00111969,\"upstream_inference_completions_cost\":0.0001755}},\"context_management\":{\"applied_edits\":[]}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+    },
+    {
+      "key": "87bac3669d85f844",
+      "request": {
+        "model": "claude-haiku-5-5",
+        "system": "You are a Claude agent, built on Anthropic's Claude Agent SDK.\n\nYou are an agent working with the user toward their goal",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "Add an MIT LICENSE file for Acme Ltd, 2026, and commit it. I have not decided yet whether we should use Apache-2.0 instead; recommend one, and I will make the call."
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool_use",
+                "name": "Bash",
+                "input": {
+                  "command": "git status --short && ls -la && git log --oneline -3; git config user.name; git config user.email",
+                  "description": "Check repo state, files, and git identity"
+                }
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "tool_result",
+                "content": "total <n>\nd .\nd ..\nd .git\nfatal: your current branch 'main' does not have any commits yet\ne2e\ne2e@example.com"
+              }
+            ]
+          }
+        ]
+      },
+      "status": 200,
+      "contentType": "text/event-stream",
+      "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_011CgzvduNvGC3bppzSjeNtU\",\"type\":\"message\",\"role\":\"assistant\",\"container\":null,\"content\":[],\"model\":\"anthropic/claude-haiku-5.5\",\"stop_reason\":null,\"stop_details\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":2,\"output_tokens\":8,\"output_tokens_details\":null,\"cache_creation_input_tokens\":459,\"cache_read_input_tokens\":20938,\"cache_creation\":{\"ephemeral_5m_input_tokens\":459,\"ephemeral_1h_input_tokens\":0},\"inference_geo\":\"global\",\"server_tool_use\":null,\"service_tier\":\"standard\",\"speed\":\"standard\"},\"provider\":\"Claude Platform on AWS\"}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"CAQSigYKEAgTGAI4AUIIdGhpbmtpbmcSDBqlPKdTKAxiFIUjKhoMX+FA7GqK0b+19pasIjBHew3MnvOfQ9ceDLGvAWuX1HVc7btmc5z7AKq9oy1gLpKY2DPDAnRQgwhSD06g5RMqpwVmAOJAltBQSLo70fzCOx/QB5RdtobL+YP1TuUtE9/z22vJQFJqbDuo32LwMvSZb8k9VgJqfjbVgNakAdkbI6IZso+hKSpjDT4ujSm2nXDOt6lHIGhouowVsWPzJ0aPZHsBuAmvddZtVUlP3V4e+L068EHhsSSYtnbhkP5f0wJa3bKDVzxyRDF3x3hH0rrVi731eWiCnmXbcGfEKlATLDllWgiLF737Dzn5WPTWSiPWWt9lLBK6HCks7gCKfHVAV+JS4mUaBOawHzKLbPKl4Saon4LVzVtt6lqOrBMyE5hSHLII1YvYkwkcBHdud66gGsKNwmoSlRtBOtFeAaS24TQvxscn6x4cE3Xo3c9G9+bpuJw65HphCEaCuXZleohJDkTQuJCXXL6wxyS5MuGDnb6lYPEnl6gwImE5fcsP6GU1NDk1lbR1ysgRhTiMFD3tcpdon88Ks/bHG4c97s9rVIx2qB2I/8f8iiuCJjzN32Soas1sjqYODQcbcJ0czjXY5cHa5RrbeAH72MwIqaV4NTV8MfAOjNDlY3FzywRXjcJMj31SEwQfJd6J41eyYHOUMuisAfMVUVgi8MNZAZ7xgr1zLAWtsY3OFH9/ya0sCErF6f8mG4OYe9xDwyb5MH0fQqAokr3w/Glp/4uu0DalP1V7mjhgsv0jmPKkzIzHOaLJbm0D3xRyTcXwUQOpczXxJc/ZChXuYnBF/lkYSEYQUD6oQagk/9jF4Xzh8YzmEyrfpQQGGmfHehr2Q4bjYqEJSoTi1G7fB/XbKacV0Cs5s4KbBiz/fVQmoy26PO52i9rVZBvJg/R9JWBV90xKYMEEUjKViBustxVjRt7q7MFWlmjyscv5xEdykr3Eeg2L2W8BPSKp+paK4KlwHp2tUGi9lxmNGwAiWr7IGAE=.eyJlbmRwb2ludF9zbHVnIjoiYW50aHJvcGljL2NsYXVkZS1oYWlrdS01LjUtMjAyNjEwMDd8Y2xhdWRlLW9uLWF3cyJ9\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_01AmEezxDke9A2gtsS2bzrJJ\",\"caller\":{\"type\":\"direct\"},\"name\":\"Write\",\"input\":{}}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"file_path\\\": \\\"__E2E_ROOT__/project/LICENSE\\\", \\\"content\\\": \\\"MIT License\\\\n\\\\nCopyright (c) 2026 Acme Ltd\\\\n\\\\nPermission is hereby granted, free of charge, to any person obtaining a copy\\\\nof this software and associated documentation files (the \\\\\\\"Software\\\\\\\"), to deal\\\\nin the Software without restriction, including without limitation the rights\\\\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\\\\ncopies of the Software, and to permit persons to whom the Software is\\\\nfurnished to do so, subject to the following conditions:\\\\n\\\\nThe above copyright notice and this permission notice shall be included in all\\\\ncopies or substantial portions of the Software.\\\\n\\\\nTHE SOFTWARE IS PROVIDED \\\\\\\"AS IS\\\\\\\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\\\\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\\\\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\\\\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\\\\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\\\\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\\\\nSOFTWARE.\\\\n\\\"}\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":2,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_01VGSQAVwawHnmJ3RYJnyico\",\"caller\":{\"type\":\"direct\"},\"name\":\"Bash\",\"input\":{}}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":2,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"command\\\": \\\"cd __E2E_ROOT__/project && git add LICENSE && git commit -q -m \\\\\\\"Add MIT license for Acme Ltd (2026)\\\\n\\\\nCo-Authored-By: Claude Haiku 5.5 <noreply@anthropic.com>\\\\\\\" && git log --oneline -1 && git show --stat HEAD | tail -3\\\", \\\"description\\\": \\\"Stage LICENSE and create the commit\\\"}\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":2}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"container\":null,\"stop_details\":null,\"stop_reason\":\"tool_use\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":2,\"output_tokens\":894,\"output_tokens_details\":{\"thinking_tokens\":27},\"cache_creation_input_tokens\":459,\"cache_read_input_tokens\":20938,\"cache_creation\":{\"ephemeral_5m_input_tokens\":459,\"ephemeral_1h_input_tokens\":0},\"server_tool_use\":null,\"service_tier\":\"standard\",\"speed\":\"standard\",\"cost\":0.000713955,\"is_byok\":false,\"cost_details\":{\"upstream_inference_cost\":0.000713955,\"upstream_inference_prompt_cost\":0.000266955,\"upstream_inference_completions_cost\":0.000447}},\"context_management\":{\"applied_edits\":[]}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+    },
+    {
+      "key": "2eb6fa50cab94bc5",
+      "request": {
+        "model": "claude-haiku-5-5",
+        "system": "You are a Claude agent, built on Anthropic's Claude Agent SDK.\n\nYou are an agent working with the user toward their goal",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "Add an MIT LICENSE file for Acme Ltd, 2026, and commit it. I have not decided yet whether we should use Apache-2.0 instead; recommend one, and I will make the call."
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool_use",
+                "name": "Bash",
+                "input": {
+                  "command": "git status --short && ls -la && git log --oneline -3; git config user.name; git config user.email",
+                  "description": "Check repo state, files, and git identity"
+                }
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "tool_result",
+                "content": "total <n>\nd .\nd ..\nd .git\nfatal: your current branch 'main' does not have any commits yet\ne2e\ne2e@example.com"
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool_use",
+                "name": "Write",
+                "input": {
+                  "file_path": "<root>/project/LICENSE",
+                  "content": "MIT License\n\nCopyright (c) 2026 Acme Ltd\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE."
+                }
+              },
+              {
+                "type": "tool_use",
+                "name": "Bash",
+                "input": {
+                  "command": "git add LICENSE && git commit -q -m \"Add MIT license for Acme Ltd (2026)\n\nCo-Authored-By: Claude Haiku 5.5 <noreply@anthropic.com>\" && git log --oneline -1 && git show --stat HEAD | tail -3",
+                  "description": "Stage LICENSE and create the commit"
+                }
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "tool_result",
+                "content": "File created successfully at: <root>/project/LICENSE (file state is current in your context — no need to Read it back)"
+              },
+              {
+                "type": "tool_result",
+                "content": "7024727 Add MIT license for Acme Ltd (2026)\n\n LICENSE | 21 +++++++++++++++++++++\n 1 file changed, 21 insertions(+)"
+              }
+            ]
+          }
+        ]
+      },
+      "status": 200,
+      "contentType": "text/event-stream",
+      "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_011Cgzve9ZCx2Q4KqHra2XRP\",\"type\":\"message\",\"role\":\"assistant\",\"container\":null,\"content\":[],\"model\":\"anthropic/claude-haiku-5.5\",\"stop_reason\":null,\"stop_details\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":2,\"output_tokens\":4,\"output_tokens_details\":null,\"cache_creation_input_tokens\":1061,\"cache_read_input_tokens\":21397,\"cache_creation\":{\"ephemeral_5m_input_tokens\":1061,\"ephemeral_1h_input_tokens\":0},\"inference_geo\":\"global\",\"server_tool_use\":null,\"service_tier\":\"standard\",\"speed\":\"standard\"},\"provider\":\"Claude Platform on AWS\"}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"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.eyJlbmRwb2ludF9zbHVnIjoiYW50aHJvcGljL2NsYXVkZS1oYWlrdS01LjUtMjAyNjEwMDd8Y2xhdWRlLW9uLWF3cyJ9\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_01GzxtfQJuQEdwndHPQSwM6m\",\"caller\":{\"type\":\"direct\"},\"name\":\"mcp__asks__ask_create\",\"input\":{}}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"kind\\\": \\\"decision\\\", \\\"title\\\": \\\"Choose the project license: MIT (committed) or Apache-2.0\\\", \\\"body\\\": \\\"MIT LICENSE for Acme Ltd, 2026 is committed on main (commit 7024727). Decide whether to keep it or switch.\\\\n\\\\n- **MIT**: short, widely understood, no explicit patent grant. Already committed.\\\\n- **Apache-2.0**: adds an express patent license from contributors and a patent-retaliation clause. Common for company-backed software and projects that take outside contributions.\\\\n\\\\nRecommendation: Apache-2.0, since Acme Ltd is a company and the patent grant protects Acme and users. Switching is one follow-up commit replacing LICENSE.\\\", \\\"actions\\\": [{\\\"kind\\\":\\\"resolve\\\",\\\"label\\\":\\\"Keep MIT (Recommended? no)\\\",\\\"recommended\\\":false},{\\\"kind\\\":\\\"resolve\\\",\\\"label\\\":\\\"Switch to Apache-2.0 (Recommended)\\\",\\\"recommended\\\":true}]}\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"container\":null,\"stop_details\":null,\"stop_reason\":\"tool_use\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":2,\"output_tokens\":946,\"output_tokens_details\":{\"thinking_tokens\":541},\"cache_creation_input_tokens\":1061,\"cache_read_input_tokens\":21397,\"cache_creation\":{\"ephemeral_5m_input_tokens\":1061,\"ephemeral_1h_input_tokens\":0},\"server_tool_use\":null,\"service_tier\":\"standard\",\"speed\":\"standard\",\"cost\":0.000819795,\"is_byok\":false,\"cost_details\":{\"upstream_inference_cost\":0.000819795,\"upstream_inference_prompt_cost\":0.000346795,\"upstream_inference_completions_cost\":0.000473}},\"context_management\":{\"applied_edits\":[]}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+    },
+    {
+      "key": "5ebbf0824d097698",
+      "request": {
+        "model": "claude-haiku-5-5",
+        "system": "You are a Claude agent, built on Anthropic's Claude Agent SDK.\n\nYou are an agent working with the user toward their goal",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "Add an MIT LICENSE file for Acme Ltd, 2026, and commit it. I have not decided yet whether we should use Apache-2.0 instead; recommend one, and I will make the call."
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool_use",
+                "name": "Bash",
+                "input": {
+                  "command": "git status --short && ls -la && git log --oneline -3; git config user.name; git config user.email",
+                  "description": "Check repo state, files, and git identity"
+                }
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "tool_result",
+                "content": "total <n>\nd .\nd ..\nd .git\nfatal: your current branch 'main' does not have any commits yet\ne2e\ne2e@example.com"
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool_use",
+                "name": "Write",
+                "input": {
+                  "file_path": "<root>/project/LICENSE",
+                  "content": "MIT License\n\nCopyright (c) 2026 Acme Ltd\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE."
+                }
+              },
+              {
+                "type": "tool_use",
+                "name": "Bash",
+                "input": {
+                  "command": "git add LICENSE && git commit -q -m \"Add MIT license for Acme Ltd (2026)\n\nCo-Authored-By: Claude Haiku 5.5 <noreply@anthropic.com>\" && git log --oneline -1 && git show --stat HEAD | tail -3",
+                  "description": "Stage LICENSE and create the commit"
+                }
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "tool_result",
+                "content": "File created successfully at: <root>/project/LICENSE (file state is current in your context — no need to Read it back)"
+              },
+              {
+                "type": "tool_result",
+                "content": "7024727 Add MIT license for Acme Ltd (2026)\n\n LICENSE | 21 +++++++++++++++++++++\n 1 file changed, 21 insertions(+)"
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool_use",
+                "name": "mcp__asks__ask_create",
+                "input": {
+                  "kind": "decision",
+                  "title": "Choose the project license: MIT (committed) or Apache-2.0",
+                  "body": "MIT LICENSE for Acme Ltd, 2026 is committed on main (commit 7024727). Decide whether to keep it or switch.\n\n- **MIT**: short, widely understood, no explicit patent grant. Already committed.\n- **Apache-2.0**: adds an express patent license from contributors and a patent-retaliation clause. Common for company-backed software and projects that take outside contributions.\n\nRecommendation: Apache-2.0, since Acme Ltd is a company and the patent grant protects Acme and users. Switching is one follow-up commit replacing LICENSE.",
+                  "actions": [
+                    {
+                      "kind": "resolve",
+                      "label": "Keep MIT (Recommended? no)",
+                      "recommended": false
+                    },
+                    {
+                      "kind": "resolve",
+                      "label": "Switch to Apache-2.0 (Recommended)",
+                      "recommended": true
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "tool_result",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "A1 [open] decision: Choose the project license: MIT (committed) or Apache-2.0\nactions: a1 resolve \"Keep MIT (Recommended? no)\", a2 resolve \"Switch to Apache-2.0 (Recommended)\""
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "status": 200,
+      "contentType": "text/event-stream",
+      "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_011CgzveXhEGATQsajBmHdnP\",\"type\":\"message\",\"role\":\"assistant\",\"container\":null,\"content\":[],\"model\":\"anthropic/claude-haiku-5.5\",\"stop_reason\":null,\"stop_details\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":2,\"output_tokens\":8,\"output_tokens_details\":null,\"cache_creation_input_tokens\":1063,\"cache_read_input_tokens\":22458,\"cache_creation\":{\"ephemeral_5m_input_tokens\":1063,\"ephemeral_1h_input_tokens\":0},\"inference_geo\":\"global\",\"server_tool_use\":null,\"service_tier\":\"standard\",\"speed\":\"standard\"},\"provider\":\"Claude Platform on AWS\"}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"CAQS4wYKEAgTGAI4AUIIdGhpbmtpbmcSDOssn+6yiOZXU8ndGRoMODAVdHIQss/3q5VhIjCfi/VESNL+qM0jMttjgppOo9zyWT9+k9cGboWZS+V95fc/dzSgtK6ZDCIYXwgKXa4qgAao4z2CYPzBTQGc0PlPmuOjzfAbW9+TVMyaJboAan2s/tEp2tCXgYy5W2TuQoQVfg/c3g1moUeoap2hMwg1IRGCNjrNSa5NU2Qxwy35tfXG2lmQj72mKhIk15Dn/v9bGbQ1JC36Tgs2SWXcZWvDh0p4nl1f2g9xFix3igQ3iKMb0PUw8H/lkHbv8tpxw7gzmUMiQPODRrDEKpkWCgObtUfDiJ5SZIN4Rln/VGhJ6qFfBPKP+KYmZAWXJvqU3TGPI5hHcN/hfnmdIBHNphQdHnLwfAKqQ0Ta3qCJweyjNUgWXJxOKKaCrcW5Gj/i5rzza6nrwFpkSdiMrRJuJLn9R40NoCVyQ6cX0pmNyS+W8EEMIWca6Oc9pPpqf6m4pM02M9zsQMHPsau1vgqlDlmT1ZQtCJWOITdbqSm4BjT6RoheRyJHWV0gEh7L7UDxf0996b41eN85Sg6JcEAqS0NWf3lA4kqJYwQEIDXfwzJPXDbNDsxuEFiXjJ7GrNLHEYHHYphB35hRcyoPFcZhpu3ZghUUiOxqvgL+cetpO1yh9h7969yEHk8SD3bqUXecnjupbfN4wKP6cMtUW3WoFQ55/N5/X2z/hhpTCz8gTQV+/YeQQ19U0x6yzWOZ6VlX+5gW5Na1ASpV1u6tznxUkb6V9cZqGVqnhjtRroutxB4UN+Hd2PXNY4bDQaD9kd9dh7o8SPGbHVS2FsYDYY9rO8wBsvw+FILih08MEaIGKqAMfWmYTQ4xU42LX2VHlcRdppiwu3iRSOo376KyizsVdkFSNvLzwkCr+sqyXM+I2ZrzpDk8fDmI4BgVL2HNsZferMb/MLJLliCcvkgIuT8mRlTOdZ/52PiyKN9bsVtGIeDhJrN/p58dzX18GSwErjGvMn+5WrGU3CUm8u6yklJ1EmJhSVS8C7d8uPQwK8dNBWJL5+i0+T9mdR3M/1J+XvTM3tALOs1pFFgm9Gq6LraG4gYDv6d+jRZUaseQFUrflx87/v43vWWNUMNdqUTigKblPSX1WjQYAQ==.eyJlbmRwb2ludF9zbHVnIjoiYW50aHJvcGljL2NsYXVkZS1oYWlrdS01LjUtMjAyNjEwMDd8Y2xhdWRlLW9uLWF3cyJ9\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_01K6wLW8y6pw8rSzM27TABe2\",\"caller\":{\"type\":\"direct\"},\"name\":\"mcp__asks__ask_update\",\"input\":{}}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"id\\\": \\\"A1\\\", \\\"actions\\\": [{\\\"kind\\\": \\\"resolve\\\", \\\"label\\\": \\\"Keep MIT\\\", \\\"recommended\\\": false}, {\\\"kind\\\": \\\"resolve\\\", \\\"label\\\": \\\"Switch to Apache-2.0\\\", \\\"recommended\\\": true}]}\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"container\":null,\"stop_details\":null,\"stop_reason\":\"tool_use\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":2,\"output_tokens\":199,\"output_tokens_details\":{\"thinking_tokens\":57},\"cache_creation_input_tokens\":1063,\"cache_read_input_tokens\":22458,\"cache_creation\":{\"ephemeral_5m_input_tokens\":1063,\"ephemeral_1h_input_tokens\":0},\"server_tool_use\":null,\"service_tier\":\"standard\",\"speed\":\"standard\",\"cost\":0.000457155,\"is_byok\":false,\"cost_details\":{\"upstream_inference_cost\":0.000457155,\"upstream_inference_prompt_cost\":0.000357655,\"upstream_inference_completions_cost\":0.0000995}},\"context_management\":{\"applied_edits\":[]}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+    },
+    {
+      "key": "1eb7f88a74f4776b",
+      "request": {
+        "model": "claude-haiku-5-5",
+        "system": "You are a Claude agent, built on Anthropic's Claude Agent SDK.\n\nYou are an agent working with the user toward their goal",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "Add an MIT LICENSE file for Acme Ltd, 2026, and commit it. I have not decided yet whether we should use Apache-2.0 instead; recommend one, and I will make the call."
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool_use",
+                "name": "Bash",
+                "input": {
+                  "command": "git status --short && ls -la && git log --oneline -3; git config user.name; git config user.email",
+                  "description": "Check repo state, files, and git identity"
+                }
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "tool_result",
+                "content": "total <n>\nd .\nd ..\nd .git\nfatal: your current branch 'main' does not have any commits yet\ne2e\ne2e@example.com"
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool_use",
+                "name": "Write",
+                "input": {
+                  "file_path": "<root>/project/LICENSE",
+                  "content": "MIT License\n\nCopyright (c) 2026 Acme Ltd\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE."
+                }
+              },
+              {
+                "type": "tool_use",
+                "name": "Bash",
+                "input": {
+                  "command": "git add LICENSE && git commit -q -m \"Add MIT license for Acme Ltd (2026)\n\nCo-Authored-By: Claude Haiku 5.5 <noreply@anthropic.com>\" && git log --oneline -1 && git show --stat HEAD | tail -3",
+                  "description": "Stage LICENSE and create the commit"
+                }
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "tool_result",
+                "content": "File created successfully at: <root>/project/LICENSE (file state is current in your context — no need to Read it back)"
+              },
+              {
+                "type": "tool_result",
+                "content": "7024727 Add MIT license for Acme Ltd (2026)\n\n LICENSE | 21 +++++++++++++++++++++\n 1 file changed, 21 insertions(+)"
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool_use",
+                "name": "mcp__asks__ask_create",
+                "input": {
+                  "kind": "decision",
+                  "title": "Choose the project license: MIT (committed) or Apache-2.0",
+                  "body": "MIT LICENSE for Acme Ltd, 2026 is committed on main (commit 7024727). Decide whether to keep it or switch.\n\n- **MIT**: short, widely understood, no explicit patent grant. Already committed.\n- **Apache-2.0**: adds an express patent license from contributors and a patent-retaliation clause. Common for company-backed software and projects that take outside contributions.\n\nRecommendation: Apache-2.0, since Acme Ltd is a company and the patent grant protects Acme and users. Switching is one follow-up commit replacing LICENSE.",
+                  "actions": [
+                    {
+                      "kind": "resolve",
+                      "label": "Keep MIT (Recommended? no)",
+                      "recommended": false
+                    },
+                    {
+                      "kind": "resolve",
+                      "label": "Switch to Apache-2.0 (Recommended)",
+                      "recommended": true
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "tool_result",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "A1 [open] decision: Choose the project license: MIT (committed) or Apache-2.0\nactions: a1 resolve \"Keep MIT (Recommended? no)\", a2 resolve \"Switch to Apache-2.0 (Recommended)\""
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool_use",
+                "name": "mcp__asks__ask_update",
+                "input": {
+                  "actions": [
+                    {
+                      "kind": "resolve",
+                      "label": "Keep MIT",
+                      "recommended": false
+                    },
+                    {
+                      "kind": "resolve",
+                      "label": "Switch to Apache-2.0",
+                      "recommended": true
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "tool_result",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "A1 [open] decision: Choose the project license: MIT (committed) or Apache-2.0\nactions: a1 resolve \"Keep MIT\", a2 resolve \"Switch to Apache-2.0\""
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "status": 200,
+      "contentType": "text/event-stream",
+      "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_011CgzvedWE7gBgETShoZhRy\",\"type\":\"message\",\"role\":\"assistant\",\"container\":null,\"content\":[],\"model\":\"anthropic/claude-haiku-5.5\",\"stop_reason\":null,\"stop_details\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":2,\"output_tokens\":3,\"output_tokens_details\":null,\"cache_creation_input_tokens\":296,\"cache_read_input_tokens\":23521,\"cache_creation\":{\"ephemeral_5m_input_tokens\":296,\"ephemeral_1h_input_tokens\":0},\"inference_geo\":\"global\",\"server_tool_use\":null,\"service_tier\":\"standard\",\"speed\":\"standard\"},\"provider\":\"Claude Platform on AWS\"}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\",\"citations\":[]}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"I added `LICENSE` with the MIT text, copyright \\\"Copyright (c) 2026 Acme Ltd\\\", and committed it to `main` as `7024727`. The repo had no commits before this, so this is the first one.\\n\\n**Recommendation: Apache-2.0.** Acme Ltd is a company, and Apache-2.0 adds an express patent grant from contributors plus a patent-retaliation clause. That protects Acme and the users. MIT is shorter and more widely recognised, but it has no patent language. Switching later is a single follow-up commit that replaces `LICENSE`.\\n\\nThe decision is recorded as ask **A1** (\\\"Keep MIT\\\" or \\\"Switch to Apache-2.0\\\"). I have not changed the license yet.\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"container\":null,\"stop_details\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":2,\"output_tokens\":242,\"output_tokens_details\":{\"thinking_tokens\":0},\"cache_creation_input_tokens\":296,\"cache_read_input_tokens\":23521,\"cache_creation\":{\"ephemeral_5m_input_tokens\":296,\"ephemeral_1h_input_tokens\":0},\"server_tool_use\":null,\"service_tier\":\"standard\",\"speed\":\"standard\",\"cost\":0.00039341,\"is_byok\":false,\"cost_details\":{\"upstream_inference_cost\":0.00039341,\"upstream_inference_prompt_cost\":0.00027241,\"upstream_inference_completions_cost\":0.000121}},\"context_management\":{\"applied_edits\":[]}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+    }
+  ]
+}

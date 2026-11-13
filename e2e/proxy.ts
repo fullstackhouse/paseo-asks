@@ -5,9 +5,10 @@ import type { AddressInfo } from "node:net";
 import { dirname } from "node:path";
 
 /**
- * Stands in for api.anthropic.com. `record` forwards every request (to OpenRouter,
- * adding the credentials itself) and keeps the response; `replay` answers from the cassette and
- * never touches the network. Either way the sandbox only ever holds a dummy key.
+ * Stands in for api.anthropic.com (Claude Code: `/v1/messages`) and api.openai.com (Codex:
+ * `/v1/responses`). `record` forwards every request (to OpenRouter, adding the credentials itself)
+ * and keeps the response; `replay` answers from the cassette and never touches the network.
+ * Either way the sandbox only ever holds a dummy key.
  *
  * Requests are matched by a key over what the model saw, with the parts that change between
  * machines and runs taken out (paths, ids, dates, the environment block in the system prompt).
@@ -25,18 +26,25 @@ export type Proxy = {
   close(): Promise<void>;
 };
 
+/** The wire format of a request: Anthropic Messages (Claude Code) or OpenAI Responses (Codex). */
+export type Api = "messages" | "responses";
+
 /** Where record mode sends requests, and how it authenticates. */
-export type Upstream = { url: string; headers: Record<string, string>; model?: (model: string) => string };
+export type Upstream = { url: string; headers: Record<string, string>; model?: (model: string, api: Api) => string };
 
 export function upstreamFromEnv(env: NodeJS.ProcessEnv): Upstream {
   if (!env.OPENROUTER_API_KEY) throw new Error("Recording needs OPENROUTER_API_KEY, in the environment or e2e/.env");
   return {
     url: "https://openrouter.ai/api",
     headers: { authorization: `Bearer ${env.OPENROUTER_API_KEY}` },
-    // Claude Code asks for Anthropic ids (claude-haiku-5-5); OpenRouter routes by its own names.
-    model: (model) => `~anthropic/claude-${model.match(/haiku|sonnet|opus/)?.[0] ?? "haiku"}-latest`,
+    // Claude Code asks for Anthropic ids (claude-haiku-5-5), Codex for OpenAI ones (gpt-6-luna);
+    // OpenRouter routes by its own names.
+    model: (model, api) =>
+      api === "responses" ? `openai/${model}` : `~anthropic/claude-${model.match(/haiku|sonnet|opus/)?.[0] ?? "haiku"}-latest`,
   };
 }
+
+const ROUTES: Record<string, Api> = { "/v1/messages": "messages", "/v1/responses": "responses" };
 
 // Request headers the proxy replaces: the sandbox's dummy key must not reach the upstream.
 const AUTH_HEADERS = new Set(["authorization", "x-api-key"]);
@@ -59,12 +67,13 @@ export async function startProxy(options: { mode: Mode; cassette: string; root: 
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(chunk as Buffer);
     const raw = Buffer.concat(chunks);
-    if (!req.url?.startsWith("/v1/messages")) {
+    const api = req.method === "POST" ? ROUTES[(req.url ?? "").split("?")[0]!] : undefined;
+    if (!api) {
       res.writeHead(404, { "content-type": "application/json" });
-      return res.end(JSON.stringify({ type: "error", error: { type: "not_found_error", message: `e2e proxy: ${req.url}` } }));
+      return res.end(JSON.stringify({ type: "error", error: { type: "not_found_error", message: `e2e proxy: ${req.method} ${req.url}` } }));
     }
     const parsed = JSON.parse(raw.toString("utf8"));
-    const request = canonical(parsed, options.root);
+    const request = api === "responses" ? canonicalResponses(parsed, options.root) : canonical(parsed, options.root);
     const key = createHash("sha256").update(JSON.stringify(request)).digest("hex").slice(0, 16);
 
     if (mode === "replay") {
@@ -74,7 +83,7 @@ export async function startProxy(options: { mode: Mode; cassette: string; root: 
       served.set(key, (served.get(key) ?? 0) + 1);
       if (!take) {
         misses.push({ key, request });
-        // 400, not 5xx: Claude Code retries server errors with backoff, which would only slow the failure.
+        // 400, not 5xx: Claude Code and Codex retry server errors with backoff, which would only slow the failure.
         res.writeHead(400, { "content-type": "application/json" });
         return res.end(JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: `e2e cassette miss ${key}; re-record with npm run e2e:record` } }));
       }
@@ -92,7 +101,7 @@ export async function startProxy(options: { mode: Mode; cassette: string; root: 
       ) as Record<string, string>),
       ...target.headers,
     };
-    const body = target.model ? JSON.stringify({ ...parsed, model: target.model(parsed.model) }) : raw;
+    const body = target.model ? JSON.stringify({ ...parsed, model: target.model(parsed.model, api) }) : raw;
     const upstream = await fetch(target.url + req.url, { method: req.method, headers, body });
     const answer = await upstream.text();
     const contentType = upstream.headers.get("content-type") ?? "application/json";
@@ -103,7 +112,7 @@ export async function startProxy(options: { mode: Mode; cassette: string; root: 
     res.writeHead(upstream.status, out);
     res.end(answer);
     answered.push(request);
-    const stored = contentType.includes("event-stream") ? coalesce(answer) : answer;
+    const stored = !contentType.includes("event-stream") ? answer : api === "responses" ? coalesceResponses(answer) : coalesce(answer);
     kept.push({ key, request, status: upstream.status, contentType, body: stored.split(options.root).join(ROOT) });
   };
 
@@ -165,6 +174,35 @@ export function coalesce(sse: string): string {
 }
 
 /**
+ * The Responses API counterpart of `coalesce`: runs of `*.delta` events are merged per item and part
+ * into one event, flushed before the next non-delta event (which is usually that part's `*.done`).
+ */
+export function coalesceResponses(sse: string): string {
+  const events = sse.split(/\n\n+/).filter((event) => event.trim());
+  const out: string[] = [];
+  const pending = new Map<string, any>();
+  const flush = () => {
+    for (const merged of pending.values()) out.push(`event: ${merged.type}\ndata: ${JSON.stringify(merged)}`);
+    pending.clear();
+  };
+  for (const event of events) {
+    const data = /^data: (.*)$/m.exec(event)?.[1];
+    const parsed = data?.startsWith("{") ? JSON.parse(data) : null;
+    if (typeof parsed?.type === "string" && parsed.type.endsWith(".delta") && typeof parsed.delta === "string") {
+      const key = [parsed.type, parsed.item_id, parsed.output_index, parsed.content_index, parsed.summary_index].join("|");
+      const merged = pending.get(key);
+      if (merged) merged.delta += parsed.delta;
+      else pending.set(key, { ...parsed });
+      continue;
+    }
+    flush();
+    out.push(event);
+  }
+  flush();
+  return out.join("\n\n") + "\n\n";
+}
+
+/**
  * What identifies a request: the model, which system prompt (by its opening, since the rest
  * describes the machine), and the conversation. Tool definitions, metadata, the per-session
  * billing line, and `system`-role context messages (environment, token counters) are left out.
@@ -217,12 +255,37 @@ function scrubValue(value: unknown, root: string): unknown {
 }
 
 function scrubText(text: string, root: string): string {
-  let out = text.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "");
+  // Context blocks the agent adds about the machine: Claude Code's reminders, Codex's shell, timezone and date.
+  let out = text.replace(/<(system-reminder|environment_context)>[\s\S]*?<\/\1>/g, "");
   out = out.split(root).join("<root>");
   return out
     .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, "<uuid>")
     .replace(/\bwks_[0-9a-f]+/g, "<workspace>")
+    // `ls -l` lines: keep the type and name; owner, size and mtime differ between machines and runs.
+    .replace(/^([-dl])[rwxsStT-]{9}[@+.]?\s+\d+\s+\S+\s+\S+\s+\d+\s+\w{3}\s+\d{1,2}\s+[\d:]{4,5}\s+(.*)$/gm, "$1 $2")
+    .replace(/^total \d+$/gm, "total <n>")
+    // Codex's exec tool output: a random chunk id and the time the command took.
+    .replace(/"chunk_id":"[0-9a-f]+"/g, '"chunk_id":"<id>"')
+    .replace(/"wall_time_seconds":[\d.e-]+/g, '"wall_time_seconds":<n>')
+    .replace(/Wall time [\d.]+ seconds/g, "Wall time <n> seconds")
     .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z/g, "<time>")
     .replace(/\d{4}-\d{2}-\d{2}/g, "<date>")
     .trim();
+}
+
+/**
+ * `canonical` for a Responses API request (Codex): `instructions` stand in for the system prompt, and
+ * `input` items for the messages. Reasoning items (encrypted, different every run) are left out.
+ */
+export function canonicalResponses(body: any, root: string): Canonical {
+  const messages: Canonical["messages"] = [];
+  for (const { type, role, status, call_id, encrypted_content, ...item } of body.input ?? []) {
+    if (type === "reasoning") continue;
+    const content = Array.isArray(item.content)
+      ? item.content.map((part: any) => scrubValue(part, root)).filter((part: any) => part.text !== "")
+      : scrubValue(item.content ?? item, root);
+    if (Array.isArray(content) && content.length === 0) continue;
+    messages.push({ role: role ?? type, content });
+  }
+  return { model: body.model, system: scrubText(body.instructions ?? "", root).slice(0, 120), messages };
 }

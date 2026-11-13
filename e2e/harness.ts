@@ -19,11 +19,20 @@ if (existsSync(join(E2E, ".env"))) process.loadEnvFile(join(E2E, ".env"));
 
 export const MODE: Mode = process.env.E2E_MODE === "record" ? "record" : "replay";
 
+/** The agents a scenario can run, each answered by the proxy: Claude Code (Haiku) and Codex. */
+export type Provider = "claude" | "codex";
+
+const AGENTS: Record<Provider, { provider: string; model: string; mode: string }> = {
+  claude: { provider: "claude", model: "haiku", mode: "bypassPermissions" },
+  // gpt-6-luna: the cheapest model of the gpt-6 family, whose tool search defers MCP tools like the larger ones.
+  codex: { provider: "codex", model: "gpt-6-luna", mode: "full-access" },
+};
+
 export type Ask = { id: string; title: string; kind: string; status: string; ownerAgentId?: string; actions: { id: string; label: string; kind: string }[] };
 
 /**
  * A throwaway Paseo daemon with this plugin installed, in its own home, talking to the
- * record/replay proxy instead of Anthropic. Nothing touches the developer's ~/.paseo or ~/.claude.
+ * record/replay proxy instead of Anthropic and OpenAI. Nothing touches the developer's ~/.paseo or ~/.claude.
  */
 export class Sandbox {
   private constructor(
@@ -40,10 +49,14 @@ export class Sandbox {
     const paseoHome = join(root, "paseo");
     const project = join(root, "project");
     for (const dir of [home, paseoHome, project]) mkdirSync(dir, { recursive: true });
-    await exec("git", ["init", "-q"], { cwd: project });
+    // Agents commit, and git's output lands in what the model sees: give the sandbox's git a fixed identity and
+    // branch, and keep the machine's global and system config (e.g. init.defaultBranch) out of it.
+    writeFileSync(join(home, ".gitconfig"), "[user]\n\tname = e2e\n\temail = e2e@example.com\n");
+    await exec("git", ["init", "-q", "-b", "main"], { cwd: project, env: { ...process.env, HOME: home, GIT_CONFIG_NOSYSTEM: "1" } });
 
     const upstream = MODE === "record" ? upstreamFromEnv(process.env) : undefined;
     const proxy = await startProxy({ mode: MODE, cassette: join(E2E, "cassettes", `${name}.json`), root, upstream });
+    writeCodexConfig(home, proxy.url);
     const port = await freePort();
     writeFileSync(
       join(paseoHome, "config.json"),
@@ -80,11 +93,12 @@ export class Sandbox {
     return stdout;
   }
 
-  /** Starts a Haiku agent in the sandbox project and waits for its first turn to end. */
-  async run(prompt: string): Promise<string> {
+  /** Starts an agent (Haiku unless told otherwise) in the sandbox project and waits for its first turn to end. */
+  async run(prompt: string, provider: Provider = "claude"): Promise<string> {
+    const agent = AGENTS[provider];
     const out = await this.paseo(
-      "run", "--cwd", this.project, "--provider", "claude", "--model", "haiku",
-      "--mode", "bypassPermissions", "--wait-timeout", "3m", "--json", prompt,
+      "run", "--cwd", this.project, "--provider", agent.provider, "--model", agent.model,
+      "--mode", agent.mode, "--wait-timeout", "3m", "--json", prompt,
     );
     return JSON.parse(out.slice(out.indexOf("{"))).agentId;
   }
@@ -166,6 +180,27 @@ export class Sandbox {
   }
 }
 
+/** Points Codex at the proxy: a custom provider on the Responses API over plain HTTP, no websockets. */
+function writeCodexConfig(home: string, proxy: string): void {
+  mkdirSync(join(home, ".codex"), { recursive: true });
+  writeFileSync(
+    join(home, ".codex", "config.toml"),
+    [
+      'model_provider = "e2e"',
+      "check_for_update_on_startup = false",
+      "[analytics]",
+      "enabled = false",
+      "[model_providers.e2e]",
+      'name = "e2e proxy"',
+      `base_url = "${proxy}/v1"`,
+      'wire_api = "responses"',
+      'env_key = "OPENAI_API_KEY"',
+      "supports_websockets = false",
+      "",
+    ].join("\n"),
+  );
+}
+
 function daemonEnv({ home, proxy }: { home: string; proxy: string }): NodeJS.ProcessEnv {
   // Start from a clean slate so the developer's Claude and Paseo settings cannot leak in.
   const env: NodeJS.ProcessEnv = {};
@@ -176,6 +211,11 @@ function daemonEnv({ home, proxy }: { home: string; proxy: string }): NodeJS.Pro
     ANTHROPIC_BASE_URL: proxy,
     // The proxy holds the real credentials; agents get the same dummy key in record and replay.
     ANTHROPIC_API_KEY: "e2e-dummy",
+    OPENAI_API_KEY: "e2e-dummy",
+    // Commits an agent makes get the same hash every run, so tool output (git log) matches the cassette.
+    GIT_AUTHOR_DATE: "2026-01-01T00:00:00Z",
+    GIT_COMMITTER_DATE: "2026-01-01T00:00:00Z",
+    GIT_CONFIG_NOSYSTEM: "1",
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
     DISABLE_AUTOUPDATER: "1",
     PASEO_DICTATION_ENABLED: "false",
