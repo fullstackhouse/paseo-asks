@@ -11,6 +11,7 @@
   },
   "devDependencies": {
     "@anthropic-ai/claude-code": "2.1.304",
+    "@openai/codex": "0.166.0",
     "@types/node": "^24.19.2",
     "typescript": "^5.9.3",
     "vitest": "^5.0.5"
