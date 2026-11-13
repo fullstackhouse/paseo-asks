@@ -49,9 +49,10 @@ export class Sandbox {
     const paseoHome = join(root, "paseo");
     const project = join(root, "project");
     for (const dir of [home, paseoHome, project]) mkdirSync(dir, { recursive: true });
-    await exec("git", ["init", "-q"], { cwd: project });
-    // Agents commit; give the sandbox's git an identity so it does not depend on the machine.
+    // Agents commit, and git's output lands in what the model sees: give the sandbox's git a fixed identity and
+    // branch, and keep the machine's global and system config (e.g. init.defaultBranch) out of it.
     writeFileSync(join(home, ".gitconfig"), "[user]\n\tname = e2e\n\temail = e2e@example.com\n");
+    await exec("git", ["init", "-q", "-b", "main"], { cwd: project, env: { ...process.env, HOME: home, GIT_CONFIG_NOSYSTEM: "1" } });
 
     const upstream = MODE === "record" ? upstreamFromEnv(process.env) : undefined;
     const proxy = await startProxy({ mode: MODE, cassette: join(E2E, "cassettes", `${name}.json`), root, upstream });
@@ -214,6 +215,7 @@ function daemonEnv({ home, proxy }: { home: string; proxy: string }): NodeJS.Pro
     // Commits an agent makes get the same hash every run, so tool output (git log) matches the cassette.
     GIT_AUTHOR_DATE: "2026-01-01T00:00:00Z",
     GIT_COMMITTER_DATE: "2026-01-01T00:00:00Z",
+    GIT_CONFIG_NOSYSTEM: "1",
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
     DISABLE_AUTOUPDATER: "1",
     PASEO_DICTATION_ENABLED: "false",
