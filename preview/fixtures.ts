@@ -117,7 +117,11 @@ export const asks: Ask[] = [
     kind: "pr",
     status: "in_progress",
     title: "PR #30 drop the legacy coupon code: merging",
-    links: [{ label: "PR #30", url: "https://github.com/acme/shop-api/pull/30" }],
+    links: [
+      { label: "PR #30", url: "https://github.com/acme/shop-api/pull/30" },
+      { label: "PR #31 (follow-up)", url: "https://github.com/acme/shop-api/pull/31" },
+      { label: "Coupon usage dashboard", url: "https://grafana.example.com/d/coupons" },
+    ],
     pr: {
       number: 30,
       url: "https://github.com/acme/shop-api/pull/30",

@@ -136,9 +136,11 @@ export const refreshAsks = defineRpc({
 
 const PR_URL = /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+/;
 
+/** A GitHub PR's URL without trailing parts (`/files`, `#discussion…`), or undefined for any other link. */
+export function prLinkOf(url: string): string | undefined {
+  return url.match(PR_URL)?.[0];
+}
+
 export function prUrlOf(ask: Pick<Ask, "links">): string | undefined {
-  return ask.links
-    .map((link) => link.url)
-    .find((url) => PR_URL.test(url))
-    ?.match(PR_URL)?.[0];
+  return ask.links.map((link) => prLinkOf(link.url)).find(Boolean);
 }

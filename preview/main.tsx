@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
 import { Text, View } from "react-native";
 import { AskCard, AsksView } from "../client/AsksView";
+import { OpenPrContext } from "../client/inbox";
 
 const theme = {
   colors: {
@@ -56,6 +57,8 @@ function Frame(props: {
 
 createRoot(document.getElementById("root")!).render(
   <QueryClientProvider client={new QueryClient()}>
+    {/* PR links open the Inbox, as on an FSH host with paseo-inbox installed. */}
+    <OpenPrContext.Provider value={(pr) => console.log("open in Inbox", pr)}>
     <Frame id="main" title="Asks" width={1120} height={760}>
       <AsksView theme={theme} compact={false} openAgent={() => {}} />
     </Frame>
@@ -77,5 +80,6 @@ createRoot(document.getElementById("root")!).render(
         <AskCard theme={theme} compact={false} agentId="main" askId="A3" verb="create" />
       </View>
     </Frame>
+    </OpenPrContext.Provider>
   </QueryClientProvider>,
 );

@@ -12,6 +12,7 @@ import { SidebarRow } from "@getpaseo/plugin/client/ui";
 import { useEffect } from "react";
 import { Text } from "react-native";
 import { AsksMessage } from "./client/AsksMessage";
+import { inboxReview, OpenPrContext } from "./client/inbox";
 import { AgentAsks, AskCard, AsksView, POLL_MS, useAsks } from "./client/AsksView";
 import { SettingsScreen } from "./client/SettingsScreen";
 import { observeSnoozedWorkspaces, useSnoozedWorkspaceIds } from "./client/snoozed";
@@ -20,14 +21,17 @@ import { createWorkspaceSummaries } from "./client/summary";
 import { ASKS_MESSAGE, AsksMessageSchema, parseAsksMessage, type AsksMessage as AsksMessageData } from "./shared/messages";
 import { ASK_CARD, AskCardSchema, askCardFor, type AskCard as AskCardData } from "./shared/timeline";
 
-function WorkspacePanel({ theme, layout, workspaceId, navigation }: PluginWorkspacePanelProps) {
+function WorkspacePanel(props: PluginWorkspacePanelProps) {
+  const { theme, layout, workspaceId, navigation } = props;
   return (
-    <AsksView
-      theme={theme}
-      compact={layout.compact}
-      workspaceId={workspaceId}
-      openAgent={navigation ? (agentId) => navigation.openAgent({ agentId }) : undefined}
-    />
+    <OpenPrContext.Provider value={inboxReview(props)}>
+      <AsksView
+        theme={theme}
+        compact={layout.compact}
+        workspaceId={workspaceId}
+        openAgent={navigation ? (agentId) => navigation.openAgent({ agentId }) : undefined}
+      />
+    </OpenPrContext.Provider>
   );
 }
 
@@ -45,17 +49,20 @@ function agentOpener(props: object): ((agentId: string) => void) | undefined {
   return navigation ? (agentId) => navigation.openAgent({ agentId }) : openAgentViaScreen;
 }
 
-function GlobalScreen({ theme, layout, navigation, params }: PluginScreenProps) {
+function GlobalScreen(props: PluginScreenProps) {
+  const { theme, layout, navigation, params } = props;
   const open = params.open;
   useEffect(() => {
     if (open && navigation) navigation.openAgent({ agentId: open });
   }, [open, navigation]);
   return (
-    <AsksView
-      theme={theme}
-      compact={layout.compact}
-      openAgent={navigation ? (agentId) => navigation.openAgent({ agentId }) : undefined}
-    />
+    <OpenPrContext.Provider value={inboxReview(props)}>
+      <AsksView
+        theme={theme}
+        compact={layout.compact}
+        openAgent={navigation ? (agentId) => navigation.openAgent({ agentId }) : undefined}
+      />
+    </OpenPrContext.Provider>
   );
 }
 
@@ -80,7 +87,11 @@ function SidebarItem({ theme, currentScreen, openScreen }: PluginSidebarItemProp
 
 function TimelineCard(props: PluginTimelineItemProps<AskCardData>) {
   const { theme, layout, agentId, item } = props;
-  return <AskCard theme={theme} compact={layout.compact} agentId={agentId} openAgent={agentOpener(props)} {...item.data} />;
+  return (
+    <OpenPrContext.Provider value={inboxReview(props)}>
+      <AskCard theme={theme} compact={layout.compact} agentId={agentId} openAgent={agentOpener(props)} {...item.data} />
+    </OpenPrContext.Provider>
+  );
 }
 
 function TimelineMessage({ theme, item }: PluginTimelineItemProps<AsksMessageData>) {
@@ -97,8 +108,17 @@ function PillPopover(props: PluginButtonContentProps) {
         open(agentId);
       }
     : undefined;
+  const openInbox = inboxReview(props);
+  const openPr = openInbox
+    ? (prUrl: string) => {
+        close();
+        openInbox(prUrl);
+      }
+    : undefined;
   return (
-    <AgentAsks theme={theme} compact={layout.compact} workspaceId={workspaceId} agentId={context.agentId} openAgent={openAgent} />
+    <OpenPrContext.Provider value={openPr}>
+      <AgentAsks theme={theme} compact={layout.compact} workspaceId={workspaceId} agentId={context.agentId} openAgent={openAgent} />
+    </OpenPrContext.Provider>
   );
 }
 
