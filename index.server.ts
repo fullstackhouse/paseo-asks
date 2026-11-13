@@ -83,6 +83,8 @@ export default function contribute(server: PluginServerContext) {
     store,
     outbox,
     (agentId) => agents.workspaceOf(agentId),
+    // Until a hook or RPC hands over a daemon session (e.g. right after a reload), every workspace counts as visible.
+    // Intended: going through requirePaseo would fail every asks call in that window, visible agents' too.
     (workspaceId) => (paseo ? isBackground(paseo, workspaceId) : Promise.resolve(false)),
   );
   const lastOutputs = new LastOutputs(dir);
