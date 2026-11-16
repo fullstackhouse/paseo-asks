@@ -4,6 +4,8 @@ Asks lifts what your agents need from you out of their chats and into one list. 
 
 Every agent created after the plugin is installed gets an `asks` MCP server with four tools: `ask_create`, `ask_update`, `ask_resolve` and `ask_list`. The server's instructions tell the agent when to use them. If an agent ends a turn waiting on the human without recording an ask, it gets one reminder. Pressing a button sends the agent a message that starts with `[asks]`. If the agent is in the middle of a turn, the message waits until the turn ends, so it never interrupts. Messages are written to disk before they are sent, so a plugin restart does not lose them.
 
+A scheduled run whose agent leaves asks waiting on you is marked **Needs you** on Paseo's Schedules screen, and you get a notification. Paseo keeps that run's workspace instead of archiving it, so the asks and their buttons stay live. Needs a Paseo host with fullstackhouse/paseo#106.
+
 ## Where you see asks
 
 - **Asks** panel in each workspace.
