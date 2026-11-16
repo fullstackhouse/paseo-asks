@@ -13,6 +13,7 @@ import { dataDir } from "./server/paths";
 import { isAsksPermission } from "./server/permissions";
 import { AsksService, instructions, TOOLS } from "./server/service";
 import { AskStore } from "./server/store";
+import { attentionForOpenAsks } from "./server/schedule-attention";
 import { PrWatcher } from "./server/watcher";
 import { activeWorkspaces, isBackground } from "./server/workspaces";
 import { displaySettings, reviewSettings } from "./shared/settings";
@@ -155,6 +156,27 @@ export default function contribute(server: PluginServerContext) {
       .ref(agent.id)
       .respondToPermission({ requestId: request.id, response: { behavior: "allow" } });
   });
+  // A scheduled run that leaves asks waiting on you is marked Needs you, so Paseo keeps its workspace
+  // (and these asks) instead of archiving it.
+  try {
+    server.addHook("schedule.run.finish.before", async ({ request }, { paseo: api }) => {
+      capture(api);
+      const attention = attentionForOpenAsks(store.list(request.agent.workspaceId ?? undefined), request.agent.id);
+      if (!attention || request.attention) return;
+      const name = request.schedule.name ?? "Scheduled run";
+      void api.notifications
+        .send({
+          title: `${name} needs you`,
+          body: attention.message ?? "",
+          open: { agentId: request.agent.id },
+          key: `schedule-run:${request.runId}`,
+        })
+        .catch(() => {});
+      return { ...request, attention };
+    });
+  } catch {
+    // COMPAT(scheduleRunAttention): hosts before fullstackhouse/paseo#106 don't know the hook.
+  }
   server.on("agent.archived", ({ agent }, { paseo: api }) => {
     capture(api);
     void outbox.flush(agent.id);
