@@ -3,7 +3,7 @@ import { useAgent, useRpc, useSettings } from "@getpaseo/plugin/client";
 import { Icon, ScrollView, TextInput, useToast } from "@getpaseo/plugin/client/react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useContext, useMemo, useState, type ReactNode } from "react";
-import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import {
   actOnAsk,
   discussAsk,
@@ -529,7 +529,7 @@ function AskDetail({
       {ask.links.map((link) => {
         const pr = openPr && prLinkOf(link.url);
         return pr ? (
-          <InboxLink key={link.url} styles={styles} onPress={() => openPr(pr)}>
+          <InboxLink key={link.url} onPress={() => openPr(pr)}>
             <Text style={styles.link}>{link.label}</Text>
           </InboxLink>
         ) : (
@@ -540,7 +540,7 @@ function AskDetail({
       })}
       {ask.pr &&
         (openPr ? (
-          <InboxLink styles={styles} onPress={() => openPr(ask.pr!.url)}>
+          <InboxLink onPress={() => openPr(ask.pr!.url)}>
             <PrDetail pr={ask.pr} styles={styles} />
           </InboxLink>
         ) : (
@@ -636,20 +636,11 @@ function PrDetail({ pr, styles }: { pr: PrState; styles: Styles }) {
   return <Text style={styles.prDetail}>{parts.join(" · ")}</Text>;
 }
 
-/**
- * A PR link that opens the PR's review screen in paseo-inbox. The Inbox icon says where it goes on
- * every platform; hovering (desktop and web) also spells it out, since plugins have no tooltip.
- */
-function InboxLink({ styles, onPress, children }: { styles: Styles; onPress(): void; children: ReactNode }) {
+/** A PR link that opens the PR's review screen in paseo-inbox. */
+function InboxLink({ onPress, children }: { onPress(): void; children: ReactNode }) {
   return (
-    <Pressable accessibilityRole="link" accessibilityHint="Opens in Inbox" onPress={onPress} style={styles.inboxLink}>
-      {({ hovered }: PressableStateCallbackType & { hovered?: boolean }) => (
-        <>
-          {children}
-          <Icon name="Inbox" size={12} color={styles.inboxHint.color} />
-          {hovered && <Text style={styles.inboxHint}>Open in Inbox</Text>}
-        </>
-      )}
+    <Pressable accessibilityRole="link" accessibilityHint="Opens in Inbox" onPress={onPress} style={{ alignSelf: "flex-start" }}>
+      {children}
     </Pressable>
   );
 }
@@ -818,8 +809,6 @@ function makeStyles(theme: PluginTheme, compact: boolean) {
     good: { color: colors.statusSuccess },
     bad: { color: colors.statusDanger },
     prDetail: { color: colors.foregroundMuted, fontSize: 12 },
-    inboxLink: { flexDirection: "row" as const, alignItems: "center" as const, gap: 4, alignSelf: "flex-start" as const },
-    inboxHint: { color: colors.foregroundMuted, fontSize: 12 },
     muted: { color: colors.foregroundMuted },
     danger: { color: colors.statusDanger },
   };
