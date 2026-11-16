@@ -186,6 +186,13 @@ describe("pickCaller", () => {
     expect(pickCaller(agents, `${home}/w/one`)).toBe("b");
   });
 
+  it("ignores agents whose bridge sends its own ID, so a Claude agent beside a Codex one is not ambiguous", () => {
+    const claude = { ...agent("a", "/w", "running"), provider: "claude" };
+    const codex = { ...agent("b", "/w", "running"), provider: "codex" };
+    expect(pickCaller([claude, codex], "/w")).toBe("b");
+    expect(pickCaller([claude], "/w")).toBe(null);
+  });
+
   it("falls back to the only live agent there, and gives up when it cannot tell", () => {
     expect(pickCaller([agent("a", "/w"), agent("b", "/w", "running", "2026-01-01")], "/w")).toBe(
       "a",
