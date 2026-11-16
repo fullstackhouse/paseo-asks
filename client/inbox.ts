@@ -6,7 +6,7 @@ import { createContext } from "react";
  * has no type for it yet, hence the local one; drop it once the SDK ships `openPluginScreen`.
  */
 interface ScreenNavigation {
-  openPluginScreen?(input: { pluginId: string; screenId: string; params?: Record<string, string> }): void;
+  openPluginScreen?(input: { pluginId: string; screenId: string; params?: Record<string, string>; workspaceId?: string }): void;
   hasPluginScreen?(input: { pluginId: string; screenId: string }): boolean;
 }
 
@@ -16,10 +16,12 @@ const REVIEW = { pluginId: "paseo-inbox", screenId: "review" } as const;
 
 /** Opens a PR in the Inbox, or undefined when the host or the Inbox can't. */
 export function inboxReview(props: object): OpenPr | undefined {
-  const navigation = (props as { navigation?: ScreenNavigation }).navigation;
+  const { navigation, workspaceId } = props as { navigation?: ScreenNavigation; workspaceId?: unknown };
   const open = navigation?.openPluginScreen;
   if (!open || !navigation.hasPluginScreen?.(REVIEW)) return undefined;
-  return (prUrl) => open({ ...REVIEW, params: { pr: prUrl } });
+  // From a workspace (a panel or a pill popover), the review opens as a tab there; hosts without tab support ignore it.
+  const tab = typeof workspaceId === "string" ? { workspaceId } : {};
+  return (prUrl) => open({ ...REVIEW, params: { pr: prUrl }, ...tab });
 }
 
 /** Set by each entry point from its own `navigation`, so every ask card below it can open its PR. */
