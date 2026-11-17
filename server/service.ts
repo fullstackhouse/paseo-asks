@@ -255,7 +255,7 @@ export class AsksService {
     this.outbox.enqueue({ agentId, workspaceId, text });
   }
 
-  /** The human asks an agent to bring its asks up to date. Returns whether it went out now or waits for the turn to end. */
+  /** The human asks an agent to bring its asks up to date. Returns whether it went out now (steered into a running turn when possible) or waits for the turn to end. */
   async refresh(agentId: string): Promise<{ sent: boolean }> {
     const workspaceId = await this.workspaceOf(agentId);
     if (!workspaceId) throw new Error(`Agent ${agentId} has no workspace`);

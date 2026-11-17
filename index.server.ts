@@ -8,7 +8,7 @@ import { findGh, ghFetcher } from "./server/github";
 import { LastOutputs } from "./server/last-output";
 import { listen } from "./server/listener";
 import { CLASSIFIER_PROMPT, NUDGE, paseoClassifier, shouldNudge } from "./server/nudge";
-import { Outbox, type Courier } from "./server/outbox";
+import { isWorking, Outbox, type Courier } from "./server/outbox";
 import { dataDir } from "./server/paths";
 import { isAsksPermission } from "./server/permissions";
 import { AsksService, instructions, TOOLS } from "./server/service";
@@ -64,7 +64,9 @@ export default function contribute(server: PluginServerContext) {
       const handle = requirePaseo().agents.ref(agentId);
       const found = await handle.refresh();
       if (!found || handle.archivedAt) return "gone";
-      return handle.status === "running" || handle.status === "initializing" ? "running" : "idle";
+      if (handle.status !== "running" && handle.status !== "initializing") return "idle";
+      // COMPAT(supportsSteering): hosts before fullstackhouse/paseo#115 omit it; those wait for the turn to end.
+      return handle.capabilities?.supportsSteering ? "steerable" : "running";
     },
     async send(agentId, text, messageId) {
       await requirePaseo()
@@ -132,8 +134,11 @@ export default function contribute(server: PluginServerContext) {
       .catch(() => {});
     void shouldNudge(timeline, classifierFor(agent.id))
       .then(async (nudge) => {
-        // The classifier takes a few seconds; a reminder after the human has moved on would be stale.
-        if (!nudge || (await courier.state(agent.id)) !== "idle") return;
+        // The classifier takes a few seconds. If the human has moved on, steer the reminder into the new
+        // turn; only an agent that can't take a steer is left alone.
+        if (!nudge) return;
+        const state = await courier.state(agent.id);
+        if (state === "running" || state === "gone") return;
         service.message(agent.id, workspaceId, NUDGE);
         await outbox.flush(agent.id);
       })
@@ -251,7 +256,7 @@ export default function contribute(server: PluginServerContext) {
   const prTimer = setInterval(() => void watcher?.refresh(), PR_EVERY_MS);
   // Also the backlog sweep: the first run after start reopens asks that went stale before this existed.
   const reopenStale = () => {
-    if (paseo) void service.reopenStale(async (agentId) => (await courier.state(agentId)) === "running");
+    if (paseo) void service.reopenStale(async (agentId) => isWorking(await courier.state(agentId)));
   };
   const staleTimer = setInterval(reopenStale, STALE_EVERY_MS);
   const firstStale = setTimeout(reopenStale, PR_EVERY_MS);

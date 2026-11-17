@@ -35,12 +35,12 @@ PR asks show live status from `gh`: open, merged or closed, checks, review decis
 agent ──stdio MCP──▶ bridge.mjs ──HTTP 127.0.0.1──▶ plugin server ──▶ ~/.paseo/plugin-data/asks/
   ▲                    (inherits PASEO_AGENT_ID,                  │  workspaces/<id>.json, outbox.json
   │                     so every call knows its caller)           │
-  └──── "[asks] …" message, held until the agent's turn ends ─────┘
+  └──── "[asks] …" message, steered into the turn or held ────────┘
 ```
 
 - Every agent created after the plugin is installed gets an `asks` MCP server with `ask_create`, `ask_update`, `ask_resolve` and `ask_list`. Its instructions tell the agent when to use them, so no `CLAUDE.md` edit is needed.
 - Agents sometimes ask in chat and skip `ask_create`. When a turn uses no asks tool and names no ask id, a short-lived child agent on the same provider (its cheapest model) judges whether the reply leaves anything for the human; if so, the plugin sends one `[asks]` reminder. If that check fails, a question mark in the last paragraph decides. Its answer is never reminded again, and side chats are never reminded.
-- Answers are written to an on-disk outbox first. They're sent only when the agent is between turns, because a prompt sent mid-turn interrupts it, and several answers are batched into one message. A plugin restart loses nothing.
+- Answers are written to an on-disk outbox first. On providers that take a steer (Claude, Codex, OpenCode, Pi), they join the agent's running turn right away. On others they wait until the turn ends, because a prompt sent mid-turn would interrupt it. Several answers are batched into one message. A plugin restart loses nothing.
 - If the agent that raised an ask is archived, the ask is marked *orphaned*: you can still close it, and nobody is notified.
 
 ## Install
@@ -83,7 +83,7 @@ cd preview && npm install && npm run dev   # the UI with sample data, at localho
 - **Agents report asks themselves.** Nothing reads transcripts to find them: only the agent knows what it is waiting on.
 - **Four fixed action kinds** (`send`, `resolve`, `open`, plus the built-in Discuss). Agents supply labels and prompts, never arbitrary behaviour.
 - **One writer per checkout.** Work goes back to the main agent; side chats are read-only and end with an outcome on the ask.
-- **Push, held until the turn ends.** Answers reach the agent as prompts, from a disk outbox, never mid-turn.
+- **Push, never interrupting.** Answers reach the agent as prompts from a disk outbox, steered into a running turn or held until it ends.
 - **External events only if subscribed,** so polling `gh` never wakes an agent for nothing.
 
 ## Limits

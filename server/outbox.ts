@@ -14,7 +14,11 @@ export interface Delivery {
   error?: string;
 }
 
-export type AgentState = "idle" | "running" | "gone";
+/** `steerable`: mid-turn, on a provider that takes a steer into the running turn instead of interrupting it. */
+export type AgentState = "idle" | "steerable" | "running" | "gone";
+
+/** Mid-turn, whether or not a message can join the turn. */
+export const isWorking = (state: AgentState): boolean => state === "running" || state === "steerable";
 
 export interface Courier {
   state(agentId: string): Promise<AgentState>;
@@ -25,8 +29,9 @@ const MAX_ATTEMPTS = 5;
 const KEEP_DELIVERED = 200;
 
 /**
- * Messages to agents, written to disk before any send. A message waits while its agent runs a
- * turn (a send mid-turn would interrupt it) and goes out batched once the agent is idle.
+ * Messages to agents, written to disk before any send. A message goes out batched, steered into a
+ * running turn when the provider allows it. Otherwise it waits for the turn to end, since a send
+ * mid-turn would interrupt it.
  */
 export class Outbox {
   private readonly path: string;
