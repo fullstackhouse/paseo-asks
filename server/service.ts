@@ -121,8 +121,12 @@ export class AsksService {
           const ask = this.require(workspaceId, id);
           checkActions(patch.actions ?? []);
           // Fresh options hand the ask back to the human: the UI shows buttons only on open asks, so actions on an
-          // in-progress ask can't be clicked. Applies even when the agent asks for in_progress explicitly.
-          if (patch.actions?.length && (patch.status ?? ask.status) === "in_progress") patch.status = "open";
+          // in-progress ask can't be clicked. Applies even when the agent asks for in_progress explicitly. Except while
+          // the human's answer still waits in the outbox: the agent is editing options it doesn't know were clicked.
+          const unseenAnswer = this.outbox.pending(ask.ownerAgentId).some((entry) => entry.askId === ask.id);
+          if (patch.actions?.length && (patch.status ?? ask.status) === "in_progress" && !unseenAnswer) {
+            patch.status = "open";
+          }
           const updated = await this.store.update(workspaceId, id, patch);
           if (agentId !== ask.ownerAgentId && !ask.orphaned && patch.status && patch.status !== ask.status) {
             this.notify(ask, `[asks] ${ask.id} (${ask.title}) marked ${patch.status.replace("_", " ")} in a side chat.`);

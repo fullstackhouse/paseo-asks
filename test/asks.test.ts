@@ -205,6 +205,27 @@ describe("asks", () => {
     expect(store.get(WS, "A1")!.status).toBe("open");
   });
 
+  it("new options don't reopen an ask whose click the agent hasn't received yet", async () => {
+    await service.callTool(AGENT, "ask_create", {
+      kind: "followup",
+      title: "Hide nav entries",
+      actions: [{ label: "Do it", kind: "send", prompt: "After #877 merges, open the PR" }],
+    });
+    courier.states.set(AGENT, "running");
+    await service.act({ workspaceId: WS, id: "A1", verb: "action", actionId: "a1" });
+    // Mid-turn, unaware of the click, the agent rewords the action.
+    await service.callTool(AGENT, "ask_update", {
+      id: "A1",
+      actions: [{ label: "Do it", kind: "send", prompt: "Open the PR" }],
+    });
+    expect(store.get(WS, "A1")!.status).toBe("in_progress");
+    expect(store.get(WS, "A1")!.actions[0]!.prompt).toBe("Open the PR");
+
+    courier.states.set(AGENT, "idle");
+    await outbox.flush();
+    expect(courier.sent).toHaveLength(1);
+  });
+
   it("survives a restart with messages still pending", async () => {
     await service.callTool(AGENT, "ask_create", decision);
     courier.states.set(AGENT, "running");
