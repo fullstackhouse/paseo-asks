@@ -23,8 +23,3 @@ export function needsReminder(ask: Ask): boolean {
 export function isStale(ask: Ask, now: Date, ownerRunning: boolean): boolean {
   return ask.status === "in_progress" && !ownerRunning && now.getTime() - Date.parse(ask.updatedAt) >= STALE_MS;
 }
-
-export function stuckReminder(asks: readonly Pick<Ask, "id" | "title">[]): string {
-  const list = asks.map((ask) => `${ask.id} (${ask.title})`).join(", ");
-  return `[asks] Your turn ended with ${list} in progress, so the human sees no buttons on ${asks.length > 1 ? "them" : "it"}. For each: if you are still working on it, or it waits on CI or a reviewer other than the human, leave it. If the next move is the human's (a label, an approval, a merge, an answer), ask_update it with the action they need; that sets it back to open. If it is finished, ask_resolve it. Then reply in one line.`;
-}

@@ -6,7 +6,7 @@ import { Outbox, type Courier } from "../server/outbox";
 import { AsksService } from "../server/service";
 import { AskStore } from "../server/store";
 import { parseAsksMessage } from "../shared/messages";
-import { NUDGE, REFRESH } from "../shared/prompts";
+import { NUDGE, REFRESH, stuckReminder } from "../shared/prompts";
 
 const WS = "wks_1";
 const OWNER = "agent-1";
@@ -99,6 +99,17 @@ describe("parseAsksMessage", () => {
   it("reads the nudge and refresh prompts", () => {
     expect(parseAsksMessage(NUDGE)?.event).toMatch(/^Reminded/);
     expect(parseAsksMessage(REFRESH)?.event).toMatch(/^Asked/);
+  });
+
+  it("reads the stuck-in-progress reminder", () => {
+    expect(parseAsksMessage(stuckReminder([{ id: "A2", title: "QA (Phase 0a), then merge" }]))).toEqual({
+      askId: "A2",
+      title: "QA (Phase 0a), then merge",
+      event: "Left in progress; asked the agent to hand it back or resolve it",
+    });
+    expect(parseAsksMessage(stuckReminder([{ id: "A2", title: "Merge #823, #825" }, { id: "A3", title: "Ship 0b" }]))?.event).toBe(
+      "Left A2, A3 in progress; asked the agent to hand them back or resolve them",
+    );
   });
 
   it("leaves other text alone", () => {
