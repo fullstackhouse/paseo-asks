@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { askDetail, workspaceAsks, type Ask } from "../shared/asks";
-import { summaryState } from "../client/summary";
+import { createWorkspaceSummaries, summaryState } from "../client/summary";
 
 const ask = (
   id: string,
@@ -96,5 +96,22 @@ describe("summaryState", () => {
       key: "A4",
       entries,
     });
+  });
+});
+
+describe("createWorkspaceSummaries", () => {
+  it("registers each workspace's item with the Overview entry renderer", () => {
+    const added: Array<Record<string, unknown>> = [];
+    const client = {
+      addWorkspaceSummaryItem: (contribution: Record<string, unknown>) => {
+        added.push(contribution);
+        return { update: () => undefined, remove: () => undefined };
+      },
+    };
+    const EntryComponent = () => null;
+    const summaries = createWorkspaceSummaries(client as never, EntryComponent);
+    summaries.set("w1", undefined);
+    expect(added).toHaveLength(1);
+    expect(added[0]).toMatchObject({ id: "asks", workspaceId: "w1", EntryComponent, count: 0 });
   });
 });

@@ -1,9 +1,10 @@
-import type { PluginClientContext } from "@getpaseo/plugin/client";
+import type { PluginClientContext, PluginWorkspacePanelProps } from "@getpaseo/plugin/client";
+import type { ComponentType } from "react";
 import type { AskEntry, WorkspaceAsks } from "../shared/asks";
 
 // COMPAT(workspaceSummaryItem): FSH hosts from fullstackhouse/paseo#83 have addWorkspaceSummaryItem, and FSH hosts
 // with Overview v2 read `entries`, but the npm SDK pin types neither yet. Older hosts lack the item (Asks then only
-// shows its pills) or drop `entries`.
+// shows its pills) or drop `entries`. Overview v2 hosts also render each entry with `EntryComponent`.
 export interface WorkspaceSummaryState {
   label?: string;
   count?: number;
@@ -17,9 +18,21 @@ export interface WorkspaceSummaryRegistration {
   update(patch: WorkspaceSummaryState): void;
   remove(): void;
 }
+/** What an Overview v2 host passes to `EntryComponent` for one of `entries`. */
+export interface SummaryEntryProps
+  extends Pick<PluginWorkspacePanelProps, "theme" | "host" | "layout" | "navigation" | "workspaceId"> {
+  entryId: string;
+  /** True for the Overview's first move: show it open, with its actions. */
+  defaultExpanded: boolean;
+}
 type SummaryHost = {
   addWorkspaceSummaryItem?: (
-    contribution: WorkspaceSummaryState & { id: string; workspaceId: string; title: string },
+    contribution: WorkspaceSummaryState & {
+      id: string;
+      workspaceId: string;
+      title: string;
+      EntryComponent?: ComponentType<SummaryEntryProps>;
+    },
   ) => WorkspaceSummaryRegistration;
 };
 
@@ -37,7 +50,10 @@ export function summaryState(asks: WorkspaceAsks | undefined): WorkspaceSummaryS
 }
 
 /** Tells the host what waits in each workspace, so entering one can open the Asks panel and Overview can list the asks. */
-export function createWorkspaceSummaries(client: PluginClientContext) {
+export function createWorkspaceSummaries(
+  client: PluginClientContext,
+  EntryComponent: ComponentType<SummaryEntryProps>,
+) {
   const host = client as PluginClientContext & SummaryHost;
   const items = new Map<string, WorkspaceSummaryRegistration>();
   return {
@@ -46,7 +62,7 @@ export function createWorkspaceSummaries(client: PluginClientContext) {
       const state = summaryState(asks);
       const item = items.get(workspaceId);
       if (item) item.update(state);
-      else items.set(workspaceId, host.addWorkspaceSummaryItem({ id: "asks", workspaceId, title: "Asks", ...state }));
+      else items.set(workspaceId, host.addWorkspaceSummaryItem({ id: "asks", workspaceId, title: "Asks", EntryComponent, ...state }));
     },
     workspaceIds(): string[] {
       return [...items.keys()];

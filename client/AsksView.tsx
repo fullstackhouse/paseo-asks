@@ -415,6 +415,36 @@ export function AskCard(
   );
 }
 
+/**
+ * One waiting ask in the host's Overview, the same row the Asks panel shows, so it can be answered there.
+ * Every entry shares the workspace's asks query, so a list of them polls once.
+ */
+export function WorkspaceAskEntry(props: {
+  theme: PluginTheme;
+  compact: boolean;
+  workspaceId: string;
+  askId: string;
+  defaultExpanded: boolean;
+  openAgent?: (agentId: string) => void;
+}) {
+  const { theme, compact, workspaceId, askId, defaultExpanded, openAgent } = props;
+  const styles = useMemo(() => makeStyles(theme, compact), [theme, compact]);
+  const asks = useAsks(workspaceId);
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  const ask = asks.data?.asks.find((candidate) => candidate.id === askId);
+  if (!ask) return null;
+  return (
+    <AskRow
+      ask={ask}
+      styles={styles}
+      theme={theme}
+      expanded={expanded}
+      onToggle={() => setExpanded(!expanded)}
+      openAgent={openAgent}
+    />
+  );
+}
+
 function AskRow(props: {
   ask: Ask;
   styles: Styles;
