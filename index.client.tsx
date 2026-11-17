@@ -146,12 +146,12 @@ const asksPopover: Extract<PluginButtonBehavior, { kind: "popover" }> & { presen
   Content: PillPopover,
 };
 
-/** The pill's face beside its question icon: how many asks in its workspace wait on you, 0 so a missing one is noticed. */
-function pillLabel(count: number): string {
-  return String(count);
+/** The pill's face: how many asks in its workspace wait on you, hidden while none do. */
+function pillFace(count: number): { label: string; visible: boolean } {
+  return { label: String(count), visible: count > 0 };
 }
 
-/** A composer pill per agent with its open asks; pressing it shows them and a Refresh. */
+/** A composer pill per agent whose workspace has asks waiting on you; pressing it shows them and a Refresh. */
 function contributePills(client: PluginClientContext): () => void {
   const pills = new Map<string, { workspaceId: string; pill: PluginButtonRegistration }>();
   const summaries = createWorkspaceSummaries(client, OverviewAskEntry);
@@ -166,7 +166,7 @@ function contributePills(client: PluginClientContext): () => void {
         id: "asks",
         workspaceId,
         agentId,
-        button: { title: "Asks", icon: "MessageCircleQuestionMark", label: pillLabel(0), behavior: asksPopover },
+        button: { title: "Asks", icon: "MessageCircleQuestionMark", ...pillFace(0), behavior: asksPopover },
       }),
     });
   };
@@ -180,7 +180,7 @@ function contributePills(client: PluginClientContext): () => void {
     const { asks } = await client.rpc(listAsks, { includeClosed: true });
     const waiting = waitingByWorkspace(asks);
     for (const { workspaceId, pill } of pills.values()) {
-      pill.update({ label: pillLabel(waiting.get(workspaceId)?.count ?? 0) });
+      pill.update(pillFace(waiting.get(workspaceId)?.count ?? 0));
     }
     // Every workspace with asks, even one whose agents are gone, plus ones already reported, so a count drops to 0.
     const summary = workspaceAsks(asks, snoozedWorkspaceIds());
