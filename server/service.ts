@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { ACTION_KINDS, ASK_KINDS, ASK_STATUSES, OPEN_STATUSES, prUrlOf, type Ask, type PrState } from "../shared/asks";
 import { REFRESH } from "./nudge";
-import { isStale, needsReminder, stuckReminder } from "./stuck";
+import { stuckReminder } from "../shared/prompts";
+import { isStale, needsReminder } from "./stuck";
 import type { Outbox } from "./outbox";
 import type { AskStore, NewAsk } from "./store";
 

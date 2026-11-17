@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { NUDGE, REFRESH } from "./prompts";
+import { NUDGE, REFRESH, parseStuckReminder } from "./prompts";
 
 /** The plugin timeline item that stands in for an `[asks]` message sent to the agent: what the human did, without the agent's instructions. */
 export const ASKS_MESSAGE = { kind: "asks-message", version: 1 } as const;
@@ -56,6 +56,9 @@ const PATTERNS: { re: RegExp; view: (m: RegExpMatchArray) => Omit<AsksMessage, "
 export function parseAsksMessage(text: string): AsksMessage | undefined {
   if (text === NUDGE) return { event: "Reminded the agent to record what it needs from you as asks" };
   if (text === REFRESH) return { event: "Asked the agent to bring its asks up to date" };
+  const stuck = parseStuckReminder(text);
+  if (stuck?.length === 1) return { askId: stuck[0].id, title: stuck[0].title, event: "Left in progress; asked the agent to hand it back or resolve it" };
+  if (stuck?.length) return { event: `Left ${stuck.map((ask) => ask.id).join(", ")} in progress; asked the agent to hand them back or resolve them` };
   const head = text.match(/^\[asks\] (A\d+) ([\s\S]*)$/);
   if (!head) return undefined;
   const [, askId, rest] = head;
