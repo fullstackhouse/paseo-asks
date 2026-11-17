@@ -15,8 +15,8 @@ import { AsksMessage } from "./client/AsksMessage";
 import { inboxReview, OpenPrContext } from "./client/inbox";
 import { AgentAsks, AskCard, AsksView, POLL_MS, useAsks } from "./client/AsksView";
 import { SettingsScreen } from "./client/SettingsScreen";
-import { observeSnoozedWorkspaces, useSnoozedWorkspaceIds } from "./client/snoozed";
-import { listAsks, waitingByWorkspace, waitingCount } from "./shared/asks";
+import { observeSnoozedWorkspaces, snoozedWorkspaceIds, useSnoozedWorkspaceIds } from "./client/snoozed";
+import { listAsks, waitingByWorkspace, waitingCount, workspaceAsks } from "./shared/asks";
 import { createWorkspaceSummaries } from "./client/summary";
 import { ASKS_MESSAGE, AsksMessageSchema, parseAsksMessage, type AsksMessage as AsksMessageData } from "./shared/messages";
 import { ASK_CARD, AskCardSchema, askCardFor, type AskCard as AskCardData } from "./shared/timeline";
@@ -159,14 +159,16 @@ function contributePills(client: PluginClientContext): () => void {
   };
 
   const refreshCounts = async () => {
-    const { asks } = await client.rpc(listAsks, {});
+    // Closed asks too: a workspace that ever had an ask reports "Nothing waiting" rather than nothing.
+    const { asks } = await client.rpc(listAsks, { includeClosed: true });
     const waiting = waitingByWorkspace(asks);
     for (const { workspaceId, pill } of pills.values()) {
       pill.update({ label: pillLabel(waiting.get(workspaceId)?.count ?? 0) });
     }
-    // Every workspace with waiting asks, even one whose agents are gone, plus ones already reported, so a count drops to 0.
-    const workspaceIds = new Set([...waiting.keys(), ...summaries.workspaceIds()]);
-    for (const workspaceId of workspaceIds) summaries.set(workspaceId, waiting.get(workspaceId));
+    // Every workspace with asks, even one whose agents are gone, plus ones already reported, so a count drops to 0.
+    const summary = workspaceAsks(asks, snoozedWorkspaceIds());
+    const workspaceIds = new Set([...summary.keys(), ...summaries.workspaceIds()]);
+    for (const workspaceId of workspaceIds) summaries.set(workspaceId, summary.get(workspaceId));
   };
   const timer = setInterval(() => void refreshCounts().catch(() => undefined), POLL_MS * 2);
 

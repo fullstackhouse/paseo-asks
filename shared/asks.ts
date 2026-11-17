@@ -97,6 +97,61 @@ export function waitingByWorkspace(
   return new Map([...result].map(([id, { count, newestId }]) => [id, { count, newestId }]));
 }
 
+/** One waiting ask as the host's Overview lists it. */
+export interface AskEntry {
+  id: string;
+  title: string;
+  detail?: string;
+}
+
+/** A workspace's asks as the host summary shows them: what waits on you, newest first, as the Asks panel orders them. */
+export interface WorkspaceAsks {
+  count: number;
+  newestId?: string;
+  entries: AskEntry[];
+}
+
+const KIND_LABELS: Record<Ask["kind"], string> = {
+  decision: "Decision",
+  review: "Review",
+  pr: "PR",
+  followup: "Follow-up",
+  action: "Action",
+  question: "Question",
+};
+
+/** A short facts line for an ask, e.g. "Decision · 2 options" or "PR #30". */
+export function askDetail(ask: Pick<Ask, "kind" | "actions" | "pr" | "orphaned">): string {
+  const options = ask.actions.filter((action) => action.kind === "resolve").length;
+  const parts = [
+    ask.kind === "pr" && ask.pr ? `PR #${ask.pr.number}` : KIND_LABELS[ask.kind],
+    ask.kind === "decision" && options > 0 ? `${options} option${options === 1 ? "" : "s"}` : "",
+    ask.orphaned ? "agent archived" : "",
+  ];
+  return parts.filter(Boolean).join(" · ");
+}
+
+/**
+ * Every workspace with any ask (any status), so one with nothing waiting reports 0 instead of nothing.
+ * Like `waitingCount`, asks in snoozed workspaces don't wait on you.
+ */
+export function workspaceAsks(
+  asks: readonly Pick<Ask, "id" | "title" | "kind" | "actions" | "pr" | "orphaned" | "status" | "workspaceId" | "createdAt">[],
+  snoozed: ReadonlySet<string>,
+): Map<string, WorkspaceAsks> {
+  const result = new Map<string, WorkspaceAsks>();
+  const newestFirst = [...asks].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  for (const ask of newestFirst) {
+    let workspace = result.get(ask.workspaceId);
+    if (!workspace) result.set(ask.workspaceId, (workspace = { count: 0, entries: [] }));
+    if (!awaitsYou(ask) || snoozed.has(ask.workspaceId)) continue;
+    workspace.count++;
+    workspace.newestId ??= ask.id;
+    workspace.entries.push({ id: ask.id, title: ask.title, detail: askDetail(ask) });
+  }
+  return result;
+}
+
 export const listAsks = defineRpc({
   name: "asks.list",
   input: z.object({ workspaceId: z.string().optional(), includeClosed: z.boolean().optional() }),

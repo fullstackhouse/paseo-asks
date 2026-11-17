@@ -17,6 +17,11 @@ function subscribe(listener: () => void): () => void {
 }
 
 /** Ids of workspaces the user has snoozed, kept live while the plugin runs. Empty on hosts without snooze. */
+/** The snoozed set outside React, for code that polls. */
+export function snoozedWorkspaceIds(): ReadonlySet<string> {
+  return current;
+}
+
 export function useSnoozedWorkspaceIds(): ReadonlySet<string> {
   return useSyncExternalStore(subscribe, () => current);
 }
