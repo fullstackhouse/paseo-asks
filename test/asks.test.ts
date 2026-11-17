@@ -2,7 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
-import { Outbox, type AgentState, type Courier } from "../server/outbox";
+import { isWorking, Outbox, type AgentState, type Courier } from "../server/outbox";
 import { AsksService, BACKGROUND_SKIP } from "../server/service";
 import { AskStore } from "../server/store";
 import { AskSchema } from "../shared/asks";
@@ -112,6 +112,24 @@ describe("asks", () => {
     expect(courier.sent[0]!.text).toBe(
       '[asks] A1 (Squash-only merges?) resolved: b: squash-only. Note from the human: "and update AGENTS.md"',
     );
+  });
+
+  it("steers a human's choice into a running turn when the provider can take it", async () => {
+    await service.callTool(AGENT, "ask_create", decision);
+    courier.states.set(AGENT, "steerable");
+    await service.act({ workspaceId: WS, id: "A1", verb: "action", actionId: "a1" });
+    await outbox.flush();
+    expect(courier.sent).toHaveLength(1);
+    expect(outbox.pending(AGENT)).toEqual([]);
+  });
+
+  it("keeps an in-progress ask open while its agent works a steerable turn", async () => {
+    await service.callTool(AGENT, "ask_create", { kind: "followup", title: "Retention switch" });
+    await service.callTool(AGENT, "ask_update", { id: "A1", status: "in_progress" });
+    courier.states.set(AGENT, "steerable");
+    const later = new Date(Date.now() + 7 * 24 * 3600 * 1000);
+    const reopened = await service.reopenStale(async (id) => isWorking(await courier.state(id)), later);
+    expect(reopened.map((ask) => ask.id)).toEqual([]);
   });
 
   it("batches several answers into one message", async () => {

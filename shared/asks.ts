@@ -182,7 +182,7 @@ export const discussAsk = defineRpc({
   output: z.object({ agentId: z.string(), created: z.boolean() }),
 });
 
-/** Ask an agent to bring its asks up to date. Sent now if it is idle, otherwise when its turn ends. */
+/** Ask an agent to bring its asks up to date. Sent now if it is idle or can take a steer, otherwise when its turn ends. */
 export const refreshAsks = defineRpc({
   name: "asks.refresh",
   input: z.object({ agentId: z.string() }),
