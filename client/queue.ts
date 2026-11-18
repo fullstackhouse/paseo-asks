@@ -1,4 +1,4 @@
-import { awaitsYou, type Ask } from "../shared/asks";
+import { awaitsYou, oldestFirst, type Ask } from "../shared/asks";
 
 export type QueueFilter = "needs_you" | "in_progress" | "other";
 
@@ -13,7 +13,6 @@ export function askQueue(
     const filter = snoozed.has(ask.workspaceId) ? "other" : awaitsYou(ask) ? "needs_you" : "in_progress";
     queue[filter].push(ask);
   }
-  for (const rows of Object.values(queue))
-    rows.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  for (const rows of Object.values(queue)) rows.sort(oldestFirst);
   return queue;
 }
