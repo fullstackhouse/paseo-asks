@@ -70,6 +70,25 @@ describe("asks", () => {
     expect(new AskStore(dir).list(WS).map((ask) => ask.id)).toEqual(["A1", "A2"]);
   });
 
+  it("rejects a bundled ask on create and update, saving nothing", async () => {
+    const bundled = await service.callTool(AGENT, "ask_create", {
+      kind: "review",
+      title: "Answer the 6 open questions",
+      actions: [{ label: "Approve as proposed", kind: "send", prompt: "Approve as proposed" }],
+    });
+    expect(bundled.isError).toBe(true);
+    expect(bundled.text).toMatch(/one ask per question/);
+    expect(store.list(WS)).toEqual([]);
+
+    await service.callTool(AGENT, "ask_create", decision);
+    const relabelled = await service.callTool(AGENT, "ask_update", {
+      id: "A1",
+      actions: [{ label: "Accept all recommendations", kind: "resolve" }],
+    });
+    expect(relabelled.isError).toBe(true);
+    expect(store.get(WS, "A1")?.actions.map((action) => action.label)).toEqual(["a: leave as is", "b: squash-only"]);
+  });
+
   it("preserves Markdown source through creation, persistence and the response schema", async () => {
     const body =
       "# Plan\n\n```mermaid\nflowchart LR\nA --> B\n```\n\n[Guide][guide]\n\n[guide]: https://example.com";

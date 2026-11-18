@@ -3,6 +3,7 @@ import { ACTION_KINDS, ASK_KINDS, ASK_STATUSES, OPEN_STATUSES, prUrlOf, type Ask
 import { REFRESH } from "./nudge";
 import { stuckReminder } from "../shared/prompts";
 import { isStale, needsReminder } from "./stuck";
+import { checkNotBundled } from "./bundle";
 import type { Outbox } from "./outbox";
 import type { AskStore, NewAsk } from "./store";
 
@@ -120,6 +121,9 @@ export class AsksService {
           const { id, ...patch } = UpdateInput.parse(args);
           const ask = this.require(workspaceId, id);
           checkActions(patch.actions ?? []);
+          if (patch.title !== undefined || patch.actions) {
+            checkNotBundled(patch.title ?? ask.title, (patch.actions ?? ask.actions).map((action) => action.label));
+          }
           // Fresh options hand the ask back to the human: the UI shows buttons only on open asks, so actions on an
           // in-progress ask can't be clicked. Applies even when the agent asks for in_progress explicitly. Except while
           // the human's answer still waits in the outbox: the agent is editing options it doesn't know were clicked.
@@ -291,6 +295,7 @@ export class AsksService {
 
   private async create(workspaceId: string, agentId: string, input: z.output<typeof CreateInput>): Promise<Ask> {
     checkActions(input.actions);
+    checkNotBundled(input.title, input.actions.map((action) => action.label));
     if (input.kind === "decision" && input.actions.filter((action) => action.kind === "resolve").length < 2) {
       throw new Error('A decision needs at least two "resolve" actions, one per option');
     }
