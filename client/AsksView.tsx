@@ -3,7 +3,7 @@ import { useAgent, useRpc, useSettings } from "@getpaseo/plugin/client";
 import { Icon, ScrollView, TextInput, useToast } from "@getpaseo/plugin/client/react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useContext, useMemo, useState, type ReactNode } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Platform, Pressable, Text, View } from "react-native";
 import {
   actOnAsk,
   discussAsk,
@@ -589,6 +589,16 @@ function AskDetail({
         placeholderTextColor={styles.placeholder.color}
         style={styles.input}
         multiline
+        onKeyPress={(event) => {
+          // Desktop/web: Enter sends the reply, Shift+Enter adds a line. Native keeps Return as newline.
+          const e = event.nativeEvent as typeof event.nativeEvent & {
+            shiftKey?: boolean;
+            isComposing?: boolean;
+          };
+          if (Platform.OS !== "web" || e.key !== "Enter" || e.shiftKey || e.isComposing) return;
+          event.preventDefault();
+          if (!mutation.isPending && note.trim()) mutation.mutate({ verb: "reply" });
+        }}
       />
       <View style={styles.buttons}>
         <Button
