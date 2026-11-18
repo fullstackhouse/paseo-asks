@@ -97,6 +97,11 @@ export function waitingByWorkspace(
   return new Map([...result].map(([id, { count, newestId }]) => [id, { count, newestId }]));
 }
 
+/** Asks wait in a queue: the one waiting longest comes first, and updates don't move an ask. */
+export function oldestFirst(a: Pick<Ask, "createdAt">, b: Pick<Ask, "createdAt">): number {
+  return a.createdAt.localeCompare(b.createdAt);
+}
+
 /** One waiting ask as the host's Overview lists it. */
 export interface AskEntry {
   id: string;
@@ -104,7 +109,7 @@ export interface AskEntry {
   detail?: string;
 }
 
-/** A workspace's asks as the host summary shows them: what waits on you, newest first, as the Asks panel orders them. */
+/** A workspace's asks as the host summary shows them: what waits on you, oldest first, as the Asks panel orders them. */
 export interface WorkspaceAsks {
   count: number;
   newestId?: string;
@@ -140,13 +145,12 @@ export function workspaceAsks(
   snoozed: ReadonlySet<string>,
 ): Map<string, WorkspaceAsks> {
   const result = new Map<string, WorkspaceAsks>();
-  const newestFirst = [...asks].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  for (const ask of newestFirst) {
+  for (const ask of [...asks].sort(oldestFirst)) {
     let workspace = result.get(ask.workspaceId);
     if (!workspace) result.set(ask.workspaceId, (workspace = { count: 0, entries: [] }));
     if (!awaitsYou(ask) || snoozed.has(ask.workspaceId)) continue;
     workspace.count++;
-    workspace.newestId ??= ask.id;
+    workspace.newestId = ask.id;
     workspace.entries.push({ id: ask.id, title: ask.title, detail: askDetail(ask) });
   }
   return result;

@@ -79,10 +79,15 @@ describe("main ask queue", () => {
     expect(queue.other.map((item) => item.id)).toEqual(["later", "working-later"]);
   });
 
-  it("orders each view by newest update without changing the input", () => {
-    const asks = [ask("older"), ask("newer", { updatedAt: "2026-11-09T01:00:00Z" })];
-    expect(askQueue(asks, snoozed).needs_you.map((item) => item.id)).toEqual(["newer", "older"]);
-    expect(asks.map((item) => item.id)).toEqual(["older", "newer"]);
+  it("orders each view oldest first by creation, ignoring updates, without changing the input", () => {
+    const at = (hour: number) => `2026-11-09T0${hour}:00:00Z`;
+    const asks = [
+      ask("second", { createdAt: at(1), updatedAt: at(3) }),
+      ask("third", { createdAt: at(2), updatedAt: at(2) }),
+      ask("first", { createdAt: at(0), updatedAt: at(0) }),
+    ];
+    expect(askQueue(asks, snoozed).needs_you.map((item) => item.id)).toEqual(["first", "second", "third"]);
+    expect(asks.map((item) => item.id)).toEqual(["second", "third", "first"]);
   });
 
   it("moves an ask back to Needs you when its workspace wakes", () => {

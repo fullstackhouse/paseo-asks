@@ -1,6 +1,6 @@
 import type { PaseoApi } from "@getpaseo/client";
 import { latestTurn, type PluginServerContext } from "@getpaseo/plugin/server";
-import { actOnAsk, discussAsk, listAsks, OPEN_STATUSES, refreshAsks } from "./shared/asks";
+import { actOnAsk, discussAsk, listAsks, OPEN_STATUSES, oldestFirst, refreshAsks } from "./shared/asks";
 import { AgentDirectory, pickCaller } from "./server/agents";
 import { installBridge } from "./server/bridge";
 import { discuss } from "./server/discuss";
@@ -193,7 +193,7 @@ export default function contribute(server: PluginServerContext) {
     const asks = store
       .list(workspaceId)
       .filter((ask) => includeClosed || OPEN_STATUSES.includes(ask.status));
-    asks.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    asks.sort(oldestFirst);
     if (workspaceId) return { asks };
     // The global screen has no workspace context, so client state hooks can't resolve names there.
     // Background and archived asks remain available by workspace, but stay out of the global queue.

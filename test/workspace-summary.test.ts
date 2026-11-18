@@ -44,7 +44,7 @@ describe("askDetail", () => {
 });
 
 describe("workspaceAsks", () => {
-  it("lists waiting asks newest first and reports workspaces with only closed or in-progress asks as 0", () => {
+  it("lists waiting asks oldest first, keeps the newest id, and reports workspaces with only closed or in-progress asks as 0", () => {
     const result = workspaceAsks(
       [
         ask("A1", "w1", "open", "2026-11-11T10:00:00Z"),
@@ -60,8 +60,8 @@ describe("workspaceAsks", () => {
         count: 2,
         newestId: "A3",
         entries: [
-          { id: "A3", title: "Title A3", detail: "Action" },
           { id: "A1", title: "Title A1", detail: "Question" },
+          { id: "A3", title: "Title A3", detail: "Action" },
         ],
       },
       w2: { count: 0, entries: [] },
