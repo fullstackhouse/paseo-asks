@@ -109,6 +109,31 @@ describe("phase 2", () => {
     expect(sent).toEqual(["[asks] A1 (Merge PR #30) PR #30 merged."]);
   });
 
+  it("does not report a relinked ask's new PR as a change of the old one", async () => {
+    // The ask first tracks a merged spec PR, then the agent relinks it to the implementation PR.
+    await service.callTool(OWNER, "ask_create", {
+      kind: "followup",
+      title: "Implement the spec",
+      links: [{ label: "Spec PR", url: "https://github.com/o/r/pull/29" }],
+      subscribe: true,
+    });
+    let next = pr({ number: 29, url: "https://github.com/o/r/pull/29", state: "MERGED" });
+    const watcher = new PrWatcher(store, service, async () => next);
+    await watcher.refresh();
+
+    await service.callTool(OWNER, "ask_update", { id: "A1", links: [{ label: "PR", url: "https://github.com/o/r/pull/30" }] });
+    next = pr();
+    await watcher.refresh();
+    await outbox.flush();
+    expect(sent).toEqual([]);
+    expect(store.get(WS, "A1")?.pr).toMatchObject({ number: 30, state: "OPEN" });
+
+    next = pr({ checks: "passing" });
+    await watcher.refresh();
+    await outbox.flush();
+    expect(sent).toEqual(["[asks] A1 (Implement the spec) PR #30 checks passing."]);
+  });
+
   it("does not tell an owner who did not subscribe, and does not bump the ask's age", async () => {
     await prAsk(false);
     const before = store.get(WS, "A1")!.updatedAt;
