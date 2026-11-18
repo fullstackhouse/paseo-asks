@@ -37,14 +37,16 @@ export class PrWatcher {
       // Held whenever changes are requested, not only on the change into it: the setting may have been turned off
       // afterwards, and agents told to wait for the Address ask must get one.
       const holdReview = !actOnReviews && pr.reviewDecision === "CHANGES_REQUESTED";
-      const change = ask.pr ? describePrChange(ask.pr, pr, { review: !holdReview }) : null;
+      // A relinked ask's snapshot belongs to its old PR: comparing would report e.g. a merged PR as reopened.
+      const previous = ask.pr?.url === pr.url ? ask.pr : undefined;
+      const change = previous ? describePrChange(previous, pr, { review: !holdReview }) : null;
       const current = this.store.get(ask.workspaceId, ask.id);
       if (!current) continue;
       await this.store.update(ask.workspaceId, ask.id, { pr }, { touch: false });
       // The human may have closed the ask while gh was running.
       if (!current.subscribe || current.orphaned || !OPEN_STATUSES.includes(current.status)) continue;
       if (change) this.service.notify(current, `[asks] ${current.id} (${current.title}) ${change}.`);
-      if (holdReview) await this.service.raiseReview(current, pr, { newRound: ask.pr !== undefined && changesNewlyRequested(ask.pr, pr) });
+      if (holdReview) await this.service.raiseReview(current, pr, { newRound: previous !== undefined && changesNewlyRequested(previous, pr) });
     }
   }
 }
