@@ -26,6 +26,9 @@ export interface Courier {
 }
 
 const MAX_ATTEMPTS = 5;
+
+/** Why messages were given up on: the agent is gone, or every attempt to reach it failed. */
+export type UndeliverableReason = "gone" | "failed";
 const KEEP_DELIVERED = 200;
 
 /**
@@ -42,7 +45,7 @@ export class Outbox {
   constructor(
     root: string,
     private readonly courier: Courier,
-    private readonly onGone: (deliveries: Delivery[]) => Promise<void> = async () => {},
+    private readonly onUndeliverable: (deliveries: Delivery[], reason: UndeliverableReason) => Promise<void> = async () => {},
     private readonly now: () => Date = () => new Date(),
   ) {
     this.path = join(root, "outbox.json");
@@ -85,7 +88,7 @@ export class Outbox {
       if (state === "gone") {
         for (const entry of batch) Object.assign(entry, { state: "failed", error: "agent is gone" });
         this.save();
-        await this.onGone(batch);
+        await this.onUndeliverable(batch, "gone");
         continue;
       }
       try {
@@ -97,6 +100,10 @@ export class Outbox {
           entry.error = error instanceof Error ? error.message : String(error);
           if (entry.attempts >= MAX_ATTEMPTS) entry.state = "failed";
         }
+        this.save();
+        const failed = batch.filter((entry) => entry.state === "failed");
+        if (failed.length) await this.onUndeliverable(failed, "failed");
+        continue;
       }
       this.save();
     }

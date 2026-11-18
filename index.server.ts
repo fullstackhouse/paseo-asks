@@ -74,12 +74,15 @@ export default function contribute(server: PluginServerContext) {
         .send(text, { messageId, activeTurnBehavior: "steer" });
     },
   };
-  const outbox = new Outbox(dir, courier, async (deliveries) => {
+  const outbox = new Outbox(dir, courier, async (deliveries, reason) => {
     for (const { workspaceId, askId } of deliveries) {
       const ask = askId ? store.get(workspaceId, askId) : undefined;
-      // Nobody will hear a click, but the human still has to see what it was waiting on.
-      if (ask && OPEN_STATUSES.includes(ask.status))
-        await store.update(workspaceId, ask.id, { orphaned: true, status: "open" });
+      if (!ask || !OPEN_STATUSES.includes(ask.status)) continue;
+      // Gone: nobody will hear a click, but the human still has to see what it was waiting on.
+      // Failed (e.g. the agent's worktree was deleted): the click never arrived, so nobody is working
+      // on it. Hand it back with its buttons; a later click retries, and once the host archives the
+      // agent the gone path orphans the ask.
+      await store.update(workspaceId, ask.id, reason === "gone" ? { orphaned: true, status: "open" } : { status: "open" });
     }
   });
   const service = new AsksService(

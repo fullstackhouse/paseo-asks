@@ -11,11 +11,12 @@ class FakeCourier implements Courier {
   states = new Map<string, AgentState>();
   sent: { agentId: string; text: string; messageId: string }[] = [];
   failNext = false;
+  failAlways = false;
   async state(agentId: string) {
     return this.states.get(agentId) ?? "idle";
   }
   async send(agentId: string, text: string, messageId: string) {
-    if (this.failNext) {
+    if (this.failNext || this.failAlways) {
       this.failNext = false;
       throw new Error("daemon said no");
     }
@@ -37,10 +38,14 @@ describe("asks", () => {
     dir = mkdtempSync(join(tmpdir(), "asks-"));
     store = new AskStore(dir);
     courier = new FakeCourier();
-    outbox = new Outbox(dir, courier, async (deliveries) => {
+    outbox = new Outbox(dir, courier, async (deliveries, reason) => {
       for (const delivery of deliveries)
         if (delivery.askId)
-          await store.update(delivery.workspaceId, delivery.askId, { orphaned: true });
+          await store.update(
+            delivery.workspaceId,
+            delivery.askId,
+            reason === "gone" ? { orphaned: true } : { status: "open" },
+          );
     });
     service = new AsksService(store, outbox, async (agentId) => (agentId === AGENT ? WS : null));
   });
@@ -261,6 +266,22 @@ describe("asks", () => {
     await outbox.flush();
     expect(courier.sent).toHaveLength(1);
     expect(outbox.pending()).toHaveLength(0);
+  });
+
+  it("hands a click back to the human when it can't be delivered", async () => {
+    await service.callTool(AGENT, "ask_create", {
+      kind: "pr",
+      title: "Merge PR #30?",
+      actions: [{ label: "Merge", kind: "send", prompt: "Merge PR #30 with squash" }],
+    });
+    courier.failAlways = true;
+    await service.act({ workspaceId: WS, id: "A1", verb: "action", actionId: "a1" });
+    expect(store.get(WS, "A1")?.status).toBe("in_progress");
+    for (let attempt = 0; attempt < 5; attempt++) await outbox.flush();
+    expect(outbox.pending()).toHaveLength(0);
+    // Back to open, so the human sees the buttons again instead of an ask nobody works on.
+    expect(store.get(WS, "A1")?.status).toBe("open");
+    expect(store.get(WS, "A1")?.orphaned).toBeFalsy();
   });
 
   it("orphans an open ask whose agent is gone, and stops notifying", async () => {
