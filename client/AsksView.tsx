@@ -12,6 +12,7 @@ import {
   refreshAsks,
   type Action,
   type Ask,
+  type Deployment,
   type PrState,
 } from "../shared/asks";
 import { displaySettings } from "../shared/settings";
@@ -576,6 +577,7 @@ function AskDetail({
         ) : (
           <PrDetail pr={ask.pr} styles={styles} />
         ))}
+      {ask.pr?.deployments?.length ? <Deployments deployments={ask.pr.deployments} styles={styles} /> : null}
       {ask.orphaned && (
         <Text style={styles.orphaned}>
           The agent that raised this is archived. Closing it here notifies nobody.
@@ -674,6 +676,40 @@ function PrDetail({ pr, styles }: { pr: PrState; styles: Styles }) {
     pr.state === "OPEN" && pr.mergeable === "CONFLICTING" ? "has conflicts" : "",
   ].filter(Boolean);
   return <Text style={styles.prDetail}>{parts.join(" · ")}</Text>;
+}
+
+const DEPLOYMENT: Record<Deployment["state"], { mark: string; verb: string; tone: "good" | "muted" | "bad" }> = {
+  ready: { mark: "●", verb: "", tone: "good" },
+  deploying: { mark: "◌", verb: "deploying ", tone: "muted" },
+  failed: { mark: "✕", verb: "failed ", tone: "bad" },
+};
+
+/** Preview deployments of the PR's head commit: ready ones open the preview, the rest their logs. */
+function Deployments({ deployments, styles }: { deployments: Deployment[]; styles: Styles }) {
+  return (
+    <View style={styles.chips}>
+      {deployments.map((deployment) => {
+        const { mark, verb, tone } = DEPLOYMENT[deployment.state];
+        // The URL-less entry's label already says "Deploying".
+        const text = `${mark} ${deployment.url ? verb : ""}${deployment.label}`;
+        const link = deployment.link;
+        return (
+          <Pressable
+            key={`${deployment.url ?? ""}:${deployment.label}`}
+            accessibilityRole="link"
+            accessibilityLabel={text.slice(2)}
+            disabled={!link}
+            onPress={() => link && openLink(link)}
+            style={styles.chip}
+          >
+            <Text style={[styles.chipText, styles[tone]]} numberOfLines={1}>
+              {text}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
 }
 
 /** A PR link that opens the PR's review screen in paseo-inbox. */
@@ -849,6 +885,17 @@ function makeStyles(theme: PluginTheme, compact: boolean) {
     good: { color: colors.statusSuccess },
     bad: { color: colors.statusDanger },
     prDetail: { color: colors.foregroundMuted, fontSize: 12 },
+    chips: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: 6 },
+    chip: {
+      maxWidth: "100%" as const,
+      paddingVertical: compact ? 6 : 3,
+      paddingHorizontal: 8,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface1,
+    },
+    chipText: { fontSize: 12 },
     muted: { color: colors.foregroundMuted },
     danger: { color: colors.statusDanger },
   };

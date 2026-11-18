@@ -39,6 +39,8 @@ export class PrWatcher {
       const holdReview = !actOnReviews && pr.reviewDecision === "CHANGES_REQUESTED";
       // A relinked ask's snapshot belongs to its old PR: comparing would report e.g. a merged PR as reopened.
       const previous = ask.pr?.url === pr.url ? ask.pr : undefined;
+      // A failed deployments lookup keeps the last known ones rather than blanking them until the next poll.
+      if (!pr.deployments && previous?.deployments) pr = { ...pr, deployments: previous.deployments };
       const change = previous ? describePrChange(previous, pr, { review: !holdReview }) : null;
       const current = this.store.get(ask.workspaceId, ask.id);
       if (!current) continue;

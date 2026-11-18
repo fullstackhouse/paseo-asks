@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { execCommand } from "@getpaseo/plugin/server";
-import { OPEN_STATUSES, prUrlOf, type Ask, type PrState } from "../shared/asks";
+import { OPEN_STATUSES, prUrlOf, type Ask, type Deployment, type PrState } from "../shared/asks";
+import { fetchDeployments } from "./deployments";
 
 // The daemon is often launched from the Dock with a bare PATH, so look where gh usually lives.
 const GH_CANDIDATES = ["/opt/homebrew/bin/gh", "/usr/local/bin/gh", "/usr/bin/gh"];
@@ -19,6 +20,11 @@ export type FetchPr = (url: string) => Promise<PrState>;
 
 export function ghFetcher(gh: string): FetchPr {
   return async (url) => {
+    // Deployments are extra: a failed lookup (often the GraphQL rate limit) leaves them unset, not the PR line broken.
+    const deployments = fetchDeployments(gh, url).catch((error): Deployment[] | undefined => {
+      console.error(`[asks] deployments lookup failed for ${url}`, error instanceof Error ? error.message : error);
+      return undefined;
+    });
     const { stdout } = await execCommand(
       gh,
       ["pr", "view", url, "--json", "number,url,state,isDraft,reviewDecision,mergeable,statusCheckRollup"],
@@ -33,6 +39,7 @@ export function ghFetcher(gh: string): FetchPr {
       reviewDecision: pr.reviewDecision || null,
       mergeable: pr.mergeable ?? "UNKNOWN",
       checks: summarizeChecks(pr.statusCheckRollup ?? []),
+      deployments: await deployments,
       fetchedAt: new Date().toISOString(),
     };
   };
@@ -53,6 +60,11 @@ export function describePrChange(before: PrState, after: PrState, { review = tru
   const changes: string[] = [];
   if (before.state !== after.state) changes.push(after.state === "MERGED" ? "merged" : after.state === "CLOSED" ? "closed without merging" : "reopened");
   if (before.checks !== after.checks && (after.checks === "failing" || after.checks === "passing")) changes.push(`checks ${after.checks}`);
+  for (const deployment of after.deployments ?? []) {
+    if (deployment.state !== "ready" || !before.deployments) continue;
+    const was = before.deployments.find((entry) => entry.url === deployment.url);
+    if (was?.state !== "ready") changes.push(`preview ready: ${deployment.url}`);
+  }
   if (review && before.reviewDecision !== after.reviewDecision && after.reviewDecision) {
     changes.push(`review: ${after.reviewDecision.toLowerCase().replace(/_/g, " ")}`);
   }

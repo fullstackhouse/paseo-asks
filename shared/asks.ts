@@ -25,6 +25,15 @@ export const OutcomeSchema = z.object({
   at: z.string(),
 });
 
+/** A preview deployment of the PR's head commit, one per URL. `link` is where tapping it goes. */
+export const DeploymentSchema = z.object({
+  label: z.string(),
+  state: z.enum(["ready", "deploying", "failed"]),
+  url: z.string().optional(),
+  link: z.string().optional(),
+});
+export type Deployment = z.infer<typeof DeploymentSchema>;
+
 export const PrStateSchema = z.object({
   number: z.number(),
   url: z.string(),
@@ -33,6 +42,8 @@ export const PrStateSchema = z.object({
   reviewDecision: z.string().nullable(),
   checks: z.enum(["passing", "failing", "pending", "none"]),
   mergeable: z.string(),
+  /** Unset when the deployments lookup failed or predates this field; empty when the head commit has none. */
+  deployments: z.array(DeploymentSchema).optional(),
   fetchedAt: z.string(),
 });
 export type PrState = z.infer<typeof PrStateSchema>;

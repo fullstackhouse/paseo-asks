@@ -109,6 +109,23 @@ describe("phase 2", () => {
     expect(sent).toEqual(["[asks] A1 (Merge PR #30) PR #30 merged."]);
   });
 
+  it("keeps the last deployments when a lookup fails, and tells the owner when a preview becomes ready", async () => {
+    await prAsk(true);
+    const preview = { label: "pr-30.example.dev", url: "https://pr-30.example.dev" };
+    let next = pr({ deployments: [{ ...preview, state: "deploying", link: "https://ci.example.com/1" }] });
+    const watcher = new PrWatcher(store, service, async () => next);
+    await watcher.refresh();
+
+    next = pr();
+    await watcher.refresh();
+    expect(store.get(WS, "A1")?.pr?.deployments).toEqual([{ ...preview, state: "deploying", link: "https://ci.example.com/1" }]);
+
+    next = pr({ deployments: [{ ...preview, state: "ready", link: preview.url }] });
+    await watcher.refresh();
+    await outbox.flush();
+    expect(sent).toEqual(["[asks] A1 (Merge PR #30) PR #30 preview ready: https://pr-30.example.dev."]);
+  });
+
   it("does not report a relinked ask's new PR as a change of the old one", async () => {
     // The ask first tracks a merged spec PR, then the agent relinks it to the implementation PR.
     await service.callTool(OWNER, "ask_create", {
