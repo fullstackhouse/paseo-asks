@@ -165,16 +165,17 @@ describe("phase 2", () => {
     expect(store.get(WS, "A1")?.pr?.state).toBe("MERGED");
   });
 
-  it("does not poll an orphaned ask's PR", async () => {
+  it("keeps an orphaned ask's open PR fresh for the human without telling anyone", async () => {
     await prAsk(true);
     await store.update(WS, "A1", { orphaned: true });
-    const fetched: string[] = [];
-    const watcher = new PrWatcher(store, service, async (url) => {
-      fetched.push(url);
-      return pr();
-    });
+    let next = pr();
+    const watcher = new PrWatcher(store, service, async () => next);
     await watcher.refresh();
-    expect(fetched).toEqual([]);
+    next = pr({ checks: "passing" });
+    await watcher.refresh();
+    await outbox.flush();
+    expect(store.get(WS, "A1")?.pr?.checks).toBe("passing");
+    expect(sent).toEqual([]);
   });
 
   it("reads a PR linked by several asks once per pass, and updates every one of them", async () => {

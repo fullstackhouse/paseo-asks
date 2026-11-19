@@ -80,8 +80,6 @@ export function watchedAsks(asks: readonly Ask[]): Ask[] {
     if (!url || !OPEN_STATUSES.includes(ask.status)) return false;
     // A held review's ask links the same PR as the PR ask it came from, so polling it would only repeat that call.
     if (ask.heldReview) return false;
-    // Nobody hears about an orphaned ask's PR; the human sees its last snapshot.
-    if (ask.orphaned) return false;
     // A merged PR never changes again. Agents leave merged PR asks open by the hundred, and polling them spent the
     // GitHub quota every other gh user on the machine shares. A relinked ask's snapshot is its old PR, so it still polls.
     return !(ask.pr?.state === "MERGED" && ask.pr.url === url);
