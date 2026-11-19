@@ -14,6 +14,8 @@ export class PrWatcher {
     private readonly fetchPr: FetchPr,
     /** False when the human wants requested changes held as an ask rather than sent to the agent. */
     private readonly actOnReviewChanges: () => Promise<boolean> = async () => true,
+    /** Ids of the workspaces that are not archived; null while the daemon can't be asked. */
+    private readonly liveWorkspaces: () => Promise<ReadonlySet<string> | null> = async () => null,
   ) {}
 
   refresh(only?: Pick<Ask, "workspaceId" | "id">): Promise<void> {
@@ -24,7 +26,18 @@ export class PrWatcher {
   }
 
   private async refreshNow(only?: Pick<Ask, "workspaceId" | "id">): Promise<void> {
-    const asks = watchedAsks(this.store.list(only?.workspaceId)).filter((ask) => !only || ask.id === only.id);
+    const watched = watchedAsks(this.store.list(only?.workspaceId)).filter((ask) => !only || ask.id === only.id);
+    if (!watched.length) return;
+    // An archived workspace's asks are out of the human's queue, so their PRs would only spend the GitHub quota.
+    // A restored workspace is polled again on the next pass. A single ask comes from a tool call, made in a visible
+    // workspace. When the daemon can't list workspaces, the pass polls them all rather than none.
+    const live = only
+      ? null
+      : await this.liveWorkspaces().catch((error) => {
+          console.error("[asks] could not list workspaces; polling all PR asks", error);
+          return null;
+        });
+    const asks = live ? watched.filter((ask) => live.has(ask.workspaceId)) : watched;
     if (!asks.length) return;
     const actOnReviews = await this.actOnReviewChanges();
     // Several asks often link one PR; each pass reads it once.

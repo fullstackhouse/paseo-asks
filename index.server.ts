@@ -97,7 +97,11 @@ export default function contribute(server: PluginServerContext) {
   const lastOutputs = new LastOutputs(dir);
   const ghPath = findGh();
   if (!ghPath) console.error("[asks] gh not found; PR asks will show no live status");
-  const watcher = ghPath ? new PrWatcher(store, service, ghFetcher(new Gh(ghExec(ghPath))), actOnReviewChanges) : null;
+  // Until a hook or RPC hands over a daemon session (e.g. right after a reload), every workspace is polled.
+  const liveWorkspaces = async () => (paseo ? new Set((await activeWorkspaces(paseo)).keys()) : null);
+  const watcher = ghPath
+    ? new PrWatcher(store, service, ghFetcher(new Gh(ghExec(ghPath))), actOnReviewChanges, liveWorkspaces)
+    : null;
   // Short-lived classifier agents the plugin starts itself; its hooks leave them alone.
   const helpers = new Set<string>();
   const classifierFor = paseoClassifier(requirePaseo, helpers);
