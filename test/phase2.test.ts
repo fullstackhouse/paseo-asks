@@ -262,6 +262,25 @@ describe("phase 2", () => {
     expect(fetched).toEqual(["https://github.com/o/r/pull/30"]);
   });
 
+  it("polls every PR ask when the daemon cannot list workspaces", async () => {
+    await prAsk(true);
+    const fetched: string[] = [];
+    const watcher = new PrWatcher(
+      store,
+      service,
+      async (url) => {
+        fetched.push(url);
+        return pr();
+      },
+      async () => true,
+      async () => {
+        throw new Error("daemon unavailable");
+      },
+    );
+    await watcher.refresh();
+    expect(fetched).toEqual(["https://github.com/o/r/pull/30"]);
+  });
+
   it("does not tell an owner who did not subscribe, and does not bump the ask's age", async () => {
     await prAsk(false);
     const before = store.get(WS, "A1")!.updatedAt;

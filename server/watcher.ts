@@ -29,8 +29,14 @@ export class PrWatcher {
     const watched = watchedAsks(this.store.list(only?.workspaceId)).filter((ask) => !only || ask.id === only.id);
     if (!watched.length) return;
     // An archived workspace's asks are out of the human's queue, so their PRs would only spend the GitHub quota.
-    // A restored workspace is polled again on the next pass.
-    const live = await this.liveWorkspaces();
+    // A restored workspace is polled again on the next pass. A single ask comes from a tool call, made in a visible
+    // workspace. When the daemon can't list workspaces, the pass polls them all rather than none.
+    const live = only
+      ? null
+      : await this.liveWorkspaces().catch((error) => {
+          console.error("[asks] could not list workspaces; polling all PR asks", error);
+          return null;
+        });
     const asks = live ? watched.filter((ask) => live.has(ask.workspaceId)) : watched;
     if (!asks.length) return;
     const actOnReviews = await this.actOnReviewChanges();
