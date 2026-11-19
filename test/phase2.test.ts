@@ -236,6 +236,32 @@ describe("phase 2", () => {
     expect(fetched).toEqual(["https://github.com/o/r/pull/30"]);
   });
 
+  it("polls only the PR asks of workspaces that are not archived", async () => {
+    await prAsk(true);
+    await store.create({
+      workspaceId: "wks_archived",
+      ownerAgentId: OWNER,
+      kind: "pr",
+      title: "Merge PR #31",
+      links: [{ label: "PR", url: "https://github.com/o/r/pull/31" }],
+      subscribe: true,
+      actions: [],
+    });
+    const fetched: string[] = [];
+    const watcher = new PrWatcher(
+      store,
+      service,
+      async (url) => {
+        fetched.push(url);
+        return pr({ url });
+      },
+      async () => true,
+      async () => new Set([WS]),
+    );
+    await watcher.refresh();
+    expect(fetched).toEqual(["https://github.com/o/r/pull/30"]);
+  });
+
   it("does not tell an owner who did not subscribe, and does not bump the ask's age", async () => {
     await prAsk(false);
     const before = store.get(WS, "A1")!.updatedAt;
