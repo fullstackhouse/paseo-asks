@@ -85,6 +85,10 @@ export const asks: Ask[] = [
       reviewDecision: "APPROVED",
       checks: "passing",
       mergeable: "MERGEABLE",
+      deployments: [
+        { label: "pr-29.shop-api.example.dev", state: "ready", url: "https://pr-29.shop-api.example.dev", link: "https://pr-29.shop-api.example.dev" },
+        { label: "docs-pr-29.shop-api.example.dev", state: "deploying", url: "https://docs-pr-29.shop-api.example.dev", link: "https://github.com/acme/shop-api/actions/runs/1" },
+      ],
       fetchedAt: ago(1),
     },
     subscribe: true,
@@ -130,6 +134,10 @@ export const asks: Ask[] = [
       reviewDecision: null,
       checks: "pending",
       mergeable: "MERGEABLE",
+      deployments: [
+        { label: "shop-api-git-coupons-acme.vercel.app", state: "failed", url: "https://shop-api-git-coupons-acme.vercel.app", link: "https://vercel.com/acme/shop-api/deployments" },
+        { label: "Deploying", state: "deploying", link: "https://github.com/acme/shop-api/actions/runs/2" },
+      ],
       fetchedAt: ago(1),
     },
     updatedAt: ago(4),
