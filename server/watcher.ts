@@ -1,4 +1,5 @@
-import { OPEN_STATUSES, prUrlOf, type Ask } from "../shared/asks";
+import { OPEN_STATUSES, prUrlOf, type Ask, type PrState } from "../shared/asks";
+import { RateLimited } from "./gh";
 import { changesNewlyRequested, describePrChange, watchedAsks, type FetchPr } from "./github";
 import type { AsksService } from "./service";
 import type { AskStore } from "./store";
@@ -26,14 +27,22 @@ export class PrWatcher {
     const asks = watchedAsks(this.store.list(only?.workspaceId)).filter((ask) => !only || ask.id === only.id);
     if (!asks.length) return;
     const actOnReviews = await this.actOnReviewChanges();
+    // Several asks often link one PR; each pass reads it once.
+    const fetched = new Map<string, PrState | null>();
     for (const ask of asks) {
-      let pr;
-      try {
-        pr = await this.fetchPr(prUrlOf(ask)!);
-      } catch (error) {
-        console.error(`[asks] gh pr view failed for ${ask.workspaceId}/${ask.id}`, error instanceof Error ? error.message : error);
-        continue;
+      const url = prUrlOf(ask)!;
+      if (!fetched.has(url)) {
+        try {
+          fetched.set(url, await this.fetchPr(url));
+        } catch (error) {
+          // The rest of the pass would fail the same way; the next one after the reset picks it up.
+          if (error instanceof RateLimited) return;
+          console.error(`[asks] gh pr view failed for ${url}`, error instanceof Error ? error.message : error);
+          fetched.set(url, null);
+        }
       }
+      let pr = fetched.get(url);
+      if (pr == null) continue;
       // Held whenever changes are requested, not only on the change into it: the setting may have been turned off
       // afterwards, and agents told to wait for the Address ask must get one.
       const holdReview = !actOnReviews && pr.reviewDecision === "CHANGES_REQUESTED";

@@ -1,5 +1,5 @@
-import { execCommand } from "@getpaseo/plugin/server";
 import type { Deployment } from "../shared/asks";
+import type { Gh } from "./gh";
 
 /** One GitHub deployment of the PR's head commit, as the GraphQL query below returns it. */
 export interface DeploymentNode {
@@ -60,15 +60,11 @@ function hostOf(url: string): string {
 
 const PR_URL = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/;
 
-export async function fetchDeployments(gh: string, prUrl: string): Promise<Deployment[]> {
+export async function fetchDeployments(gh: Gh, prUrl: string): Promise<Deployment[]> {
   const match = PR_URL.exec(prUrl);
   if (!match) return [];
   const [, owner, name, number] = match;
-  const { stdout } = await execCommand(
-    gh,
-    ["api", "graphql", "-f", `query=${QUERY}`, "-f", `owner=${owner}`, "-f", `name=${name}`, "-F", `number=${number}`],
-    { timeout: 20_000, env: { ...process.env, GH_PROMPT_DISABLED: "1" } },
-  );
+  const stdout = await gh.run(["api", "graphql", "-f", `query=${QUERY}`, "-f", `owner=${owner}`, "-f", `name=${name}`, "-F", `number=${number}`]);
   const commit = JSON.parse(stdout).data?.repository?.pullRequest?.commits?.nodes?.[0]?.commit;
   return summarizeDeployments(commit?.deployments?.nodes ?? []);
 }

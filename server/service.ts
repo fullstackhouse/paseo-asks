@@ -89,6 +89,8 @@ export const TOOLS = [
 export interface ToolResult {
   text: string;
   isError?: boolean;
+  /** The ask the call created or changed. */
+  ask?: Pick<Ask, "workspaceId" | "id">;
 }
 
 /** What an agent in a background workspace gets back instead of an ask. */
@@ -323,5 +325,5 @@ function summary(ask: Ask): string {
 
 function render(ask: Ask): ToolResult {
   const actions = ask.actions.map((action) => `${action.id} ${action.kind} "${action.label}"`).join(", ");
-  return { text: `${summary(ask)}${actions ? `\nactions: ${actions}` : ""}` };
+  return { text: `${summary(ask)}${actions ? `\nactions: ${actions}` : ""}`, ask: { workspaceId: ask.workspaceId, id: ask.id } };
 }

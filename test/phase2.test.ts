@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { PrState } from "../shared/asks";
 import { prPreviewOf, prUrlOf } from "../shared/asks";
 import { seedPrompt } from "../server/discuss";
+import { RateLimited } from "../server/gh";
 import { describePrChange, summarizeChecks } from "../server/github";
 import { latestReply } from "../server/last-output";
 import { Outbox, type Courier } from "../server/outbox";
@@ -158,6 +159,81 @@ describe("phase 2", () => {
     await watcher.refresh();
     await outbox.flush();
     expect(sent).toEqual(["[asks] A1 (Implement the spec) PR #30 checks passing."]);
+  });
+
+  it("stops polling a PR ask once its PR is merged", async () => {
+    await prAsk(true);
+    const fetched: string[] = [];
+    const watcher = new PrWatcher(store, service, async (url) => {
+      fetched.push(url);
+      return pr({ state: "MERGED" });
+    });
+    await watcher.refresh();
+    await watcher.refresh();
+    expect(fetched).toEqual(["https://github.com/o/r/pull/30"]);
+    expect(store.get(WS, "A1")?.pr?.state).toBe("MERGED");
+  });
+
+  it("keeps an orphaned ask's open PR fresh for the human without telling anyone", async () => {
+    await prAsk(true);
+    await store.update(WS, "A1", { orphaned: true });
+    let next = pr();
+    const watcher = new PrWatcher(store, service, async () => next);
+    await watcher.refresh();
+    next = pr({ checks: "passing" });
+    await watcher.refresh();
+    await outbox.flush();
+    expect(store.get(WS, "A1")?.pr?.checks).toBe("passing");
+    expect(sent).toEqual([]);
+  });
+
+  it("reads a PR linked by several asks once per pass, and updates every one of them", async () => {
+    await prAsk(true);
+    await prAsk(true);
+    const fetched: string[] = [];
+    const watcher = new PrWatcher(store, service, async (url) => {
+      fetched.push(url);
+      return pr({ checks: "passing" });
+    });
+    await watcher.refresh();
+    expect(fetched).toEqual(["https://github.com/o/r/pull/30"]);
+    expect([store.get(WS, "A1")?.pr?.checks, store.get(WS, "A2")?.pr?.checks]).toEqual(["passing", "passing"]);
+  });
+
+  it("refreshes only the ask it is given", async () => {
+    await prAsk(true);
+    await service.callTool(OWNER, "ask_create", {
+      kind: "pr",
+      title: "Merge PR #31",
+      links: [{ label: "PR", url: "https://github.com/o/r/pull/31" }],
+    });
+    const fetched: string[] = [];
+    const watcher = new PrWatcher(store, service, async (url) => {
+      fetched.push(url);
+      return pr({ url });
+    });
+    await watcher.refresh({ workspaceId: WS, id: "A2" });
+    expect(fetched).toEqual(["https://github.com/o/r/pull/31"]);
+  });
+
+  it("names the ask a tool call created, so the caller can refresh just that one", async () => {
+    expect((await prAsk(true)).ask).toEqual({ workspaceId: WS, id: "A1" });
+  });
+
+  it("ends a pass at a spent rate limit instead of trying the remaining PRs", async () => {
+    await prAsk(true);
+    await service.callTool(OWNER, "ask_create", {
+      kind: "pr",
+      title: "Merge PR #31",
+      links: [{ label: "PR", url: "https://github.com/o/r/pull/31" }],
+    });
+    const fetched: string[] = [];
+    const watcher = new PrWatcher(store, service, async (url) => {
+      fetched.push(url);
+      throw new RateLimited(0);
+    });
+    await watcher.refresh();
+    expect(fetched).toEqual(["https://github.com/o/r/pull/30"]);
   });
 
   it("does not tell an owner who did not subscribe, and does not bump the ask's age", async () => {
