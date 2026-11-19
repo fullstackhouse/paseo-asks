@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
-import { execCommand } from "@getpaseo/plugin/server";
 import { OPEN_STATUSES, prUrlOf, type Ask, type Deployment, type PrState } from "../shared/asks";
 import { fetchDeployments } from "./deployments";
+import { RateLimited, type Gh } from "./gh";
 
 // The daemon is often launched from the Dock with a bare PATH, so look where gh usually lives.
 const GH_CANDIDATES = ["/opt/homebrew/bin/gh", "/usr/local/bin/gh", "/usr/bin/gh"];
@@ -18,18 +18,17 @@ interface CheckItem {
 
 export type FetchPr = (url: string) => Promise<PrState>;
 
-export function ghFetcher(gh: string): FetchPr {
+export function ghFetcher(gh: Gh): FetchPr {
   return async (url) => {
-    // Deployments are extra: a failed lookup (often the GraphQL rate limit) leaves them unset, not the PR line broken.
+    // Deployments are extra: a failed lookup leaves them unset, not the PR line broken. A spent quota fails the PR
+    // view too, which reports it.
     const deployments = fetchDeployments(gh, url).catch((error): Deployment[] | undefined => {
-      console.error(`[asks] deployments lookup failed for ${url}`, error instanceof Error ? error.message : error);
+      if (!(error instanceof RateLimited)) {
+        console.error(`[asks] deployments lookup failed for ${url}`, error instanceof Error ? error.message : error);
+      }
       return undefined;
     });
-    const { stdout } = await execCommand(
-      gh,
-      ["pr", "view", url, "--json", "number,url,state,isDraft,reviewDecision,mergeable,statusCheckRollup"],
-      { timeout: 20_000, env: { ...process.env, GH_PROMPT_DISABLED: "1" } },
-    );
+    const stdout = await gh.run(["pr", "view", url, "--json", "number,url,state,isDraft,reviewDecision,mergeable,statusCheckRollup"]);
     const pr = JSON.parse(stdout);
     return {
       number: pr.number,
@@ -76,6 +75,15 @@ export function changesNewlyRequested(before: PrState, after: PrState): boolean 
 }
 
 export function watchedAsks(asks: readonly Ask[]): Ask[] {
-  // A held review's ask links the same PR as the PR ask it came from, so polling it would only repeat that call.
-  return asks.filter((ask) => OPEN_STATUSES.includes(ask.status) && !ask.heldReview && prUrlOf(ask));
+  return asks.filter((ask) => {
+    const url = prUrlOf(ask);
+    if (!url || !OPEN_STATUSES.includes(ask.status)) return false;
+    // A held review's ask links the same PR as the PR ask it came from, so polling it would only repeat that call.
+    if (ask.heldReview) return false;
+    // Nobody hears about an orphaned ask's PR; the human sees its last snapshot.
+    if (ask.orphaned) return false;
+    // A merged PR never changes again. Agents leave merged PR asks open by the hundred, and polling them spent the
+    // GitHub quota every other gh user on the machine shares. A relinked ask's snapshot is its old PR, so it still polls.
+    return !(ask.pr?.state === "MERGED" && ask.pr.url === url);
+  });
 }

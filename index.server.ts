@@ -4,6 +4,7 @@ import { actOnAsk, discussAsk, listAsks, OPEN_STATUSES, oldestFirst, refreshAsks
 import { AgentDirectory, pickCaller } from "./server/agents";
 import { installBridge } from "./server/bridge";
 import { discuss } from "./server/discuss";
+import { Gh, ghExec } from "./server/gh";
 import { findGh, ghFetcher } from "./server/github";
 import { LastOutputs } from "./server/last-output";
 import { listen } from "./server/listener";
@@ -94,9 +95,9 @@ export default function contribute(server: PluginServerContext) {
     (workspaceId) => (paseo ? isBackground(paseo, workspaceId) : Promise.resolve(false)),
   );
   const lastOutputs = new LastOutputs(dir);
-  const gh = findGh();
-  if (!gh) console.error("[asks] gh not found; PR asks will show no live status");
-  const watcher = gh ? new PrWatcher(store, service, ghFetcher(gh), actOnReviewChanges) : null;
+  const ghPath = findGh();
+  if (!ghPath) console.error("[asks] gh not found; PR asks will show no live status");
+  const watcher = ghPath ? new PrWatcher(store, service, ghFetcher(new Gh(ghExec(ghPath))), actOnReviewChanges) : null;
   // Short-lived classifier agents the plugin starts itself; its hooks leave them alone.
   const helpers = new Set<string>();
   const classifierFor = paseoClassifier(requirePaseo, helpers);
@@ -240,9 +241,9 @@ export default function contribute(server: PluginServerContext) {
         name,
         args,
       );
-      if (!result.isError && (name === "ask_create" || name === "ask_update"))
-        void watcher?.refresh();
-      return result;
+      // Shows a newly linked PR's state now rather than at the next poll.
+      if (result.ask && (name === "ask_create" || name === "ask_update")) void watcher?.refresh(result.ask);
+      return { text: result.text, isError: result.isError };
     },
     // The same disposal the UI does, for scripts and terminal use.
     "/act": async (input) => service.act(actOnAsk.input.parse(input)),
