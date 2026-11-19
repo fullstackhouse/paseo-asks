@@ -8,7 +8,7 @@ import {
   actOnAsk,
   discussAsk,
   listAsks,
-  prLinkOf,
+  prPreviewOf,
   refreshAsks,
   type Action,
   type Ask,
@@ -558,7 +558,7 @@ function AskDetail({
       ) : null}
       {bodyShown && ask.body?.trim() ? <Markdown>{ask.body}</Markdown> : null}
       {ask.links.map((link) => {
-        const pr = openPr && prLinkOf(link.url);
+        const pr = openPr && prPreviewOf(link.url);
         return pr ? (
           <InboxLink key={link.url} onPress={() => openPr(pr)}>
             <Text style={styles.link}>{link.label}</Text>
