@@ -211,6 +211,12 @@ export function prLinkOf(url: string): string | undefined {
   return url.match(PR_URL)?.[0];
 }
 
+/** The PR to preview in Paseo when this link is opened: only a bare PR URL. A comment, file or commit link opens on GitHub, since the preview can't show it. */
+export function prPreviewOf(url: string): string | undefined {
+  const pr = prLinkOf(url);
+  return pr && /^\/?$/.test(url.slice(pr.length)) ? pr : undefined;
+}
+
 export function prUrlOf(ask: Pick<Ask, "links">): string | undefined {
   return ask.links.map((link) => prLinkOf(link.url)).find(Boolean);
 }

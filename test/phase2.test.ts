@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { PrState } from "../shared/asks";
-import { prUrlOf } from "../shared/asks";
+import { prPreviewOf, prUrlOf } from "../shared/asks";
 import { seedPrompt } from "../server/discuss";
 import { describePrChange, summarizeChecks } from "../server/github";
 import { latestReply } from "../server/last-output";
@@ -77,6 +77,15 @@ describe("phase 2", () => {
   it("finds the PR url in links, trimming sub-pages", () => {
     expect(prUrlOf({ links: [{ label: "x", url: "https://github.com/o/r/pull/30/files" }] })).toBe("https://github.com/o/r/pull/30");
     expect(prUrlOf({ links: [{ label: "x", url: "https://github.com/o/r/issues/30" }] })).toBeUndefined();
+  });
+
+  it("previews only bare PR links; comment and file links open on GitHub", () => {
+    expect(prPreviewOf("https://github.com/o/r/pull/30")).toBe("https://github.com/o/r/pull/30");
+    expect(prPreviewOf("https://github.com/o/r/pull/30/")).toBe("https://github.com/o/r/pull/30");
+    expect(prPreviewOf("https://github.com/o/r/pull/30#issuecomment-1")).toBeUndefined();
+    expect(prPreviewOf("https://github.com/o/r/pull/30/files")).toBeUndefined();
+    expect(prPreviewOf("https://github.com/o/r/pull/301")).toBe("https://github.com/o/r/pull/301");
+    expect(prPreviewOf("https://github.com/o/r/issues/30")).toBeUndefined();
   });
 
   it("summarizes check rollups", () => {
