@@ -104,6 +104,12 @@ describe("phase 2", () => {
     expect(describePrChange(pr(), pr({ state: "MERGED", reviewDecision: "APPROVED" }))).toBe("PR #30 merged, review: approved");
   });
 
+  it("tells the agent to read an approval's comments before offering Merge", () => {
+    expect(describePrChange(pr(), pr({ reviewDecision: "APPROVED" }))).toBe(
+      "PR #30 review: approved (read the review body and comments before offering Merge)",
+    );
+  });
+
   it("refreshes PR state quietly, and tells a subscribed owner about a change", async () => {
     await prAsk(true);
     let next = pr();
@@ -393,6 +399,14 @@ describe("phase 2", () => {
     expect(held).toContain("Do not start on it yourself");
     expect(held).toContain("Do not give your own asks an action that starts the review");
     expect(held.replace(/\n  - "CHANGES_REQUESTED".*\n/, "\n")).toBe(told.replace(/\n  - "CHANGES_REQUESTED".*\n/, "\n"));
+  });
+
+  it("tells agents to read every review and comment before a Merge action, approvals included", () => {
+    for (const rules of [instructions(), instructions({ actOnReviewChanges: false })]) {
+      expect(rules).toContain("Before any Merge action, read every review body and comment, approvals included");
+      expect(rules).toContain("gh api repos/OWNER/REPO/pulls/N/comments");
+    }
+    expect(instructions({ actOnReviewChanges: false })).toContain("Comments on an approved PR raise no such ask");
   });
 
   it("raises a review ask when the setting is turned off after changes were requested", async () => {
