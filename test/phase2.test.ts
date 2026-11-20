@@ -403,8 +403,11 @@ describe("phase 2", () => {
 
   it("tells agents to read every review and comment before a Merge action, approvals included", () => {
     for (const rules of [instructions(), instructions({ actOnReviewChanges: false })]) {
-      expect(rules).toContain("Before any Merge action, read every review body and comment, approvals included");
-      expect(rules).toContain("gh api repos/OWNER/REPO/pulls/N/comments");
+      expect(rules).toContain("Before any Merge action, read every review body and comment from people, approvals included");
+      expect(rules).toContain("gh api --paginate repos/OWNER/REPO/pulls/N/comments");
+      expect(rules).toContain("skip bot status comments");
+      expect(rules).toContain("Resolved threads don't count");
+      expect(rules).toContain("afterwards you offer Merge, naming what changed in the ask body, not a re-review");
     }
     expect(instructions({ actOnReviewChanges: false })).toContain("Comments on an approved PR raise no such ask");
   });
