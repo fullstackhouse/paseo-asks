@@ -65,7 +65,10 @@ export function describePrChange(before: PrState, after: PrState, { review = tru
     if (was?.state !== "ready") changes.push(`preview ready: ${deployment.url}`);
   }
   if (review && before.reviewDecision !== after.reviewDecision && after.reviewDecision) {
-    changes.push(`review: ${after.reviewDecision.toLowerCase().replace(/_/g, " ")}`);
+    const decision = `review: ${after.reviewDecision.toLowerCase().replace(/_/g, " ")}`;
+    // An approval often carries comments; agents told only "approved" offered Merge without reading them.
+    const unread = after.reviewDecision === "APPROVED" && after.state === "OPEN";
+    changes.push(unread ? `${decision} (read the review body and comments before offering Merge)` : decision);
   }
   return changes.length ? `PR #${after.number} ${changes.join(", ")}` : null;
 }
