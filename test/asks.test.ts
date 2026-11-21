@@ -312,6 +312,49 @@ describe("asks", () => {
     expect((await service.act({ workspaceId: WS, id: "A1", verb: "done" })).notified).toBe(false);
   });
 
+  it("revives an archived owner when the human clicks a send action", async () => {
+    await service.callTool(AGENT, "ask_create", {
+      kind: "followup",
+      title: "Fix the filter merge",
+      actions: [{ label: "Fix in a new PR", kind: "send", prompt: "Fix it" }],
+    });
+    await store.update(WS, "A1", { orphaned: true });
+    courier.states.set(AGENT, "archived");
+    const { notified } = await service.act({ workspaceId: WS, id: "A1", verb: "action", actionId: "a1" });
+    await outbox.flush();
+    expect(notified).toBe(true);
+    expect(courier.sent.map((sent) => sent.text)).toEqual([expect.stringContaining("Fix it")]);
+    expect(store.get(WS, "A1")).toMatchObject({ status: "in_progress", orphaned: false });
+  });
+
+  it("revives an archived owner for a reply, but not for an automatic message", async () => {
+    await service.callTool(AGENT, "ask_create", { kind: "question", title: "Which region?" });
+    courier.states.set(AGENT, "archived");
+    service.message(AGENT, WS, "a reminder");
+    await outbox.flush();
+    expect(courier.sent).toHaveLength(0);
+    await service.act({ workspaceId: WS, id: "A1", verb: "reply", note: "eu-central" });
+    await outbox.flush();
+    expect(courier.sent.map((sent) => sent.text)).toEqual([expect.stringContaining("eu-central")]);
+  });
+
+  it("closes an archived owner's ask without waking it", async () => {
+    await service.callTool(AGENT, "ask_create", { kind: "question", title: "Which region?" });
+    courier.states.set(AGENT, "archived");
+    await service.act({ workspaceId: WS, id: "A1", verb: "drop" });
+    await outbox.flush();
+    expect(courier.sent).toHaveLength(0);
+    expect(store.get(WS, "A1")?.status).toBe("dropped");
+  });
+
+  it("reopens an orphaned in-progress ask right away: nobody is working on it", async () => {
+    await service.callTool(AGENT, "ask_create", { kind: "followup", title: "Later" });
+    await store.update(WS, "A1", { status: "in_progress", orphaned: true });
+    const reopened = await service.reopenStale(async () => false);
+    expect(reopened.map((ask) => ask.id)).toEqual(["A1"]);
+    expect(store.get(WS, "A1")?.status).toBe("open");
+  });
+
   it("lists active asks (open and in progress) by default, labelled by status", async () => {
     await service.callTool(AGENT, "ask_create", decision);
     await service.callTool(AGENT, "ask_create", { kind: "question", title: "Other" });

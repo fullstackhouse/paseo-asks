@@ -137,12 +137,11 @@ const KIND_LABELS: Record<Ask["kind"], string> = {
 };
 
 /** A short facts line for an ask, e.g. "Decision · 2 options" or "PR #30". */
-export function askDetail(ask: Pick<Ask, "kind" | "actions" | "pr" | "orphaned">): string {
+export function askDetail(ask: Pick<Ask, "kind" | "actions" | "pr">): string {
   const options = ask.actions.filter((action) => action.kind === "resolve").length;
   const parts = [
     ask.kind === "pr" && ask.pr ? `PR #${ask.pr.number}` : KIND_LABELS[ask.kind],
     ask.kind === "decision" && options > 0 ? `${options} option${options === 1 ? "" : "s"}` : "",
-    ask.orphaned ? "agent archived" : "",
   ];
   return parts.filter(Boolean).join(" · ");
 }

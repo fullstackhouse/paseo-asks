@@ -19,7 +19,8 @@ export function needsReminder(ask: Ask): boolean {
   return !ask.remindedAt || ask.remindedAt < ask.updatedAt;
 }
 
-/** In progress, owner not running, untouched for STALE_MS. */
+/** In progress, and orphaned (nobody will ever work on it) or owner not running and untouched for STALE_MS. */
 export function isStale(ask: Ask, now: Date, ownerRunning: boolean): boolean {
-  return ask.status === "in_progress" && !ownerRunning && now.getTime() - Date.parse(ask.updatedAt) >= STALE_MS;
+  if (ask.status !== "in_progress") return false;
+  return Boolean(ask.orphaned) || (!ownerRunning && now.getTime() - Date.parse(ask.updatedAt) >= STALE_MS);
 }

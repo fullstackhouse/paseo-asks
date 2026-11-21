@@ -64,7 +64,8 @@ export default function contribute(server: PluginServerContext) {
     async state(agentId) {
       const handle = requirePaseo().agents.ref(agentId);
       const found = await handle.refresh();
-      if (!found || handle.archivedAt) return "gone";
+      if (!found) return "gone";
+      if (handle.archivedAt) return "archived";
       if (handle.status !== "running" && handle.status !== "initializing") return "idle";
       // COMPAT(supportsSteering): hosts before fullstackhouse/paseo#115 omit it; those wait for the turn to end.
       return handle.capabilities?.supportsSteering ? "steerable" : "running";
@@ -146,7 +147,7 @@ export default function contribute(server: PluginServerContext) {
         // turn; only an agent that can't take a steer is left alone.
         if (!nudge) return;
         const state = await courier.state(agent.id);
-        if (state === "running" || state === "gone") return;
+        if (state === "running" || state === "archived" || state === "gone") return;
         service.message(agent.id, workspaceId, NUDGE);
         await outbox.flush(agent.id);
       })

@@ -217,14 +217,17 @@ export class AsksService {
         message = `${head} reply from the human: "${note}". Update or resolve ${ask.id} accordingly.`;
         break;
     }
-    if (ask.orphaned) return { ask: next, notified: false };
-    this.notify(ask, message);
+    // Work for the owner (a send action, a reply) wakes it even if archived; closing an ask doesn't.
+    const revive = input.verb === "reply" || (input.verb === "action" && next.status === "in_progress");
+    if (ask.orphaned && !revive) return { ask: next, notified: false };
+    if (ask.orphaned) next = await this.store.update(ask.workspaceId, ask.id, { orphaned: false });
+    this.notify(ask, message, revive);
     return { ask: next, notified: true };
   }
 
   /** Queue a message for the ask's owner; it goes out once the owner is between turns. */
-  notify(ask: Ask, text: string): void {
-    this.outbox.enqueue({ agentId: ask.ownerAgentId, workspaceId: ask.workspaceId, askId: ask.id, text });
+  notify(ask: Ask, text: string, revive = false): void {
+    this.outbox.enqueue({ agentId: ask.ownerAgentId, workspaceId: ask.workspaceId, askId: ask.id, text, revive: revive || undefined });
     void this.outbox.flush(ask.ownerAgentId);
   }
 

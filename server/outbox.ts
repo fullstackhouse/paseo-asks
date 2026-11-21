@@ -12,10 +12,15 @@ export interface Delivery {
   state: "pending" | "sent" | "failed";
   attempts: number;
   error?: string;
+  /** A human's answer: delivered even to an archived agent, which the host then unarchives. */
+  revive?: boolean;
 }
 
-/** `steerable`: mid-turn, on a provider that takes a steer into the running turn instead of interrupting it. */
-export type AgentState = "idle" | "steerable" | "running" | "gone";
+/**
+ * `steerable`: mid-turn, on a provider that takes a steer into the running turn instead of interrupting it.
+ * `archived`: still on the host; a message sent to it unarchives it. `gone`: deleted.
+ */
+export type AgentState = "idle" | "steerable" | "running" | "archived" | "gone";
 
 /** Mid-turn, whether or not a message can join the turn. */
 export const isWorking = (state: AgentState): boolean => state === "running" || state === "steerable";
@@ -56,7 +61,7 @@ export class Outbox {
     return this.entries.filter((entry) => entry.state === "pending" && (!agentId || entry.agentId === agentId));
   }
 
-  enqueue(input: Pick<Delivery, "agentId" | "workspaceId" | "askId" | "text">): Delivery {
+  enqueue(input: Pick<Delivery, "agentId" | "workspaceId" | "askId" | "text" | "revive">): Delivery {
     const delivery: Delivery = {
       ...input,
       id: `${this.now().getTime().toString(36)}-${(this.seq++).toString(36)}`,
@@ -85,7 +90,8 @@ export class Outbox {
     for (const [target, batch] of byAgent) {
       const state = await this.courier.state(target).catch(() => "idle" as const);
       if (state === "running") continue;
-      if (state === "gone") {
+      // Only a human's answer wakes an archived agent; automatic messages (PR updates, reminders) don't.
+      if (state === "gone" || (state === "archived" && !batch.some((entry) => entry.revive))) {
         for (const entry of batch) Object.assign(entry, { state: "failed", error: "agent is gone" });
         this.save();
         await this.onUndeliverable(batch, "gone");
