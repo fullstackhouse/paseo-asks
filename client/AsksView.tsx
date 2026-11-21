@@ -4,6 +4,7 @@ import { Icon, ScrollView, TextInput, useToast } from "@getpaseo/plugin/client/r
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useContext, useMemo, useState, type ReactNode } from "react";
 import { Platform, Pressable, Text, View } from "react-native";
+import { useDraft } from "./drafts";
 import {
   actOnAsk,
   discussAsk,
@@ -507,7 +508,7 @@ function AskDetail({
   const openPr = useContext(OpenPrContext);
   const queryClient = useQueryClient();
   const toast = useToast();
-  const [note, setNote] = useState("");
+  const [note, setNote] = useDraft(ask.workspaceId, ask.id);
   const [bodyOpened, setBodyOpened] = useState(false);
   const bodyShown = !foldBody || bodyOpened;
   const mutation = useMutation({
