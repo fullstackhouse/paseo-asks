@@ -1,5 +1,3 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { promisify } from "node:util";
 import { execFile } from "node:child_process";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -8,27 +6,15 @@ import { Sandbox, type Provider } from "./harness";
 const exec = promisify(execFile);
 const NUDGED = /\[User\] \[asks\] A check found that your last reply leaves something for the human/;
 
-/**
- * Whether the host tells Codex to look up alwaysLoad MCP tools (fullstackhouse/paseo, branch
- * merry-porcupine). Without it Codex 0.166 defers ask_create behind its tool search and never sees the
- * asks rules, so the Codex scenario fails. TODO: drop this and the skip once fsh-host.mjs pins a release with it.
- */
-function hostTellsCodexToLoadMcpTools(): boolean {
-  const dir = join(import.meta.dirname, "node_modules", "@getpaseo", "server", "dist", "server", "server", "agent", "providers", "codex");
-  return existsSync(dir) && readdirSync(dir).some((file) => file.endsWith(".js") && readFileSync(join(dir, file), "utf8").includes("loaded on demand"));
-}
-const CODEX_FIX = hostTellsCodexToLoadMcpTools() || process.env.E2E_CODEX === "1";
-
 // No prompt here mentions asks: the agent has to create one because its server instructions say so.
 // Asserted on the first turn alone, since the plugin's "Asks check" nudge would otherwise mask a miss.
 // One sandbox (and cassette) per provider, so each starts from an empty project.
-const cases: { provider: Provider; skip: boolean }[] = [
-  { provider: "claude", skip: false },
-  { provider: "codex", skip: !CODEX_FIX },
-];
+// Codex needs a host that tells it to look up alwaysLoad MCP tools (fullstackhouse/paseo#93): Codex 0.166 defers
+// MCP tools behind its tool search, and without that note it never reads the asks rules and makes no ask.
+const providers: Provider[] = ["claude", "codex"];
 
-for (const { provider, skip } of cases) {
-  describe.skipIf(skip)(`${provider}: asks an agent creates on its own`, () => {
+for (const provider of providers) {
+  describe(`${provider}: asks an agent creates on its own`, () => {
     let sandbox: Sandbox;
 
     beforeAll(async () => {

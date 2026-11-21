@@ -10,11 +10,8 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// TODO: bump to the first fsh-cli release that includes fullstackhouse/paseo branch merry-porcupine
-// (Codex is told to look up alwaysLoad MCP tools); until then the Codex scenario in unprompted.e2e.ts is
-// skipped on this host, see CODEX_FIX there.
-const TAG = "fsh-cli-0.15.3-0bd77c5";
-const SHA256 = "f92c0f6c8704b889bf4ecfd97e831fb086d55a7c440765aaecb6d5b57c8864df";
+const TAG = "fsh-cli-0.15.3-e319bb8";
+const SHA256 = "612b4f4d24398a6c6c4d0c7b1512430d4b1bf23d1f69cd5d24e7bb90175bf297";
 const URL = `https://github.com/fullstackhouse/paseo/releases/download/${TAG}/paseo-${TAG}.tgz`;
 const PACKAGES = ["highlight", "relay", "protocol", "client", "plugin", "server", "cli"];
 
