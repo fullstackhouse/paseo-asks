@@ -312,6 +312,26 @@ describe("asks", () => {
     expect((await service.act({ workspaceId: WS, id: "A1", verb: "done" })).notified).toBe(false);
   });
 
+  it("refuses a send click on an orphaned ask instead of hiding it as in progress", async () => {
+    await service.callTool(AGENT, "ask_create", {
+      kind: "followup",
+      title: "Fix the filter merge",
+      actions: [{ label: "Fix in a new PR", kind: "send", prompt: "Fix it" }],
+    });
+    await store.update(WS, "A1", { orphaned: true });
+    await expect(service.act({ workspaceId: WS, id: "A1", verb: "action", actionId: "a1" })).rejects.toThrow(/archived/);
+    expect(store.get(WS, "A1")?.status).toBe("open");
+    expect(outbox.pending()).toHaveLength(0);
+  });
+
+  it("reopens an orphaned in-progress ask right away: nobody is working on it", async () => {
+    await service.callTool(AGENT, "ask_create", { kind: "followup", title: "Later" });
+    await store.update(WS, "A1", { status: "in_progress", orphaned: true });
+    const reopened = await service.reopenStale(async () => false);
+    expect(reopened.map((ask) => ask.id)).toEqual(["A1"]);
+    expect(store.get(WS, "A1")?.status).toBe("open");
+  });
+
   it("lists active asks (open and in progress) by default, labelled by status", async () => {
     await service.callTool(AGENT, "ask_create", decision);
     await service.callTool(AGENT, "ask_create", { kind: "question", title: "Other" });

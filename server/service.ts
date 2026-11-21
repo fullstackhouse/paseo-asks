@@ -191,6 +191,9 @@ export class AsksService {
         const action = ask.actions.find((candidate) => candidate.id === input.actionId);
         if (!action) throw new Error(`Ask ${ask.id} has no action ${input.actionId}`);
         if (action.kind === "open") throw new Error("Open actions run on the client");
+        // Nobody would receive it, and in_progress would hide the ask with nobody working on it.
+        if (action.kind === "send" && ask.orphaned)
+          throw new Error(`The agent that raised ${ask.id} is archived, so nobody would act on this. Mark it Done or Drop it.`);
         if (action.kind === "send") {
           next = await this.store.update(ask.workspaceId, ask.id, { status: "in_progress" });
           // Resolving drops the ask from the PR watcher, so a review request resolved here would never hear the approval.

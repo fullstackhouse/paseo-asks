@@ -533,9 +533,11 @@ function AskDetail({
     mutation.mutate({ verb: "action", actionId: action.id });
   };
 
-  const actions = ask.status === "open" && ask.actions.length > 0 && (
+  // A send action on an orphaned ask would reach nobody, so the server refuses it.
+  const shown = ask.orphaned ? ask.actions.filter((action) => action.kind !== "send") : ask.actions;
+  const actions = ask.status === "open" && shown.length > 0 && (
     <View style={styles.buttons}>
-      {ask.actions.map((action) => (
+      {shown.map((action) => (
         <Button
           key={action.id}
           styles={styles}
