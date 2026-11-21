@@ -37,7 +37,8 @@ function WorkspacePanel(props: PluginWorkspacePanelProps) {
 
 /** A waiting ask in the host's Overview, answered in place instead of in the Asks panel. */
 function OverviewAskEntry(props: SummaryEntryProps) {
-  const { theme, layout, workspaceId, entryId, defaultExpanded, navigation } = props;
+  const { theme, layout, workspaceId, entryId, defaultExpanded, expanded, onExpandedChange, navigation } =
+    props;
   return (
     <OpenPrContext.Provider value={inboxReview(props)}>
       <WorkspaceAskEntry
@@ -46,6 +47,8 @@ function OverviewAskEntry(props: SummaryEntryProps) {
         workspaceId={workspaceId}
         askId={entryId}
         defaultExpanded={defaultExpanded}
+        expanded={expanded}
+        onExpandedChange={onExpandedChange}
         openAgent={navigation ? (agentId) => navigation.openAgent({ agentId }) : undefined}
       />
     </OpenPrContext.Provider>
