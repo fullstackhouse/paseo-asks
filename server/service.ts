@@ -6,6 +6,7 @@ import { isStale, needsReminder } from "./stuck";
 import { checkNotBundled } from "./bundle";
 import type { Outbox } from "./outbox";
 import type { AskStore, NewAsk } from "./store";
+import type { PathCheck } from "./file-paths";
 
 const ADDRESS_REVIEW = `  - "CHANGES_REQUESTED": address the comments, or report what you will not change, and push. Then ask_update the same ask with a send action to re-request the review, not a Merge action.`;
 const HOLD_REVIEW = `  - "CHANGES_REQUESTED": the human decides when the review is worked. Do not start on it yourself: Paseo raises an "Address review comments on PR #N" ask, and its button sends you the work. Do not give your own asks an action that starts the review; that ask carries it. When its prompt arrives, address the comments, or report what you will not change, push, and ask_update the PR ask with a send action to re-request the review, not a Merge action. Comments on an approved PR raise no such ask: list them in the PR ask's body and add an "Address review comments" send action next to Merge.`;
@@ -109,6 +110,8 @@ export class AsksService {
      * fixed when it is created and the human may take the run over later.
      */
     private readonly isBackground: (workspaceId: string) => Promise<boolean> = async () => false,
+    /** Makes file paths in a body open from the workspace; see file-paths.ts. */
+    private readonly checkPaths: (workspaceId: string, body: string) => Promise<PathCheck> = async (_, body) => ({ body, notes: [] }),
   ) {}
 
   async callTool(agentId: string | null, name: string, args: unknown): Promise<ToolResult> {
@@ -118,10 +121,15 @@ export class AsksService {
       if (!workspaceId) throw new Error(`Agent ${agentId} has no workspace`);
       if (await this.isBackground(workspaceId)) return { text: BACKGROUND_SKIP };
       switch (name) {
-        case "ask_create":
-          return render(await this.create(workspaceId, agentId, CreateInput.parse(args)));
+        case "ask_create": {
+          const input = CreateInput.parse(args);
+          const paths = await this.paths(workspaceId, input.body);
+          return render(await this.create(workspaceId, agentId, { ...input, body: paths.body }), paths.notes);
+        }
         case "ask_update": {
           const { id, ...patch } = UpdateInput.parse(args);
+          const paths = await this.paths(workspaceId, patch.body);
+          patch.body = paths.body;
           const ask = this.require(workspaceId, id);
           checkActions(patch.actions ?? []);
           if (patch.title !== undefined || patch.actions) {
@@ -138,7 +146,7 @@ export class AsksService {
           if (agentId !== ask.ownerAgentId && !ask.orphaned && patch.status && patch.status !== ask.status) {
             this.notify(ask, `[asks] ${ask.id} (${ask.title}) marked ${patch.status.replace("_", " ")} in a side chat.`);
           }
-          return render(updated);
+          return render(updated, paths.notes);
         }
         case "ask_resolve": {
           const { id, actionId, note } = ResolveInput.parse(args);
@@ -306,6 +314,17 @@ export class AsksService {
     return this.store.create(ask);
   }
 
+  /** A failed check never blocks the ask: the body goes through as written. */
+  private async paths(workspaceId: string, body: string | undefined): Promise<{ body: string | undefined; notes: string[] }> {
+    if (!body) return { body, notes: [] };
+    try {
+      return await this.checkPaths(workspaceId, body);
+    } catch (error) {
+      console.error("[asks] could not check file paths", error);
+      return { body, notes: [] };
+    }
+  }
+
   private require(workspaceId: string, id: string): Ask {
     const ask = this.store.get(workspaceId, id);
     if (!ask) throw new Error(`No ask ${id} in this workspace`);
@@ -324,7 +343,8 @@ function summary(ask: Ask): string {
   return `${ask.id} [${ask.status}] ${ask.kind}: ${ask.title}`;
 }
 
-function render(ask: Ask): ToolResult {
+function render(ask: Ask, notes: string[] = []): ToolResult {
   const actions = ask.actions.map((action) => `${action.id} ${action.kind} "${action.label}"`).join(", ");
-  return { text: `${summary(ask)}${actions ? `\nactions: ${actions}` : ""}`, ask: { workspaceId: ask.workspaceId, id: ask.id } };
+  const paths = notes.length ? `\nfile paths: ${notes.join(" ")}` : "";
+  return { text: `${summary(ask)}${actions ? `\nactions: ${actions}` : ""}${paths}`, ask: { workspaceId: ask.workspaceId, id: ask.id } };
 }
