@@ -39,7 +39,7 @@ describe("askDetail", () => {
       fetchedAt: "2026-11-09T00:00:00Z",
     };
     expect(askDetail({ kind: "pr", actions: [], pr })).toBe("PR #30");
-    expect(askDetail({ kind: "pr", actions: [], orphaned: true })).toBe("PR · agent archived");
+    expect(askDetail({ kind: "pr", actions: [] })).toBe("PR");
   });
 });
 

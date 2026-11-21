@@ -195,7 +195,6 @@ function QueueRow(props: {
             <Text style={styles.age}>{age(ask.updatedAt)}</Text>
             {ask.pr && <PrBadge pr={ask.pr} styles={styles} />}
             {snoozed && <Text style={styles.age}>Snoozed</Text>}
-            {ask.orphaned && <Text style={styles.orphaned}>Agent archived</Text>}
           </View>
         </View>
         <View style={styles.queueIcon}>
@@ -473,7 +472,6 @@ function AskRow(props: {
           {ask.title}
         </Text>
         {ask.pr && <PrBadge pr={ask.pr} styles={styles} />}
-        {ask.orphaned && <Text style={styles.orphaned}>orphaned</Text>}
         <Text style={styles.age}>{age(ask.updatedAt)}</Text>
       </Pressable>
       {expanded && <AskDetail {...props} />}
@@ -508,12 +506,8 @@ function AskDetail({
   const mutation = useMutation({
     mutationFn: (input: { verb: "action" | "done" | "drop" | "reply"; actionId?: string }) =>
       act({ workspaceId: ask.workspaceId, id: ask.id, note, ...input }),
-    onSuccess: ({ notified }) => {
+    onSuccess: () => {
       setNote("");
-      if (!notified)
-        toast.show(`${ask.id} closed; its agent is gone, so nobody was told.`, {
-          variant: "warning",
-        });
       void queryClient.invalidateQueries({ queryKey: ["asks"] });
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : String(error)),
@@ -533,11 +527,9 @@ function AskDetail({
     mutation.mutate({ verb: "action", actionId: action.id });
   };
 
-  // A send action on an orphaned ask would reach nobody, so the server refuses it.
-  const shown = ask.orphaned ? ask.actions.filter((action) => action.kind !== "send") : ask.actions;
-  const actions = ask.status === "open" && shown.length > 0 && (
+  const actions = ask.status === "open" && ask.actions.length > 0 && (
     <View style={styles.buttons}>
-      {shown.map((action) => (
+      {ask.actions.map((action) => (
         <Button
           key={action.id}
           styles={styles}
@@ -580,11 +572,6 @@ function AskDetail({
           <PrDetail pr={ask.pr} styles={styles} />
         ))}
       {ask.pr?.deployments?.length ? <Deployments deployments={ask.pr.deployments} styles={styles} /> : null}
-      {ask.orphaned && (
-        <Text style={styles.orphaned}>
-          The agent that raised this is archived. Closing it here notifies nobody.
-        </Text>
-      )}
       {!actionsFirst && actions}
       <TextInput
         value={note}
@@ -623,20 +610,18 @@ function AskDetail({
           disabled={mutation.isPending}
           onPress={() => mutation.mutate({ verb: "drop" })}
         />
-        {!ask.orphaned && (
-          <Button
-            styles={styles}
-            label={
-              discussion.isPending
-                ? "Opening…"
-                : ask.discussionAgentId
-                  ? "Open discussion"
-                  : "Discuss"
-            }
-            disabled={discussion.isPending || mutation.isPending}
-            onPress={() => discussion.mutate()}
-          />
-        )}
+        <Button
+          styles={styles}
+          label={
+            discussion.isPending
+              ? "Opening…"
+              : ask.discussionAgentId
+                ? "Open discussion"
+                : "Discuss"
+          }
+          disabled={discussion.isPending || mutation.isPending}
+          onPress={() => discussion.mutate()}
+        />
         {openAgent && ask.ownerAgentId !== viewingAgentId && (
           <Button styles={styles} label="Open chat" onPress={() => openAgent(ask.ownerAgentId)} />
         )}
@@ -857,7 +842,6 @@ function makeStyles(theme: PluginTheme, compact: boolean) {
     id: { color: colors.foregroundMuted, fontSize: 12, fontVariant: ["tabular-nums" as const] },
     title: { color: colors.foreground, flex: 1, fontSize: 14 },
     age: { color: colors.foregroundMuted, fontSize: 12 },
-    orphaned: { color: colors.statusWarning, fontSize: 12 },
     detail: { paddingHorizontal: compact ? 12 : 10, paddingBottom: 12, gap: 10 },
     link: { color: colors.accent, fontSize: 13 },
     buttons: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: 8 },
