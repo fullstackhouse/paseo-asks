@@ -24,6 +24,9 @@ export interface SummaryEntryProps
   entryId: string;
   /** True for the Overview's first move: show it open, with its actions. */
   defaultExpanded: boolean;
+  /** Set by hosts that keep one entry open at a time; toggles go to `onExpandedChange`. */
+  expanded?: boolean;
+  onExpandedChange?(expanded: boolean): void;
 }
 type SummaryHost = {
   addWorkspaceSummaryItem?: (

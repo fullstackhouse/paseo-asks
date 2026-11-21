@@ -426,12 +426,17 @@ export function WorkspaceAskEntry(props: {
   workspaceId: string;
   askId: string;
   defaultExpanded: boolean;
+  /** Host-owned open state, when the host keeps one entry open at a time. */
+  expanded?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
   openAgent?: (agentId: string) => void;
 }) {
-  const { theme, compact, workspaceId, askId, defaultExpanded, openAgent } = props;
+  const { theme, compact, workspaceId, askId, defaultExpanded, onExpandedChange, openAgent } = props;
   const styles = useMemo(() => makeStyles(theme, compact), [theme, compact]);
   const asks = useAsks(workspaceId);
-  const [expanded, setExpanded] = useState(defaultExpanded);
+  const [localExpanded, setLocalExpanded] = useState(defaultExpanded);
+  const expanded = props.expanded ?? localExpanded;
+  const setExpanded = props.expanded === undefined ? setLocalExpanded : onExpandedChange;
   const ask = asks.data?.asks.find((candidate) => candidate.id === askId);
   if (!ask) return null;
   return (
@@ -440,7 +445,7 @@ export function WorkspaceAskEntry(props: {
       styles={styles}
       theme={theme}
       expanded={expanded}
-      onToggle={() => setExpanded(!expanded)}
+      onToggle={() => setExpanded?.(!expanded)}
       openAgent={openAgent}
     />
   );
