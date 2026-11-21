@@ -10,6 +10,7 @@ import { LastOutputs } from "./server/last-output";
 import { listen } from "./server/listener";
 import { CLASSIFIER_PROMPT, NUDGE, paseoClassifier, shouldNudge } from "./server/nudge";
 import { isWorking, Outbox, type Courier } from "./server/outbox";
+import { checkFilePaths, diskPathEnv } from "./server/file-paths";
 import { dataDir } from "./server/paths";
 import { isAsksPermission } from "./server/permissions";
 import { AsksService, instructions, TOOLS } from "./server/service";
@@ -93,6 +94,10 @@ export default function contribute(server: PluginServerContext) {
     // Until a hook or RPC hands over a daemon session (e.g. right after a reload), every workspace counts as visible.
     // Intended: going through requirePaseo would fail every asks call in that window, visible agents' too.
     (workspaceId) => (paseo ? isBackground(paseo, workspaceId) : Promise.resolve(false)),
+    async (workspaceId, body) => {
+      const workspace = paseo ? await paseo.workspaces.ref(workspaceId).refresh() : null;
+      return workspace?.workspaceDirectory ? checkFilePaths(body, workspace.workspaceDirectory, diskPathEnv) : { body, notes: [] };
+    },
   );
   const lastOutputs = new LastOutputs(dir);
   const ghPath = findGh();
