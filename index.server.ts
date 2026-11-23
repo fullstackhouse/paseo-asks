@@ -145,7 +145,8 @@ export default function contribute(server: PluginServerContext) {
       .remindStuck(agent.id, workspaceId)
       .then(() => outbox.flush(agent.id))
       .catch(() => {});
-    void shouldNudge(timeline, classifierFor(agent.id))
+    const openIds = new Set(store.list(workspaceId).filter((ask) => OPEN_STATUSES.includes(ask.status)).map((ask) => ask.id));
+    void shouldNudge(timeline, (id) => openIds.has(id), classifierFor(agent.id))
       .then(async (nudge) => {
         // The classifier takes a few seconds. If the human has moved on, steer the reminder into the new
         // turn; only an agent that can't take a steer is left alone.

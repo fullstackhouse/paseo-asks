@@ -7,16 +7,20 @@ import { NUDGE } from "../shared/prompts";
 export { NUDGE, REFRESH } from "../shared/prompts";
 
 const ASK_TOOL = /(^|[_.])ask_(create|update|resolve|list)$/;
-const ASK_ID = /\bA\d+\b/;
+const ASK_ID = /\bA\d+\b/g;
+
+/** Whether an ask id names an open ask in the agent's own workspace. Ids are numbered per workspace. */
+export type IsOpenAsk = (id: string) => boolean;
 
 /** Decides whether a reply leaves something for the human. */
 export type Classify = (reply: string) => Promise<boolean>;
 
 /**
  * The final reply of a finished turn that never touched asks, or null when there is nothing to check.
- * Turns that answer the nudge itself are never checked.
+ * Turns that answer the nudge itself are never checked. A reply that points to one of its workspace's open asks
+ * is recorded; ids of asks elsewhere (an explainer naming the ask it explains) don't count.
  */
-export function unrecordedReply(timeline: readonly AgentTimelineItem[]): string | null {
+export function unrecordedReply(timeline: readonly AgentTimelineItem[], isOpenAsk: IsOpenAsk): string | null {
   const reply: string[] = [];
   for (let index = timeline.length - 1; index >= 0; index--) {
     const item = timeline[index]!;
@@ -28,12 +32,17 @@ export function unrecordedReply(timeline: readonly AgentTimelineItem[]): string 
     if (item.type === "assistant_message") reply.unshift(item.text);
   }
   const text = reply.join("").trim();
-  return text && !ASK_ID.test(text) ? text : null;
+  if (!text) return null;
+  return (text.match(ASK_ID) ?? []).some(isOpenAsk) ? null : text;
 }
 
 /** Whether a finished turn left something for the human and never recorded it. Falls back to a question mark check when the classifier fails. */
-export async function shouldNudge(timeline: readonly AgentTimelineItem[], classify?: Classify): Promise<boolean> {
-  const reply = unrecordedReply(timeline);
+export async function shouldNudge(
+  timeline: readonly AgentTimelineItem[],
+  isOpenAsk: IsOpenAsk,
+  classify?: Classify,
+): Promise<boolean> {
+  const reply = unrecordedReply(timeline, isOpenAsk);
   if (!reply) return false;
   if (!classify) return endsWithQuestion(reply);
   try {
