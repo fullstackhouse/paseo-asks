@@ -7,6 +7,7 @@ import { Platform, Pressable, Text, View } from "react-native";
 import { useDraft } from "./drafts";
 import {
   actOnAsk,
+  archiveDiscussionRpc,
   discussAsk,
   discussionTitle,
   listAsks,
@@ -395,7 +396,9 @@ export function AskCard(
   // Asks from before lastCall existed have none: every card on them stays live, as they always were.
   const live = ask && (!ask.lastCall || ask.lastCall === call);
   const [toggled, setToggled] = useState<boolean | null>(null);
-  const expanded = toggled ?? (live ? ask.status === "open" : false);
+  // In the explainer's chat, the ask it just settled stays open: its card offers to archive the workspace.
+  const settledHere = ask?.discussionAgentId === agentId && (ask.status === "done" || ask.status === "dropped");
+  const expanded = toggled ?? (live ? ask.status === "open" || settledHere : false);
   const settings = useSettings(displaySettings);
 
   const note =
@@ -684,6 +687,9 @@ function AskDetail({
         ask.status !== "dropped" && (
         <DiscussedIn ask={ask} styles={styles} open={openAgent} />
       )}
+      {ask.discussionWorkspaceId && ask.discussionAgentId && (ask.status === "done" || ask.status === "dropped") && (
+        <SettledDiscussion ask={ask} styles={styles} open={ask.discussionAgentId !== viewingAgentId ? openAgent : undefined} />
+      )}
       {ask.orphaned && (
         <Text style={styles.orphaned}>
           The agent that raised this is archived. Closing it here notifies nobody.
@@ -759,6 +765,40 @@ function DiscussedIn({ ask, styles, open }: { ask: Ask; styles: Styles; open?: (
     <Pressable accessibilityRole="link" onPress={() => open(ask.discussionAgentId!)}>
       <Text style={styles.link}>{label} →</Text>
     </Pressable>
+  );
+}
+
+/** A settled ask's explainer workspace: where it was, and a button that archives it once nothing there would be lost. */
+function SettledDiscussion({ ask, styles, open }: { ask: Ask; styles: Styles; open?: (agentId: string) => void }) {
+  const archive = useRpc(archiveDiscussionRpc);
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const title = discussionTitle(ask);
+  const mutation = useMutation({
+    mutationFn: () => archive({ workspaceId: ask.workspaceId, id: ask.id }),
+    onSuccess: (result) => {
+      if (result.archived) toast.show(`Archived ${title}.`);
+      else toast.show(`Kept ${title}: ${result.reason}.`, { variant: "warning" });
+      void queryClient.invalidateQueries({ queryKey: ["asks"] });
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : String(error)),
+  });
+  return (
+    <View style={styles.buttons}>
+      {open ? (
+        <Pressable accessibilityRole="link" onPress={() => open(ask.discussionAgentId!)}>
+          <Text style={styles.link}>Discussed in {title} →</Text>
+        </Pressable>
+      ) : (
+        <Text style={styles.prDetail}>Discussed in {title}</Text>
+      )}
+      <Button
+        styles={styles}
+        label={mutation.isPending ? "Archiving…" : "Archive explainer workspace"}
+        disabled={mutation.isPending}
+        onPress={() => mutation.mutate()}
+      />
+    </View>
   );
 }
 

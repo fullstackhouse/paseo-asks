@@ -1,6 +1,8 @@
 import type { PaseoApi } from "@getpaseo/client";
 import { latestTurn, type PluginServerContext } from "@getpaseo/plugin/server";
-import { actOnAsk, discussAsk, listAsks, OPEN_STATUSES, oldestFirst, refreshAsks, showsIn } from "./shared/asks";
+import { actOnAsk, archiveDiscussionRpc, discussAsk, listAsks, OPEN_STATUSES, oldestFirst, refreshAsks, showsIn } from "./shared/asks";
+import { archiveDiscussion, type ArchiveHost } from "./server/archive-discussion";
+import { uncommittedFiles } from "./server/worktree";
 import { AgentDirectory, pickCaller } from "./server/agents";
 import { installBridge } from "./server/bridge";
 import { Discussions } from "./server/discuss";
@@ -239,6 +241,36 @@ export default function contribute(server: PluginServerContext) {
     capture(api);
     return startDiscussion(api, workspaceId, id, note);
   });
+  const archiveHost = (api: PaseoApi): ArchiveHost => ({
+    async workspace(workspaceId) {
+      const handle = api.workspaces.ref(workspaceId);
+      const workspace = await handle.refresh();
+      if (!workspace || workspace.archivingAt) return null;
+      // Per agent: the workspace's own status can read "failed" over an agent that is running.
+      const { entries } = await api.agents.list({
+        filter: { statuses: ["running", "initializing"], includeBackground: true },
+        includeBackground: true,
+        page: { limit: 200 },
+      });
+      const { entries: terminals } = await handle.terminals.list();
+      return {
+        directory: workspace.workspaceDirectory,
+        working: entries.some(({ agent }) => agent.workspaceId === workspaceId),
+        terminals: terminals.length,
+      };
+    },
+    uncommittedFiles,
+    archive: (workspaceId) => api.workspaces.archive(workspaceId),
+  });
+  const archiveExplainer = (api: PaseoApi, workspaceId: string, id: string) => {
+    const ask = store.get(workspaceId, id);
+    if (!ask) throw new Error(`No ask ${id} in this workspace`);
+    return archiveDiscussion({ store, service, host: archiveHost(api) }, ask);
+  };
+  server.handle(archiveDiscussionRpc, ({ workspaceId, id }, { paseo: api }) => {
+    capture(api);
+    return archiveExplainer(api, workspaceId, id);
+  });
 
   const listening = listen(dir, {
     // Read when an agent's MCP session starts, so a changed setting reaches agents started or resumed after it.
@@ -262,6 +294,10 @@ export default function contribute(server: PluginServerContext) {
     "/discuss": async (input) => {
       const { workspaceId, id, note } = discussAsk.input.parse(input);
       return startDiscussion(requirePaseo(), workspaceId, id, note);
+    },
+    "/archive-discussion": async (input) => {
+      const { workspaceId, id } = archiveDiscussionRpc.input.parse(input);
+      return archiveExplainer(requirePaseo(), workspaceId, id);
     },
   });
   const timer = setInterval(() => {
