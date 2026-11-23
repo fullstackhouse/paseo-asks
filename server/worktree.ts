@@ -9,8 +9,17 @@ const exec = promisify(execFile);
  */
 export async function uncommittedFiles(directory: string): Promise<string[] | null> {
   try {
-    const { stdout } = await exec("git", ["status", "--porcelain", "--untracked-files=all"], { cwd: directory, timeout: 10_000 });
-    return stdout.split("\n").filter(Boolean).map((line) => line.slice(3));
+    // -z: paths come raw (no quoting of spaces or non-ASCII), each entry NUL-terminated; a rename's old path follows it.
+    const { stdout } = await exec("git", ["status", "--porcelain", "-z", "--untracked-files=all"], { cwd: directory, timeout: 10_000 });
+    const entries = stdout.split("\0");
+    const files: string[] = [];
+    for (let index = 0; index < entries.length; index++) {
+      const entry = entries[index]!;
+      if (!entry) continue;
+      files.push(entry.slice(3));
+      if (entry[0] === "R" || entry[0] === "C") index++;
+    }
+    return files;
   } catch {
     return null;
   }

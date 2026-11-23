@@ -780,7 +780,8 @@ function SettledDiscussion({ ask, styles, open }: { ask: Ask; styles: Styles; op
   const title = discussionTitle(ask);
   const [files, setFiles] = useState<string[] | null>(null);
   const mutation = useMutation({
-    mutationFn: (discardFiles: boolean) => archive({ workspaceId: ask.workspaceId, id: ask.id, discardFiles }),
+    // Sends back exactly the files shown: any written since makes the server ask again with the new list.
+    mutationFn: (discardFiles: string[]) => archive({ workspaceId: ask.workspaceId, id: ask.id, discardFiles }),
     onSuccess: (result) => {
       if (result.archived) {
         setFiles(null);
@@ -818,7 +819,7 @@ function SettledDiscussion({ ask, styles, open }: { ask: Ask; styles: Styles; op
                 : "Archive explainer workspace"
           }
           disabled={mutation.isPending}
-          onPress={() => mutation.mutate(Boolean(files))}
+          onPress={() => mutation.mutate(files ?? [])}
         />
         {files ? <Button styles={styles} label="Keep it" onPress={() => setFiles(null)} /> : null}
       </View>

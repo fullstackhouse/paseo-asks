@@ -240,7 +240,7 @@ export default function contribute(server: PluginServerContext) {
     capture(api);
     return startDiscussion(api, workspaceId, id, note);
   });
-  const archiveExplainer = (api: PaseoApi, input: { workspaceId: string; id: string; discardFiles?: boolean }) => {
+  const archiveExplainer = (api: PaseoApi, input: { workspaceId: string; id: string; discardFiles?: string[] }) => {
     const ask = store.get(input.workspaceId, input.id);
     if (!ask) throw new Error(`No ask ${input.id} in this workspace`);
     return archiveDiscussion({ store, service, host: paseoArchiveHost(api) }, ask, { discardFiles: input.discardFiles });

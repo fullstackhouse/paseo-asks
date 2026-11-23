@@ -54,7 +54,7 @@ describe("archiving an explainer's workspace", () => {
     archive: async (workspaceId) => (archived.push(workspaceId), {}),
     ...overrides,
   });
-  const run = (overrides?: Partial<ArchiveHost>, options?: { discardFiles?: boolean }) =>
+  const run = (overrides?: Partial<ArchiveHost>, options?: { discardFiles?: string[] }) =>
     archiveDiscussion({ store, service, host: host(overrides) }, store.get(WS, "A1")!, options);
   const settle = () => service.callTool(EXPLAINER, "ask_resolve", { id: "A1", actionId: "a2" });
 
@@ -74,8 +74,31 @@ describe("archiving an explainer's workspace", () => {
       files: ["EXPLAIN.md", "fig/a.png", "fig/b.png", "notes.md"],
     });
     expect(archived).toEqual([]);
-    expect(await run({ uncommittedFiles: notes }, { discardFiles: true })).toEqual({ archived: true });
+    expect(await run({ uncommittedFiles: notes }, { discardFiles: ["EXPLAIN.md", "fig/a.png", "fig/b.png", "notes.md"] })).toEqual({ archived: true });
     expect(archived).toEqual([EXPLAIN_WS]);
+  });
+
+  it("asks again when a file appeared since the human confirmed the list", async () => {
+    await settle();
+    const now = async () => ["EXPLAIN.md", "summary.md"];
+    expect(await run({ uncommittedFiles: now }, { discardFiles: ["EXPLAIN.md"] })).toEqual({
+      archived: false,
+      reason: "its worktree has uncommitted files (EXPLAIN.md, summary.md)",
+      files: ["EXPLAIN.md", "summary.md"],
+    });
+    expect(archived).toEqual([]);
+  });
+
+  it("never lets a confirmed file list skip another refusal", async () => {
+    const all = { discardFiles: ["EXPLAIN.md"] };
+    expect((await run({}, all)).archived).toBe(false);
+    await settle();
+    const busy = async () => idle({ agents: [{ id: EXPLAINER, title: null, working: true }] });
+    const shared = async () => idle({ agents: [...idle().agents, { id: "other", title: null, working: false }] });
+    for (const overrides of [{ workspace: busy }, { workspace: shared }, { uncommittedFiles: async () => null }]) {
+      expect((await run(overrides, all)).archived).toBe(false);
+    }
+    expect(archived).toEqual([]);
   });
 
   it("refuses while the ask waits on the human or its owner works on it", async () => {
@@ -188,7 +211,12 @@ it("lists uncommitted and untracked files whatever git's settings, and null outs
     execFileSync("git", ["config", "status.showUntrackedFiles", "no"], { cwd: repo });
     expect(await uncommittedFiles(repo)).toEqual([]);
     writeFileSync(join(repo, "EXPLAIN.md"), "notes");
-    expect(await uncommittedFiles(repo)).toEqual(["EXPLAIN.md"]);
+    writeFileSync(join(repo, "fig ą.png"), "figure");
+    expect((await uncommittedFiles(repo))?.sort()).toEqual(["EXPLAIN.md", "fig ą.png"]);
+    execFileSync("git", ["add", "EXPLAIN.md"], { cwd: repo });
+    execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "notes"], { cwd: repo });
+    execFileSync("git", ["mv", "EXPLAIN.md", "NOTES.md"], { cwd: repo });
+    expect((await uncommittedFiles(repo))?.sort()).toEqual(["NOTES.md", "fig ą.png"]);
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }

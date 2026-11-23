@@ -222,11 +222,11 @@ export const discussAsk = defineRpc({
 
 /**
  * Archive the workspace a settled ask was explained in. Refuses, with the reason, while anything there is still going
- * on; `files` lists uncommitted files it would delete, which a second call with `discardFiles` confirms.
+ * on; `files` lists uncommitted files it would delete, which a second call confirms by passing them as `discardFiles`.
  */
 export const archiveDiscussionRpc = defineRpc({
   name: "asks.archive-discussion",
-  input: z.object({ workspaceId: z.string(), id: z.string(), discardFiles: z.boolean().optional() }),
+  input: z.object({ workspaceId: z.string(), id: z.string(), discardFiles: z.array(z.string()).optional() }),
   output: z.object({ archived: z.boolean(), reason: z.string().optional(), files: z.array(z.string()).optional() }),
 });
 

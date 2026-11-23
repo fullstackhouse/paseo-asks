@@ -20,7 +20,7 @@ export interface ArchiveHost {
   archive(workspaceId: string): Promise<{ error?: string | null }>;
 }
 
-/** `files`: what archiving would delete, so the human can confirm it with `discardFiles`. */
+/** `files`: what archiving would delete, for the human to confirm by passing them back as `discardFiles`. */
 export type ArchiveOutcome = { archived: true } | { archived: false; reason: string; files?: string[] };
 
 const LISTED_FILES = 3;
@@ -30,13 +30,14 @@ const PAGE = 200;
  * The human pressed "Archive explainer workspace" on a settled ask. Archiving stops every agent and terminal there
  * and force-removes the worktree (its branch stays), so this refuses, saying why, while anything there is still going
  * on or belongs to someone else. Uncommitted and untracked files (the explainer's notes, usually) are listed back for
- * the human to confirm with `discardFiles`; files git ignores go with the worktree unasked. A workspace that is
+ * the human to confirm by passing that list back as `discardFiles`: a file they were not shown (written since) asks
+ * again. Files git ignores go with the worktree unasked. A workspace that is
  * already gone just ends the discussion.
  */
 export async function archiveDiscussion(
   deps: { store: AskStore; service: AsksService; host: ArchiveHost },
   ask: Ask,
-  { discardFiles = false } = {},
+  { discardFiles = [] }: { discardFiles?: readonly string[] } = {},
 ): Promise<ArchiveOutcome> {
   const { store, service, host } = deps;
   const workspaceId = ask.discussionWorkspaceId;
@@ -64,7 +65,8 @@ export async function archiveDiscussion(
   if (workspace.terminals) return { archived: false, reason: `${workspace.terminals} terminal${workspace.terminals > 1 ? "s are" : " is"} open there` };
   const files = workspace.directory ? await host.uncommittedFiles(workspace.directory) : null;
   if (!files) return { archived: false, reason: "can't tell whether its worktree has uncommitted files; archive it from Paseo, which asks first" };
-  if (files.length && !discardFiles) {
+  const confirmed = new Set(discardFiles);
+  if (files.some((file) => !confirmed.has(file))) {
     const shown = files.slice(0, LISTED_FILES).join(", ") + (files.length > LISTED_FILES ? ` and ${files.length - LISTED_FILES} more` : "");
     return { archived: false, reason: `its worktree has uncommitted files (${shown})`, files };
   }
