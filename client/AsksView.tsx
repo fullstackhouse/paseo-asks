@@ -363,8 +363,10 @@ const VERBS: Record<AskCardData["verb"], string> = {
 };
 
 /**
- * An ask shown in the agent chat where the agent created, updated or resolved it. Open asks start expanded.
- * The chat around it already explains the ask, so its buttons come first, then its body, folded if the setting says so.
+ * An ask shown in the agent chat where the agent created, updated or resolved it.
+ * The card of the agent's latest call on the ask is live: open asks start expanded, with their buttons first (the chat
+ * around it already explains the ask), then the body, folded if the setting says so. Older cards show the ask as their
+ * call left it, read-only and folded, so scrolling back reads as history.
  */
 export function AskCard(
   props: {
@@ -374,7 +376,7 @@ export function AskCard(
     openAgent?: (agentId: string) => void;
   } & AskCardData,
 ) {
-  const { theme, compact, agentId, askId, verb, openAgent } = props;
+  const { theme, compact, agentId, askId, verb, call, openAgent } = props;
   const styles = useMemo(() => makeStyles(theme, compact), [theme, compact]);
   const workspaceId = useAgent(agentId, (agent) => agent.workspaceId);
   // Every card in a chat shares this one query, so a long chat still polls once.
@@ -382,8 +384,10 @@ export function AskCard(
   const ask = asks.data?.asks.find(
     (candidate) => candidate.workspaceId === workspaceId && candidate.id === askId,
   );
+  // Asks from before lastCall existed have none: every card on them stays live, as they always were.
+  const live = ask && (!ask.lastCall || ask.lastCall === call);
   const [toggled, setToggled] = useState<boolean | null>(null);
-  const expanded = toggled ?? ask?.status === "open";
+  const expanded = toggled ?? (live ? ask.status === "open" : false);
   const settings = useSettings(displaySettings);
 
   const note =
@@ -392,15 +396,18 @@ export function AskCard(
       : asks.isError
         ? "could not load"
         : !ask
-          ? "not found"
-          : null;
+          ? "since deleted"
+          : live
+            ? null
+            : "earlier version";
+  const loaded = workspaceId && !asks.isPending;
   return (
     <View style={styles.inline}>
       <Text style={styles.muted}>
         {VERBS[verb]} {askId}
         {note ? ` (${note})` : ""}
       </Text>
-      {ask && (
+      {live ? (
         <AskRow
           ask={ask}
           styles={styles}
@@ -412,6 +419,81 @@ export function AskCard(
           actionsFirst
           foldBody={settings.status === "ready" && settings.values.foldChatBodies}
         />
+      ) : loaded ? (
+        <SnapshotRow
+          {...props}
+          current={ask}
+          styles={styles}
+          expanded={expanded}
+          onToggle={() => setToggled(!expanded)}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+/** What the update set, for the folded row: "options, status → in progress". */
+function changeSummary(card: AskCardData): string {
+  return card.changed
+    .map((field) => (field === "status" && card.snapshot.status ? `status → ${card.snapshot.status.replace("_", " ")}` : field))
+    .join(", ");
+}
+
+/** An ask as one past agent call left it; an update shows only what it set. */
+function SnapshotRow(
+  props: AskCardData & {
+    theme: PluginTheme;
+    current: Ask | undefined;
+    styles: Styles;
+    expanded: boolean;
+    onToggle(): void;
+  },
+) {
+  const { askId, verb, snapshot, current, styles, theme, expanded } = props;
+  const kind = snapshot.kind ?? current?.kind;
+  const title = snapshot.title ?? current?.title ?? askId;
+  const changes = changeSummary(props);
+  const detail =
+    verb === "update"
+      ? changes && `Changed ${changes}`
+      : verb === "resolve"
+        ? [snapshot.choice && `Chose “${snapshot.choice}”`, snapshot.note].filter(Boolean).join(": ")
+        : "";
+  return (
+    <View style={[styles.card, expanded && styles.cardExpanded]}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${askId}: ${title}, earlier version`}
+        onPress={props.onToggle}
+        style={styles.row}
+      >
+        {kind && <Icon name={KIND_ICONS[kind]} size={16} color={theme.colors.foregroundMuted} />}
+        <Text style={styles.id}>{askId}</Text>
+        <Text style={[styles.title, styles.muted]} numberOfLines={expanded ? undefined : 1}>
+          {title}
+        </Text>
+        {snapshot.status && <Text style={[styles.badge, styles.muted]}>{snapshot.status.replace("_", " ")}</Text>}
+      </Pressable>
+      {expanded && (
+        <View style={styles.detail}>
+          {detail ? <Text style={styles.muted}>{detail}</Text> : null}
+          {snapshot.body?.trim() ? <Markdown>{snapshot.body}</Markdown> : null}
+          {snapshot.actions?.length ? (
+            <View style={styles.chips}>
+              {snapshot.actions.map((action, index) => (
+                <Text key={index} style={[styles.badge, styles.muted]}>
+                  {action.label}
+                  {action.recommended ? " ★" : ""}
+                </Text>
+              ))}
+            </View>
+          ) : null}
+          {snapshot.links?.map((link) => (
+            <Pressable key={link.url} accessibilityRole="link" onPress={() => openLink(link.url)}>
+              <Text style={styles.link}>{link.label} ↗</Text>
+            </Pressable>
+          ))}
+        </View>
       )}
     </View>
   );
