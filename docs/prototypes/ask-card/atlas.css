@@ -1,0 +1,102 @@
+/* ══ design-atlas chrome ═══════════════════════════════════════════════
+   .ka-* = the atlas document: sidebar, view cards, state figures, overview flow.
+   Loaded after screens.css (the storyboard engine); tokens only, no hardcoded colours.
+   App surfaces (mockup frames) go in their own prefixed block at the end of screens.css. */
+
+/* ── atlas layout ─────────────────────────────────────────────────── */
+.ka-layout { display: grid; grid-template-columns: 19rem minmax(0, 1fr); min-height: calc(100vh - var(--ka-top, 3.5rem)); }
+.ka-side {
+  position: sticky; top: var(--ka-top, 3.5rem); height: calc(100vh - var(--ka-top, 3.5rem)); overflow-y: auto;
+  border-right: 1px solid var(--border); background: var(--muted); padding: 1rem 0.75rem 3rem;
+}
+.ka-group { margin-bottom: 1.25rem; display: flex; flex-direction: column; gap: 0.125rem; }
+.ka-group h3 {
+  font-size: var(--font-size-overline); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600;
+  color: var(--muted-foreground); margin: 0 0 0.25rem 0.5rem;
+}
+.ka-nav a, .ka-disabled {
+  display: flex; align-items: center; gap: 0.5rem; padding: 0.375rem 0.5rem; border-radius: var(--radius-md);
+  font-size: 0.8125rem; color: var(--foreground); text-decoration: none; border: 1px solid transparent;
+}
+.ka-nav > .ka-group > a:hover { background: var(--accent); }
+.ka-nav a[aria-current="true"] { background: var(--background); border-color: var(--border); font-weight: 600; box-shadow: var(--shadow-xs); }
+.ka-disabled { color: var(--muted-foreground); cursor: not-allowed; }
+.ka-disabled .ka-name em { display: block; font-style: normal; font-size: 0.6875rem; opacity: 0.8; }
+.ka-name { flex: 1; min-width: 0; }
+.ka-id { font-family: var(--font-geist-mono); font-size: 0.6875rem; color: var(--muted-foreground); min-width: 1.75rem; }
+.ka-states { display: flex; flex-direction: column; margin: 0.125rem 0 0.5rem 2.25rem; border-left: 1px solid var(--border); }
+.ka-states[hidden] { display: none; }
+.ka-nav .ka-states a { font-size: 0.75rem; color: var(--muted-foreground); padding: 0.2rem 0.5rem; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.ka-nav .ka-states a:hover { color: var(--foreground); background: var(--accent); }
+.ka-nav .ka-states a.is-current { color: var(--foreground); font-weight: 600; background: var(--background); }
+.ka-states code { font-family: var(--font-geist-mono); font-size: 0.6875rem; margin-right: 0.25rem; }
+.ka-phase {
+  font-family: var(--font-geist-mono); font-size: 0.625rem; font-weight: 700; padding: 0 0.3rem; line-height: 1.1rem;
+  border-radius: var(--radius-sm); border: 1px solid var(--status-neutral-border); background: var(--status-neutral-bg); color: var(--status-neutral-text);
+}
+.ka-phase-M1 { border-color: var(--status-info-border); background: var(--status-info-bg); color: var(--status-info-text); }
+
+.ka-main { max-width: none; margin: 0; padding: 1.5rem 2rem 8rem; min-width: 0; }
+.ka-main > .screen { display: none; margin-top: 0; }
+.ka-main > .screen.is-current { display: block; }
+.ka-view-head { margin-bottom: 1rem; }
+.ka-view-head h2 { font-size: 1.5rem; display: flex; gap: 0.5rem; align-items: baseline; }
+.ka-view-head h2 .ka-id { font-size: 1rem; }
+.ka-tags { display: flex; flex-wrap: wrap; gap: 0.375rem; align-items: center; margin-top: 0.375rem; }
+.ka-tag { font-size: 0.75rem; color: var(--muted-foreground); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 0.375rem; text-decoration: none; }
+.ka-muted { color: var(--muted-foreground); }
+
+.ka-card {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 0 2.5rem; max-width: 84rem;
+  border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--card); padding: 1rem 1.5rem;
+}
+.ka-field { padding: 0.5rem 0; }
+.ka-field h4 { margin: 0 0 0.125rem; font-size: var(--font-size-overline); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted-foreground); }
+.ka-md p { margin: 0 0 0.375rem; max-width: 75ch; }
+.ka-md ul, .ka-md ol { margin: 0.125rem 0 0.375rem; padding-left: 1.125rem; }
+.ka-md li { margin: 0.125rem 0; max-width: 75ch; }
+.ka-md code { font-family: var(--font-geist-mono); font-size: 0.8em; background: var(--muted); padding: 0 0.25rem; border-radius: var(--radius-sm); }
+.ka-md a { color: inherit; }
+.ka-prose { font-size: 0.875rem; }
+
+.ka-state-index { display: flex; flex-wrap: wrap; gap: 0.375rem; margin: 1rem 0 0; }
+.ka-state-index a { font-size: 0.75rem; text-decoration: none; color: var(--muted-foreground); border: 1px solid var(--border); border-radius: 999px; padding: 0.125rem 0.625rem; background: var(--background); }
+.ka-state-index a:hover { color: var(--foreground); background: var(--accent); }
+.ka-state-index code { font-family: var(--font-geist-mono); font-weight: 600; color: var(--foreground); }
+.ka-state { margin: 2.5rem 0 0; scroll-margin-top: calc(var(--ka-top, 3.5rem) + 1rem); }
+.ka-state figcaption { display: flex; gap: 0.75rem; align-items: baseline; margin-bottom: 0.5rem; font-size: 0.9375rem; font-weight: 500; }
+.ka-sid { font-family: var(--font-geist-mono); font-size: 0.8125rem; font-weight: 700; text-decoration: none; color: var(--foreground); background: var(--muted); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 0.375rem; }
+.ka-state .notes { max-width: calc(var(--ka-frame-width, 1440px) * var(--ka-scale, 0.6)); }
+
+.ka-callout { border: 1px solid var(--status-info-border); background: var(--status-info-bg); color: var(--status-info-text); border-radius: var(--radius-lg); padding: 0.75rem 1rem; max-width: 84rem; }
+.ka-callout a { color: inherit; }
+.ka-h3 { font-size: 1.0625rem; font-weight: 600; margin: 2rem 0 0.5rem; }
+.ka-flow { display: grid; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); gap: 0.75rem; max-width: 84rem; }
+.ka-node { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--card); padding: 0.625rem 0.75rem; display: flex; flex-direction: column; gap: 0.375rem; }
+.ka-node-head { display: flex; justify-content: space-between; align-items: center; font-weight: 600; }
+.ka-node a { color: var(--foreground); text-decoration: none; }
+.ka-node a:hover { text-decoration: underline; }
+.ka-node code { font-family: var(--font-geist-mono); font-size: 0.75rem; }
+.ka-edges { display: flex; flex-wrap: wrap; gap: 0.25rem 0.5rem; font-size: 0.75rem; align-items: baseline; }
+.ka-dir { color: var(--muted-foreground); width: 2.25rem; font-size: 0.6875rem; text-transform: uppercase; }
+.ka-edge { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 0.375rem; }
+.ka-edge.is-dotted { border-style: dashed; }
+.ka-edge em { color: var(--muted-foreground); font-style: normal; }
+.ka-two { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; max-width: 84rem; }
+@media (max-width: 80rem) { .ka-two, .ka-card { grid-template-columns: 1fr; } }
+.ka-nav .ka-name em { display: block; font-style: normal; font-size: 0.6875rem; color: var(--muted-foreground); font-weight: 400; }
+.ka-tag-pending { border-style: dashed; }
+.ka-pending { margin-top: 1rem; border-style: dashed; background: var(--muted); color: var(--muted-foreground); border-color: var(--border); }
+.ka-narrow { max-width: 84rem; }
+
+/* ── default mockup frame ─────────────────────────────────────────────
+   <div class="frame ka-frame"><div class="ka-screen">…</div></div>: a fixed-width app page scaled
+   to the column by --ka-scale (frameScales in generate.mjs). Keep the engine's `frame` class on
+   every frame: comment mode only pins inside `.frame`. A surface with another size (a kiosk, a
+   phone) defines its own frame class and its own scale variable. */
+.ka-frame { display: inline-block; vertical-align: top; box-shadow: var(--shadow-md); }
+.ka-screen {
+  width: var(--ka-frame-width, 1440px); min-height: 900px; zoom: var(--ka-scale, 0.6); position: relative;
+  background: var(--background); color: var(--foreground); font-size: 0.875rem; line-height: 1.5;
+}
+.ka-screen svg { width: 1rem; height: 1rem; flex: none; }
