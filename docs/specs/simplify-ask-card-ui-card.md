@@ -84,7 +84,11 @@ Map: [simplify-ask-card-ui-map.md](./simplify-ask-card-ui-map.md). Spec: [simpli
 - **Edge cases.**
   - The ask was deleted → the chat card header says "(since deleted)", and there is no body.
 
+## Decisions (card, 2026-11-23)
+
+1. Content first; every way to answer sits in one answer bar at the bottom (owner review of the atlas).
+2. *Mark done* lives in the ⋯ menu only; nothing sits next to ⋯ (A2).
+
 ## Open questions
 
 1. Where does the ⋯ menu come from: a host `Menu` export in the plugin SDK, or one built in the plugin from `Modal`? (A1; recommended: host export.)
-2. Should *Mark done* stay visible next to ⋯? (A2; recommended: menu only. The cards assume menu only.)
