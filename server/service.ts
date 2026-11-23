@@ -236,7 +236,13 @@ export class AsksService {
         break;
       case "reply":
         if (!note) throw new Error("A reply needs text");
-        next = await this.store.update(ask.workspaceId, ask.id, {});
+        // Answered, so the next move is the agent's: leave "waiting on you" now rather than when the agent gets to it.
+        // New options from the agent set it back to open. A reply to an ask nobody waits on leaves its status alone.
+        next = await this.store.update(
+          ask.workspaceId,
+          ask.id,
+          ask.status === "open" ? { status: "in_progress", outcome: { note, by: "human", at } } : {},
+        );
         message = `${head} reply from the human: "${note}". Update or resolve ${ask.id} accordingly.`;
         break;
     }

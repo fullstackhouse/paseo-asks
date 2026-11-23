@@ -12,6 +12,7 @@ import { SidebarRow } from "@getpaseo/plugin/client/ui";
 import { useEffect } from "react";
 import { Text } from "react-native";
 import { AsksMessage } from "./client/AsksMessage";
+import { onAsksChanged } from "./client/changes";
 import { inboxReview, OpenPrContext } from "./client/inbox";
 import { AgentAsks, AskCard, AsksView, POLL_MS, useAsks, WorkspaceAskEntry } from "./client/AsksView";
 import { SettingsScreen } from "./client/SettingsScreen";
@@ -191,6 +192,7 @@ function contributePills(client: PluginClientContext): () => void {
     for (const workspaceId of workspaceIds) summaries.set(workspaceId, summary.get(workspaceId));
   };
   const timer = setInterval(() => void refreshCounts().catch(() => undefined), POLL_MS * 2);
+  const stopListening = onAsksChanged(() => void refreshCounts().catch(() => undefined));
 
   void client.paseo.agents
     .list({ subscribe: {}, signal: lifetime.signal })
@@ -217,6 +219,7 @@ function contributePills(client: PluginClientContext): () => void {
   return () => {
     lifetime.abort();
     clearInterval(timer);
+    stopListening();
     for (const agentId of [...pills.keys()]) drop(agentId);
     summaries.clear();
   };
