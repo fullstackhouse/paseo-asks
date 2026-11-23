@@ -14,7 +14,6 @@ import { checkFilePaths, diskPathEnv } from "./server/file-paths";
 import { dataDir } from "./server/paths";
 import { isAsksPermission } from "./server/permissions";
 import { AsksService, instructions, TOOLS } from "./server/service";
-import { sweepHost } from "./server/sweep-host";
 import { AskStore } from "./server/store";
 import { attentionForOpenAsks } from "./server/schedule-attention";
 import { PrWatcher } from "./server/watcher";
@@ -274,7 +273,6 @@ export default function contribute(server: PluginServerContext) {
   const reopenStale = () => {
     if (!paseo) return;
     void service.reopenStale(async (agentId) => isWorking(await courier.state(agentId)));
-    void service.archiveSettledDiscussions(sweepHost(paseo, console.log)).catch(() => {});
   };
   const staleTimer = setInterval(reopenStale, STALE_EVERY_MS);
   const firstStale = setTimeout(reopenStale, PR_EVERY_MS);

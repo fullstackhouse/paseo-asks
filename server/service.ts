@@ -102,20 +102,6 @@ export interface ToolResult {
 export const BACKGROUND_SKIP =
   "Skipped: this workspace runs in the background (an automated run hidden from the sidebar), so nobody reads asks here. Put what you have in your final reply. Asks work again once the human opens this chat.";
 
-/** What the discussion sweep needs from the host; every answer it can't get keeps the workspace. */
-export interface SweepHost {
-  /**
-   * Null when the workspace is gone (archived or deleted). `idle`: none of its agents is running or waiting on the
-   * human and no terminal is open; `lastActiveAt`: when it last changed state; `clean`: no uncommitted or untracked files.
-   */
-  workspace(workspaceId: string): Promise<{ idle: boolean; lastActiveAt?: string; clean: boolean } | null>;
-  archive(workspaceId: string): Promise<{ error?: string | null }>;
-  log(line: string): void;
-}
-
-/** How long an explainer's workspace stays after its ask is settled and its agent goes quiet. */
-export const SETTLED_DISCUSSION_MS = 24 * 60 * 60 * 1000;
-
 export class AsksService {
   constructor(
     private readonly store: AskStore,
@@ -397,61 +383,6 @@ export class AsksService {
         this.store.update(ask.workspaceId, ask.id, { discussionAgentId: undefined, discussionWorkspaceId: undefined }, { touch: false }),
       ),
     );
-  }
-
-  /** Explainer workspaces whose ask was settled a day ago or more: candidates for `archiveSettledDiscussions`. */
-  settledDiscussions(now = new Date()): Ask[] {
-    return this.store
-      .list()
-      .filter(
-        (ask) =>
-          ask.discussionWorkspaceId &&
-          ask.discussionAgentId &&
-          !OPEN_STATUSES.includes(ask.status) &&
-          now.getTime() - Date.parse(ask.updatedAt) >= SETTLED_DISCUSSION_MS,
-      );
-  }
-
-  /**
-   * Archives explainer workspaces nobody needs any more. Archiving stops every agent and terminal in the workspace and
-   * force-removes its worktree, so each must hold: the explained ask settled, no open ask in that workspace (the
-   * explainer's own would drop out of the queue), the whole workspace idle for a day, and nothing uncommitted in the
-   * worktree (its notes would be deleted). Anything else, or anything unknown, keeps the workspace. A workspace that
-   * is already gone just ends its discussion. Returns the workspaces archived.
-   */
-  async archiveSettledDiscussions(host: SweepHost, now = new Date()): Promise<string[]> {
-    const archived: string[] = [];
-    for (const candidate of this.settledDiscussions(now)) {
-      const agentId = candidate.discussionAgentId!;
-      const workspaceId = candidate.discussionWorkspaceId!;
-      try {
-        if (this.holdsOpenAsks(workspaceId)) continue;
-        const workspace = await host.workspace(workspaceId);
-        if (!workspace) {
-          await this.endDiscussion(agentId);
-          continue;
-        }
-        const lastActive = Math.max(Date.parse(candidate.updatedAt), workspace.lastActiveAt ? Date.parse(workspace.lastActiveAt) : 0);
-        if (!workspace.idle || !workspace.clean || now.getTime() - lastActive < SETTLED_DISCUSSION_MS) continue;
-        // The checks above took a while (git status): anything that changed meanwhile keeps the workspace.
-        const ask = this.store.get(candidate.workspaceId, candidate.id);
-        if (!ask || ask.discussionWorkspaceId !== workspaceId || OPEN_STATUSES.includes(ask.status) || this.holdsOpenAsks(workspaceId)) continue;
-        const result = await host.archive(workspaceId);
-        if (result.error) {
-          host.log(`[asks] could not archive ${workspaceId}: ${result.error}`);
-          continue;
-        }
-        await this.endDiscussion(agentId);
-        archived.push(workspaceId);
-      } catch (error) {
-        host.log(`[asks] left ${workspaceId} as it is: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
-    return archived;
-  }
-
-  private holdsOpenAsks(workspaceId: string): boolean {
-    return this.store.list(workspaceId).some((ask) => OPEN_STATUSES.includes(ask.status));
   }
 
   /** Asks this agent was opened to discuss, in any workspace. */
