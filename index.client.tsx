@@ -13,6 +13,7 @@ import { useEffect } from "react";
 import { Text } from "react-native";
 import { AsksMessage } from "./client/AsksMessage";
 import { onAsksChanged } from "./client/changes";
+import { agentOpenerFor, type OpenAgent } from "./client/navigation";
 import { inboxReview, OpenPrContext } from "./client/inbox";
 import { AgentAsks, AskCard, AsksView, POLL_MS, useAsks, WorkspaceAskEntry } from "./client/AsksView";
 import { SettingsScreen } from "./client/SettingsScreen";
@@ -30,7 +31,7 @@ function WorkspacePanel(props: PluginWorkspacePanelProps) {
         theme={theme}
         compact={layout.compact}
         workspaceId={workspaceId}
-        openAgent={navigation ? (agentId) => navigation.openAgent({ agentId }) : undefined}
+        openAgent={navigation ? agentOpenerFor(navigation) : undefined}
       />
     </OpenPrContext.Provider>
   );
@@ -50,7 +51,7 @@ function OverviewAskEntry(props: SummaryEntryProps) {
         defaultExpanded={defaultExpanded}
         expanded={expanded}
         onExpandedChange={onExpandedChange}
-        openAgent={navigation ? (agentId) => navigation.openAgent({ agentId }) : undefined}
+        openAgent={navigation ? agentOpenerFor(navigation) : undefined}
       />
     </OpenPrContext.Provider>
   );
@@ -60,14 +61,14 @@ function OverviewAskEntry(props: SummaryEntryProps) {
  * Older hosts give chat cards and pill popovers no `navigation`, so there they open an agent by visiting
  * the Asks screen with `open`, which has navigation and hands off at once. Set in `contribute`.
  */
-let openAgentViaScreen: ((agentId: string) => void) | undefined;
+let openAgentViaScreen: OpenAgent | undefined;
 
 type Navigation = PluginScreenProps["navigation"];
 
 /** Opens agents through the host's navigation when it passes one (FSH fork), else via the Asks screen. */
-function agentOpener(props: object): ((agentId: string) => void) | undefined {
+function agentOpener(props: object): OpenAgent | undefined {
   const navigation = (props as { navigation?: Navigation }).navigation;
-  return navigation ? (agentId) => navigation.openAgent({ agentId }) : openAgentViaScreen;
+  return navigation ? agentOpenerFor(navigation) : openAgentViaScreen;
 }
 
 function GlobalScreen(props: PluginScreenProps) {
@@ -81,7 +82,7 @@ function GlobalScreen(props: PluginScreenProps) {
       <AsksView
         theme={theme}
         compact={layout.compact}
-        openAgent={navigation ? (agentId) => navigation.openAgent({ agentId }) : undefined}
+        openAgent={navigation ? agentOpenerFor(navigation) : undefined}
       />
     </OpenPrContext.Provider>
   );
@@ -123,10 +124,10 @@ function PillPopover(props: PluginButtonContentProps) {
   const { theme, layout, workspaceId, close, ...context } = props;
   if (context.context !== "agent") return null;
   const open = agentOpener(props);
-  const openAgent = open
-    ? (agentId: string) => {
+  const openAgent: OpenAgent | undefined = open
+    ? (agentId, position) => {
         close();
-        open(agentId);
+        open(agentId, position);
       }
     : undefined;
   const openInbox = inboxReview(props);

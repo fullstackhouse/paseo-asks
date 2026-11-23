@@ -7,11 +7,13 @@ import { Platform, Pressable, Text, View } from "react-native";
 import { asksChanged } from "./changes";
 import { useDraft } from "./drafts";
 import { MoreMenu, type MenuEntry } from "./menu";
+import type { OpenAgent } from "./navigation";
 import {
   actOnAsk,
   discussAsk,
   discussionTitle,
   listAsks,
+  locateAsk,
   prPreviewOf,
   refreshAsks,
   type Action,
@@ -45,7 +47,7 @@ interface ViewProps {
   compact: boolean;
   /** Absent on the global screen: every workspace on this host. */
   workspaceId?: string;
-  openAgent?: (agentId: string) => void;
+  openAgent?: OpenAgent;
 }
 
 export function useAsks(workspaceId?: string, includeClosed = false) {
@@ -167,7 +169,7 @@ function QueueRow(props: {
   theme: PluginTheme;
   expanded: boolean;
   onToggle(): void;
-  openAgent?: (agentId: string) => void;
+  openAgent?: OpenAgent;
 }) {
   const { ask, workspaceName, snoozed, styles, theme, expanded } = props;
   const [hovered, setHovered] = useState(false);
@@ -304,7 +306,7 @@ export function AgentAsks(props: {
   compact: boolean;
   workspaceId: string;
   agentId: string;
-  openAgent?: (agentId: string) => void;
+  openAgent?: OpenAgent;
 }) {
   const { theme, compact, workspaceId, agentId, openAgent } = props;
   const styles = useMemo(() => makeStyles(theme, compact), [theme, compact]);
@@ -380,7 +382,7 @@ export function AskCard(
     theme: PluginTheme;
     compact: boolean;
     agentId: string;
-    openAgent?: (agentId: string) => void;
+    openAgent?: OpenAgent;
   } & AskCardData,
 ) {
   const { theme, compact, agentId, askId, verb, call, openAgent } = props;
@@ -521,7 +523,7 @@ export function WorkspaceAskEntry(props: {
   /** Host-owned open state, when the host keeps one entry open at a time. */
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
-  openAgent?: (agentId: string) => void;
+  openAgent?: OpenAgent;
 }) {
   const { theme, compact, workspaceId, askId, defaultExpanded, onExpandedChange, openAgent } = props;
   const styles = useMemo(() => makeStyles(theme, compact), [theme, compact]);
@@ -552,8 +554,8 @@ function AskRow(props: {
   theme: PluginTheme;
   expanded: boolean;
   onToggle(): void;
-  openAgent?: (agentId: string) => void;
-  /** The agent whose chat this is shown in, so "Open chat" does not point at itself. */
+  openAgent?: OpenAgent;
+  /** The agent whose chat this is shown in, so "Show in chat" does not point at itself. */
   viewingAgentId?: string;
   foldBody?: boolean;
 }) {
@@ -591,7 +593,7 @@ function AskDetail({
   ask: Ask;
   styles: Styles;
   theme: PluginTheme;
-  openAgent?: (agentId: string) => void;
+  openAgent?: OpenAgent;
   viewingAgentId?: string;
   /** Keep the body behind a "Details" link. */
   foldBody?: boolean;
@@ -631,6 +633,13 @@ function AskDetail({
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : String(error)),
   });
+  const locate = useRpc(locateAsk);
+  // The chat opens scrolled to where the agent raised the ask; at its end when that can't be found.
+  const showInChat = (open: OpenAgent) =>
+    void locate({ workspaceId: ask.workspaceId, id: ask.id }).then(
+      ({ agentId, position }) => open(agentId, position),
+      () => open(ask.ownerAgentId),
+    );
   const busy = mutation.isPending || discussion.isPending;
   const press = (action: Action) => {
     if (action.kind === "open" && action.url) return openLink(action.url);
@@ -657,7 +666,7 @@ function AskDetail({
           },
         ]),
     ...(openAgent && ask.ownerAgentId !== viewingAgentId
-      ? [{ id: "chat", label: "Open chat", icon: "MessageSquare", onSelect: () => openAgent(ask.ownerAgentId) }]
+      ? [{ id: "chat", label: "Show in chat", icon: "MessageSquare", onSelect: () => showInChat(openAgent) }]
       : []),
     ...(closed
       ? []
