@@ -1,6 +1,6 @@
 import type { PaseoApi } from "@getpaseo/client";
 import { latestTurn, type PluginServerContext } from "@getpaseo/plugin/server";
-import { actOnAsk, discussAsk, listAsks, OPEN_STATUSES, oldestFirst, refreshAsks } from "./shared/asks";
+import { actOnAsk, discussAsk, listAsks, OPEN_STATUSES, oldestFirst, refreshAsks, showsIn } from "./shared/asks";
 import { AgentDirectory, pickCaller } from "./server/agents";
 import { installBridge } from "./server/bridge";
 import { discuss } from "./server/discuss";
@@ -134,9 +134,10 @@ export default function contribute(server: PluginServerContext) {
     void outbox.flush(agent.id);
     const timeline = await latestTurn(api.agents.ref(agent.id).timeline);
     lastOutputs.record(agent.id, timeline);
-    // Agents sometimes ask in chat and skip ask_create; one reminder per such turn. Discussions talk to the human
-    // directly, and an explainer's ask lives in another workspace than its own.
-    if (outcome.kind !== "completed" || !agent.workspaceId || service.discussing(agent.id).length) return;
+    // Agents sometimes ask in chat and skip ask_create; one reminder per such turn. A discussion's questions are about
+    // the ask it discusses, whose buttons are in front of the human while it is open; after that it is nudged like any agent.
+    const discussing = service.discussing(agent.id).some((ask) => OPEN_STATUSES.includes(ask.status));
+    if (outcome.kind !== "completed" || !agent.workspaceId || discussing) return;
     const workspaceId = agent.workspaceId;
     if (await isBackground(api, workspaceId)) return;
     void service
@@ -202,8 +203,8 @@ export default function contribute(server: PluginServerContext) {
 
   server.handle(listAsks, async ({ workspaceId, includeClosed }, { paseo: api }) => {
     capture(api);
-    const asks = store
-      .list(workspaceId)
+    // A workspace also lists the ask it explains, with its buttons, so the human answers it there.
+    const asks = (workspaceId ? store.list().filter((ask) => showsIn(ask, workspaceId)) : store.list())
       .filter((ask) => includeClosed || OPEN_STATUSES.includes(ask.status));
     asks.sort(oldestFirst);
     if (workspaceId) return { asks };

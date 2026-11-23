@@ -145,6 +145,37 @@ export class Sandbox {
     return res.json();
   }
 
+  /** What pressing Discuss does, through the plugin's terminal endpoint. */
+  async discuss(askId: string, note?: string): Promise<{ agentId: string; workspaceId: string; created: boolean }> {
+    const { port, token } = JSON.parse(readFileSync(join(this.paseoHome, "plugin-data", "asks", "server.json"), "utf8"));
+    const res = await fetch(`http://127.0.0.1:${port}/discuss`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ workspaceId: this.workspaceOf(askId), id: askId, note }),
+    });
+    if (!res.ok) throw new Error(`/discuss ${res.status}: ${await res.text()}`);
+    return (await res.json()) as { agentId: string; workspaceId: string; created: boolean };
+  }
+
+  /** Sends the agent a message as the human would, and waits for its turn to end. */
+  async send(agentId: string, prompt: string): Promise<void> {
+    await this.paseo("send", agentId, prompt);
+  }
+
+  /** The agent's snapshot as `paseo inspect --json` prints it. */
+  async inspect(agentId: string): Promise<Record<string, unknown>> {
+    const out = await this.paseo("inspect", agentId, "--json");
+    return JSON.parse(out.slice(out.indexOf("{")));
+  }
+
+  /** Gives the sandbox project a first commit, so worktrees can branch off it. Changes what agents see of git. */
+  async commitProject(): Promise<void> {
+    await exec("git", ["commit", "-q", "--allow-empty", "-m", "init"], {
+      cwd: this.project,
+      env: { ...process.env, HOME: join(this.root, "home"), GIT_CONFIG_NOSYSTEM: "1", GIT_AUTHOR_DATE: "2026-01-01T00:00:00Z", GIT_COMMITTER_DATE: "2026-01-01T00:00:00Z" },
+    });
+  }
+
   pluginLogs(): Promise<string> {
     return this.paseo("plugin", "logs", "paseo-asks");
   }

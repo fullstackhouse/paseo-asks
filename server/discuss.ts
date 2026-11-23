@@ -72,6 +72,8 @@ export async function discuss(deps: DiscussDeps, ask: Ask, note?: string): Promi
         await workspace.archive().catch(() => undefined);
         throw error;
       });
+    // Its Asks tab shows this ask next to the explainer's own; their ids must differ.
+    await store.reserveAfter(workspace.id, ask.id);
     await store.update(ask.workspaceId, ask.id, { discussionAgentId: handle.id, discussionWorkspaceId: workspace.id }, { touch: false });
     return { agentId: handle.id, workspaceId: workspace.id, created: true };
   }
@@ -128,7 +130,11 @@ function askBrief(ask: Ask, ownerOutput: string | undefined): string[] {
 
 function settle(ask: Ask): string {
   const choice = ask.actions.some((action) => action.kind === "resolve") ? ", the actionId they chose," : "";
-  return `When the human settles it, call ask_resolve with id "${ask.id}"${choice} and a note: the decision plus anything the main agent must know to act on it. That note is delivered to the main agent. If the human decides nothing should happen, use ask_update with status "dropped" and explain in your reply.`;
+  return [
+    `The human sees ${ask.id} with its buttons in this chat's Asks too, and a click there answers it; never send them elsewhere to answer it.`,
+    `When the human settles it with you, call ask_resolve with id "${ask.id}"${choice} and a note: the decision plus anything the main agent must know to act on it. That note is delivered to the main agent. If the human decides nothing should happen, use ask_update with status "dropped" and explain in your reply.`,
+    `For anything else you need from the human (a message to send for them, a follow-up), call ask_create as usual.`,
+  ].join(" ");
 }
 
 function opening(message: string | undefined, brief: string): string {
@@ -140,7 +146,7 @@ export function explainerPrompt(ask: Ask, ownerCwd: string, ownerOutput: string 
   return [
     `You explain ask ${ask.id} to the human so they can decide it. Another agent (the main agent) raised it and owns that work; it changes its own checkout, ${ownerCwd}. You may read that checkout, never change it.`,
     `This workspace is a fresh worktree of the same repo, branched off its default branch, and it is yours: write notes, EXPLAIN.md or figures here when they help. Do not commit, push or open pull requests.`,
-    `Do not create asks: you are answering this one. ${settle(ask)}`,
+    settle(ask),
     "",
     ...askBrief(ask, ownerOutput),
     "",
@@ -158,7 +164,7 @@ export function seedPrompt(ask: Ask, ownerOutput: string | undefined, message?: 
   return [
     `You are a side chat the human opened to talk through ask ${ask.id} before deciding it.`,
     `Another agent (the main agent) raised it and is the only one who changes this worktree. Do not edit files or run anything with side effects. Reading files, git log/diff, and gh views are fine when they help answer a question.`,
-    `Do not create asks: you are answering this one. ${settle(ask)}`,
+    settle(ask),
     "",
     ...askBrief(ask, ownerOutput),
     "",

@@ -53,6 +53,14 @@ export class AskStore {
     });
   }
 
+  /** Numbers the workspace's next asks after `id` (e.g. A31 after A30), so they can't be mistaken for that ask. */
+  reserveAfter(workspaceId: string, id: string): Promise<void> {
+    const number = Number(id.replace(/^A/, ""));
+    return this.mutate(workspaceId, (file) => {
+      if (Number.isInteger(number)) file.nextId = Math.max(file.nextId, number + 1);
+    });
+  }
+
   /** `touch: false` for bookkeeping (a PR snapshot) that should not count as the ask changing. */
   update(workspaceId: string, id: string, patch: AskPatch, { touch = true } = {}): Promise<Ask> {
     return this.mutate(workspaceId, (file) => {

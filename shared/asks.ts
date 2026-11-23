@@ -80,6 +80,17 @@ export type Ask = z.infer<typeof AskSchema>;
 
 export const OPEN_STATUSES: readonly Ask["status"][] = ["open", "in_progress"];
 
+/** The workspaces an ask shows in: its own, and the one it is being explained in, so the human answers it there. */
+export function workspacesOf(ask: Pick<Ask, "workspaceId" | "discussionWorkspaceId">): string[] {
+  return ask.discussionWorkspaceId && ask.discussionWorkspaceId !== ask.workspaceId
+    ? [ask.workspaceId, ask.discussionWorkspaceId]
+    : [ask.workspaceId];
+}
+
+export function showsIn(ask: Pick<Ask, "workspaceId" | "discussionWorkspaceId">, workspaceId: string): boolean {
+  return workspacesOf(ask).includes(workspaceId);
+}
+
 /** Waits on the human: open. A linked PR's state says nothing about it; the owner closes the ask when its work is done. */
 export function awaitsYou(ask: Pick<Ask, "status">): boolean {
   return ask.status === "open";
@@ -95,16 +106,18 @@ export function waitingCount(
 
 /** Per workspace: how many asks wait on you and the newest one's id, which changes when a new ask arrives. */
 export function waitingByWorkspace(
-  asks: readonly Pick<Ask, "id" | "status" | "workspaceId" | "createdAt">[],
+  asks: readonly Pick<Ask, "id" | "status" | "workspaceId" | "discussionWorkspaceId" | "createdAt">[],
 ): Map<string, { count: number; newestId: string }> {
   const result = new Map<string, { count: number; newestId: string; newestAt: string }>();
   for (const ask of asks) {
     if (!awaitsYou(ask)) continue;
-    const entry = result.get(ask.workspaceId);
-    if (!entry) result.set(ask.workspaceId, { count: 1, newestId: ask.id, newestAt: ask.createdAt });
-    else {
-      entry.count++;
-      if (ask.createdAt > entry.newestAt) Object.assign(entry, { newestId: ask.id, newestAt: ask.createdAt });
+    for (const workspaceId of workspacesOf(ask)) {
+      const entry = result.get(workspaceId);
+      if (!entry) result.set(workspaceId, { count: 1, newestId: ask.id, newestAt: ask.createdAt });
+      else {
+        entry.count++;
+        if (ask.createdAt > entry.newestAt) Object.assign(entry, { newestId: ask.id, newestAt: ask.createdAt });
+      }
     }
   }
   return new Map([...result].map(([id, { count, newestId }]) => [id, { count, newestId }]));
@@ -154,17 +167,19 @@ export function askDetail(ask: Pick<Ask, "kind" | "actions" | "pr" | "orphaned">
  * Like `waitingCount`, asks in snoozed workspaces don't wait on you.
  */
 export function workspaceAsks(
-  asks: readonly Pick<Ask, "id" | "title" | "kind" | "actions" | "pr" | "orphaned" | "status" | "workspaceId" | "createdAt">[],
+  asks: readonly Pick<Ask, "id" | "title" | "kind" | "actions" | "pr" | "orphaned" | "status" | "workspaceId" | "discussionWorkspaceId" | "createdAt">[],
   snoozed: ReadonlySet<string>,
 ): Map<string, WorkspaceAsks> {
   const result = new Map<string, WorkspaceAsks>();
   for (const ask of [...asks].sort(oldestFirst)) {
-    let workspace = result.get(ask.workspaceId);
-    if (!workspace) result.set(ask.workspaceId, (workspace = { count: 0, entries: [] }));
-    if (!awaitsYou(ask) || snoozed.has(ask.workspaceId)) continue;
-    workspace.count++;
-    workspace.newestId = ask.id;
-    workspace.entries.push({ id: ask.id, title: ask.title, detail: askDetail(ask) });
+    for (const workspaceId of workspacesOf(ask)) {
+      let workspace = result.get(workspaceId);
+      if (!workspace) result.set(workspaceId, (workspace = { count: 0, entries: [] }));
+      if (!awaitsYou(ask) || snoozed.has(workspaceId)) continue;
+      workspace.count++;
+      workspace.newestId = ask.id;
+      workspace.entries.push({ id: ask.id, title: ask.title, detail: askDetail(ask) });
+    }
   }
   return result;
 }

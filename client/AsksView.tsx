@@ -324,7 +324,8 @@ export function AgentAsks(props: {
   if (asks.isPending) return <Message styles={styles} text="Loading asks…" />;
   if (asks.isError)
     return <Message styles={styles} text={`Could not load asks: ${asks.error.message}`} danger />;
-  const own = (ask: Ask) => (ask.ownerAgentId === agentId ? 0 : 1);
+  // This agent's asks first, the one it discusses included.
+  const own = (ask: Ask) => (ask.ownerAgentId === agentId || ask.discussionAgentId === agentId ? 0 : 1);
   const ordered = [...asks.data.asks].sort((a, b) => own(a) - own(b));
   return (
     <View style={styles.popover}>
@@ -334,12 +335,15 @@ export function AgentAsks(props: {
         styles={styles}
         renderRow={(ask) => (
           <AskRow
-            key={ask.id}
+            key={`${ask.workspaceId}/${ask.id}`}
             ask={ask}
             styles={styles}
             theme={theme}
-            expanded={expanded === ask.id}
-            onToggle={() => setExpanded(expanded === ask.id ? null : ask.id)}
+            expanded={expanded === `${ask.workspaceId}/${ask.id}`}
+            onToggle={() => {
+              const key = `${ask.workspaceId}/${ask.id}`;
+              setExpanded(expanded === key ? null : key);
+            }}
             openAgent={openAgent}
             viewingAgentId={agentId}
           />
@@ -380,9 +384,12 @@ export function AskCard(
   const workspaceId = useAgent(agentId, (agent) => agent.workspaceId);
   // Every card in a chat shares this one query, so a long chat still polls once.
   const asks = useAsks(workspaceId ?? undefined, true);
-  const ask = asks.data?.asks.find(
-    (candidate) => candidate.workspaceId === workspaceId && candidate.id === askId,
-  );
+  // An explainer's calls on the ask it discusses name that ask, which lives in another workspace (see service.find).
+  const ask =
+    (verb !== "create"
+      ? asks.data?.asks.find((candidate) => candidate.discussionAgentId === agentId && candidate.id === askId)
+      : undefined) ??
+    asks.data?.asks.find((candidate) => candidate.workspaceId === workspaceId && candidate.id === askId);
   const [toggled, setToggled] = useState<boolean | null>(null);
   const expanded = toggled ?? ask?.status === "open";
   const settings = useSettings(displaySettings);
@@ -439,7 +446,10 @@ export function WorkspaceAskEntry(props: {
   const [localExpanded, setLocalExpanded] = useState(defaultExpanded);
   const expanded = props.expanded ?? localExpanded;
   const setExpanded = props.expanded === undefined ? setLocalExpanded : onExpandedChange;
-  const ask = asks.data?.asks.find((candidate) => candidate.id === askId);
+  // The workspace's own ask first; else the one it explains.
+  const ask =
+    asks.data?.asks.find((candidate) => candidate.workspaceId === workspaceId && candidate.id === askId) ??
+    asks.data?.asks.find((candidate) => candidate.id === askId);
   if (!ask) return null;
   return (
     <AskRow
@@ -585,7 +595,11 @@ function AskDetail({
           <PrDetail pr={ask.pr} styles={styles} />
         ))}
       {ask.pr?.deployments?.length ? <Deployments deployments={ask.pr.deployments} styles={styles} /> : null}
-      {ask.discussionWorkspaceId && ask.discussionAgentId && ask.status !== "done" && ask.status !== "dropped" && (
+      {ask.discussionWorkspaceId &&
+        ask.discussionAgentId &&
+        ask.discussionAgentId !== viewingAgentId &&
+        ask.status !== "done" &&
+        ask.status !== "dropped" && (
         <DiscussedIn ask={ask} styles={styles} open={openAgent} />
       )}
       {ask.orphaned && (

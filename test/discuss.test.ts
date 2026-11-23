@@ -6,7 +6,7 @@ import { discuss, type DiscussDeps } from "../server/discuss";
 import { Outbox, type Courier } from "../server/outbox";
 import { AsksService } from "../server/service";
 import { AskStore } from "../server/store";
-import { discussionTitle } from "../shared/asks";
+import { discussionTitle, showsIn, waitingByWorkspace, workspaceAsks } from "../shared/asks";
 
 const WS = "wks_owner";
 const EXPLAIN_WS = "wks_explain";
@@ -118,7 +118,9 @@ describe("Discuss", () => {
     expect(agent!.options.config.mcpServers.asks).toBeDefined();
     const prompt: string = agent!.options.prompt;
     expect(prompt).toContain("/explain");
-    expect(prompt).toContain("Do not create asks");
+    expect(prompt).toContain("A1 with its buttons in this chat's Asks too");
+    expect(prompt).toContain("call ask_create as usual");
+    expect(prompt).not.toContain("Do not create asks");
     expect(prompt).toContain("never change it");
     expect(prompt).toContain("/repos/app/.paseo/worktrees/feature");
     expect(prompt).toContain('call ask_resolve with id "A1"');
@@ -200,13 +202,37 @@ describe("Discuss", () => {
     expect(store.get(WS, "A1")!.status).toBe("open");
   });
 
-  it("refuses new asks from an agent discussing one", async () => {
+  it("lets the explainer raise asks of its own, in its own workspace", async () => {
     await decision();
     await store.update(WS, "A1", { discussionAgentId: EXPLAINER, discussionWorkspaceId: EXPLAIN_WS });
-    const result = await service.callTool(EXPLAINER, "ask_create", { kind: "question", title: "Anything else?" });
-    expect(result.isError).toBe(true);
-    expect(result.text).toContain("You are discussing A1");
-    expect(store.list(EXPLAIN_WS)).toEqual([]);
+    const result = await service.callTool(EXPLAINER, "ask_create", {
+      kind: "followup",
+      title: "Send the summary to the lead?",
+      actions: [{ label: "Send it", kind: "send", prompt: "Send the summary to the lead" }],
+    });
+    expect(result.isError).toBeFalsy();
+    expect(store.list(EXPLAIN_WS)).toEqual([expect.objectContaining({ ownerAgentId: EXPLAINER, title: "Send the summary to the lead?" })]);
+  });
+
+  it("numbers the explainer's own asks after the one it discusses", async () => {
+    const ask = await decision();
+    await discuss(deps(fakePaseo(created)), ask);
+    const result = await service.callTool(EXPLAINER, "ask_create", { kind: "question", title: "Which region?" });
+    expect(result.text).toMatch(/^A2 \[open\]/);
+    expect(store.get(EXPLAIN_WS, "A2")).toMatchObject({ ownerAgentId: EXPLAINER });
+    expect(store.get(WS, "A1")!.status).toBe("open");
+  });
+
+  it("shows the linked ask in the explainer's workspace too, and counts it waiting there", async () => {
+    await decision();
+    await store.update(WS, "A1", { discussionAgentId: EXPLAINER, discussionWorkspaceId: EXPLAIN_WS });
+    const asks = store.list();
+    expect(asks.filter((ask) => showsIn(ask, EXPLAIN_WS)).map((ask) => ask.id)).toEqual(["A1"]);
+    expect(asks.filter((ask) => showsIn(ask, WS)).map((ask) => ask.id)).toEqual(["A1"]);
+    expect(asks.filter((ask) => showsIn(ask, "wks_other"))).toEqual([]);
+    expect(waitingByWorkspace(asks).get(EXPLAIN_WS)).toEqual({ count: 1, newestId: "A1" });
+    expect(workspaceAsks(asks, new Set()).get(EXPLAIN_WS)).toMatchObject({ count: 1, entries: [{ id: "A1" }] });
+    expect(workspaceAsks(asks, new Set([EXPLAIN_WS])).get(EXPLAIN_WS)).toMatchObject({ count: 0 });
   });
 
   it("marks the explainer as a discussion, which the unrecorded-ask nudge skips, and only it", async () => {

@@ -125,10 +125,6 @@ export class AsksService {
       switch (name) {
         case "ask_create": {
           const input = CreateInput.parse(args);
-          const discussing = this.discussing(agentId)[0];
-          if (discussing) {
-            throw new Error(`You are discussing ${discussing.id} (${discussing.title}), so you create no asks: settle it with ask_resolve or ask_update on ${discussing.id}, and put anything else in its note or your reply.`);
-          }
           const paths = await this.paths(workspaceId, input.body);
           return render(await this.create(workspaceId, agentId, { ...input, body: paths.body }), paths.notes);
         }
