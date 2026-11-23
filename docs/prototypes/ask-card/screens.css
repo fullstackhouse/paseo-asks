@@ -519,7 +519,9 @@
 .ak-outcome b { color: var(--foreground); font-weight: 600; }
 .ak-notice { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; color: var(--status-warning-text); background: var(--status-warning-bg); border: 1px solid var(--status-warning-border); border-radius: 6px; padding: 8px; }
 .ak-notice svg { margin-top: 2px; }
-.ak-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ak-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ak-tail { display: flex; align-items: center; gap: 8px; flex: 1 1 200px; min-width: 200px; }
+.ak-tail .ak-reply { flex: 1; min-width: 0; }
 .ak-btn { font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--secondary); color: var(--foreground); text-align: left; }
 .ak-btn-primary { background: var(--primary); border-color: var(--primary); color: var(--primary-foreground); }
 .ak-phone .ak-btn { padding: 10px 12px; }
@@ -549,7 +551,7 @@
 .ak-reply-text { flex: 1; color: var(--app-fg-extra-muted); font-size: 13px; }
 .ak-reply.has-text .ak-reply-text { color: var(--foreground); }
 .ak-send { display: inline-flex; color: var(--primary-foreground); background: var(--primary); border-radius: 6px; padding: 4px; }
-.ak-menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 5; min-width: 220px; background: var(--popover); border: 1px solid var(--border); border-radius: 8px; padding: 4px; box-shadow: var(--shadow-lg); }
+.ak-menu { position: absolute; bottom: calc(100% + 4px); right: 0; z-index: 5; min-width: 220px; background: var(--popover); border: 1px solid var(--border); border-radius: 8px; padding: 4px; box-shadow: var(--shadow-lg); }
 .ak-item { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 6px; font-size: 13px; white-space: nowrap; }
 .ak-item:first-child { background: var(--accent); }
 .ak-ph .ak-item { padding: 12px; font-size: 14px; }
@@ -562,6 +564,3 @@
 .ak-toast { display: flex; gap: 8px; align-items: center; margin-top: 12px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--status-error-border); background: var(--popover); color: var(--foreground); font-size: 13px; box-shadow: var(--shadow-md); }
 .ak-toast svg { color: var(--status-error-icon); }
 
-.ak-replyrow { display: flex; align-items: center; gap: 8px; }
-.ak-replyrow .ak-reply { flex: 1; min-width: 0; }
-.ak-more-wrap.is-inline .ak-menu { left: auto; right: 0; }

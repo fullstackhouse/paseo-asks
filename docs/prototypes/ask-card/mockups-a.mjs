@@ -31,12 +31,8 @@ export function askCardStates({ ic, esc }) {
     if (c.collapsed) return `<div class="ak-card ak-collapsed${p}">${head}</div>`
     const outcome = c.outcome ? `<div class="ak-outcome">${c.outcome}</div>` : ''
     const notice = c.notice ? `<div class="ak-notice">${ic('warn')}<span>${esc(c.notice)}</span></div>` : ''
-    const inline = !(c.actions && c.actions.length)
     const moreBtn = c.more
-      ? `<span class="ak-more-wrap${inline ? ' is-inline' : ''}"><button type="button" class="ak-iconbtn${c.more.open ? ' is-open' : ''}" aria-label="More">${ic('more-horizontal')}</button>${c.more.popover || ''}</span>`
-      : ''
-    const actions = !inline
-      ? `<div class="ak-actions">${c.actions.map(([l, pri]) => `<button type="button" class="ak-btn${pri ? ' ak-btn-primary' : ''}">${esc(l)}</button>`).join('')}${moreBtn}</div>`
+      ? `<button type="button" class="ak-iconbtn${c.more.open ? ' is-open' : ''}" aria-label="More">${ic('more-horizontal')}</button>${c.more.popover || ''}`
       : ''
     const body = c.body && !c.hideBody ? `<div class="ak-body${c.readOnly ? ' is-readonly' : ''}">${c.body}</div>` : ''
     const links = c.links ? `<div class="ak-links">${c.links.map((l) => `<span class="ak-link">${esc(l)}</span>`).join('')}</div>` : ''
@@ -44,9 +40,10 @@ export function askCardStates({ ic, esc }) {
     const chips = c.chips
       ? `<div class="ak-chips">${c.chips.map(([s, l]) => `<span class="ak-chip ak-chip-${s}"><b>${{ live: '●', deploying: '◌', failed: '✕' }[s]}</b>${esc(l)}</span>`).join('')}</div>`
       : ''
+    // answer bar: actions, reply field (flex 1, min 200px, wraps below when short), ⋯ last
     const replyField = `<div class="ak-reply${c.reply ? ' has-text' : ''}"><span class="ak-reply-text">${c.reply ? esc(c.reply) : 'Reply to the agent…'}</span>${c.reply ? `<span class="ak-send">${ic('send')}</span>` : ''}</div>`
-    const reply = c.noReply ? '' : inline ? `<div class="ak-replyrow">${replyField}${moreBtn}</div>` : replyField
-    const inner = c.deleted ? '' : `${outcome}${notice}${actions}${body}${links}${prLine}${chips}${reply}`
+    const bar = `<div class="ak-bar">${(c.actions || []).map(([l, pri]) => `<button type="button" class="ak-btn${pri ? ' ak-btn-primary' : ''}">${esc(l)}</button>`).join('')}<span class="ak-tail">${replyField}<span class="ak-more-wrap">${moreBtn}</span></span></div>`
+    const inner = c.deleted ? '' : `${outcome}${notice}${body}${links}${prLine}${chips}${bar}`
     return `<div class="ak-card${p}">${head}${inner ? `<div class="ak-detail">${inner}</div>` : ''}</div>`
   }
 
