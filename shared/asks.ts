@@ -73,6 +73,8 @@ export const AskSchema = z.object({
   discussionAgentId: z.string().optional(),
   /** The explainer's own workspace. Unset for a side chat in the ask's workspace (the fallback, and asks from before). */
   discussionWorkspaceId: z.string().optional(),
+  /** callKey() of the latest agent call on this ask; its chat card stays live, older ones show their own snapshot. */
+  lastCall: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
