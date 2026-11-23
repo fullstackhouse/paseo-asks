@@ -69,8 +69,10 @@ export const AskSchema = z.object({
   pr: PrStateSchema.optional(),
   /** When the owner was last reminded that this ask sat in progress at the end of its turn. */
   remindedAt: z.string().optional(),
-  /** The side chat opened to talk this ask through. */
+  /** The agent the human talks this ask through with; it may resolve or update the ask from its own workspace. */
   discussionAgentId: z.string().optional(),
+  /** The explainer's own workspace. Unset for a side chat in the ask's workspace (the fallback, and asks from before). */
+  discussionWorkspaceId: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -190,12 +192,22 @@ export const actOnAsk = defineRpc({
   output: z.object({ ask: AskSchema, notified: z.boolean() }),
 });
 
-/** Open (or reopen) a read-only side chat about one ask; `note` is the human's first message to it. */
+/**
+ * Open (or reopen) the discussion of one ask: an explainer in a workspace of its own, or a read-only side chat in the
+ * ask's workspace when that can't be created. `note` is the human's first message to it.
+ */
 export const discussAsk = defineRpc({
   name: "asks.discuss",
   input: z.object({ workspaceId: z.string(), id: z.string(), note: z.string().optional() }),
-  output: z.object({ agentId: z.string(), created: z.boolean() }),
+  output: z.object({ agentId: z.string(), workspaceId: z.string().optional(), created: z.boolean() }),
 });
+
+/** The title of the workspace an ask is explained in; the card names it, so both read the same. */
+export function discussionTitle(ask: Pick<Ask, "id" | "title">): string {
+  const head = `Explain ${ask.id}: `;
+  const max = 60;
+  return ask.title.length + head.length <= max ? head + ask.title : `${head}${ask.title.slice(0, max - head.length - 1).trimEnd()}…`;
+}
 
 /** Ask an agent to bring its asks up to date. Sent now if it is idle or can take a steer, otherwise when its turn ends. */
 export const refreshAsks = defineRpc({

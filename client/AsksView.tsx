@@ -8,6 +8,7 @@ import { useDraft } from "./drafts";
 import {
   actOnAsk,
   discussAsk,
+  discussionTitle,
   listAsks,
   prPreviewOf,
   refreshAsks,
@@ -584,6 +585,9 @@ function AskDetail({
           <PrDetail pr={ask.pr} styles={styles} />
         ))}
       {ask.pr?.deployments?.length ? <Deployments deployments={ask.pr.deployments} styles={styles} /> : null}
+      {ask.discussionWorkspaceId && ask.discussionAgentId && ask.status !== "done" && ask.status !== "dropped" && (
+        <DiscussedIn ask={ask} styles={styles} open={openAgent} />
+      )}
       {ask.orphaned && (
         <Text style={styles.orphaned}>
           The agent that raised this is archived. Closing it here notifies nobody.
@@ -647,6 +651,17 @@ function AskDetail({
 
       </View>
     </View>
+  );
+}
+
+/** Where the ask is being explained; opens the explainer's chat, in its own workspace. */
+function DiscussedIn({ ask, styles, open }: { ask: Ask; styles: Styles; open?: (agentId: string) => void }) {
+  const label = `Being discussed in ${discussionTitle(ask)}`;
+  if (!open) return <Text style={styles.prDetail}>{label}</Text>;
+  return (
+    <Pressable accessibilityRole="link" onPress={() => open(ask.discussionAgentId!)}>
+      <Text style={styles.link}>{label} →</Text>
+    </Pressable>
   );
 }
 

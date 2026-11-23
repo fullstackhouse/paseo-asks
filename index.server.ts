@@ -134,11 +134,9 @@ export default function contribute(server: PluginServerContext) {
     void outbox.flush(agent.id);
     const timeline = await latestTurn(api.agents.ref(agent.id).timeline);
     lastOutputs.record(agent.id, timeline);
-    // Agents sometimes ask in chat and skip ask_create; one reminder per such turn. Side chats talk to the human directly.
-    const sideChat = store
-      .list(agent.workspaceId ?? undefined)
-      .some((ask) => ask.discussionAgentId === agent.id);
-    if (outcome.kind !== "completed" || !agent.workspaceId || sideChat) return;
+    // Agents sometimes ask in chat and skip ask_create; one reminder per such turn. Discussions talk to the human
+    // directly, and an explainer's ask lives in another workspace than its own.
+    if (outcome.kind !== "completed" || !agent.workspaceId || service.discussing(agent.id).length) return;
     const workspaceId = agent.workspaceId;
     if (await isBackground(api, workspaceId)) return;
     void service
@@ -229,7 +227,7 @@ export default function contribute(server: PluginServerContext) {
     const ask = store.get(workspaceId, id);
     if (!ask) throw new Error(`No ask ${id} in this workspace`);
     return discuss(
-      { paseo: api, store, mcp, lastOutput: (agentId) => lastOutputs.get(agentId) },
+      { paseo: api, store, mcp, lastOutput: (agentId) => lastOutputs.get(agentId), log: console.error },
       ask,
       note,
     );
