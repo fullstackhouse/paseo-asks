@@ -397,7 +397,8 @@ export function AskCard(
   const live = ask && (!ask.lastCall || ask.lastCall === call);
   const [toggled, setToggled] = useState<boolean | null>(null);
   // In the explainer's chat, the ask it just settled stays open: its card offers to archive the workspace.
-  const settledHere = ask?.discussionAgentId === agentId && (ask.status === "done" || ask.status === "dropped");
+  const settledHere =
+    Boolean(ask?.discussionWorkspaceId) && ask?.discussionAgentId === agentId && (ask.status === "done" || ask.status === "dropped");
   const expanded = toggled ?? (live ? ask.status === "open" || settledHere : false);
   const settings = useSettings(displaySettings);
 
@@ -768,36 +769,59 @@ function DiscussedIn({ ask, styles, open }: { ask: Ask; styles: Styles; open?: (
   );
 }
 
-/** A settled ask's explainer workspace: where it was, and a button that archives it once nothing there would be lost. */
+/**
+ * A settled ask's explainer workspace: where it was, and a button that archives it. When the worktree holds uncommitted
+ * files (the explainer's notes, usually), the button turns into a confirmation naming how many will be deleted.
+ */
 function SettledDiscussion({ ask, styles, open }: { ask: Ask; styles: Styles; open?: (agentId: string) => void }) {
   const archive = useRpc(archiveDiscussionRpc);
   const queryClient = useQueryClient();
   const toast = useToast();
   const title = discussionTitle(ask);
+  const [files, setFiles] = useState<string[] | null>(null);
   const mutation = useMutation({
-    mutationFn: () => archive({ workspaceId: ask.workspaceId, id: ask.id }),
+    mutationFn: (discardFiles: boolean) => archive({ workspaceId: ask.workspaceId, id: ask.id, discardFiles }),
     onSuccess: (result) => {
-      if (result.archived) toast.show(`Archived ${title}.`);
-      else toast.show(`Kept ${title}: ${result.reason}.`, { variant: "warning" });
+      if (result.archived) {
+        setFiles(null);
+        toast.show(`Archived ${title}.`);
+      } else if (result.files?.length) {
+        setFiles(result.files);
+      } else {
+        toast.show(`Kept ${title}: ${result.reason}.`, { variant: "warning" });
+      }
       void queryClient.invalidateQueries({ queryKey: ["asks"] });
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : String(error)),
   });
   return (
-    <View style={styles.buttons}>
+    <View style={styles.detail}>
       {open ? (
         <Pressable accessibilityRole="link" onPress={() => open(ask.discussionAgentId!)}>
           <Text style={styles.link}>Discussed in {title} →</Text>
         </Pressable>
-      ) : (
-        <Text style={styles.prDetail}>Discussed in {title}</Text>
-      )}
-      <Button
-        styles={styles}
-        label={mutation.isPending ? "Archiving…" : "Archive explainer workspace"}
-        disabled={mutation.isPending}
-        onPress={() => mutation.mutate()}
-      />
+      ) : null}
+      {files ? (
+        <Text style={styles.orphaned}>
+          Its worktree has {files.length} uncommitted file{files.length > 1 ? "s" : ""} ({files.slice(0, 3).join(", ")}
+          {files.length > 3 ? ", …" : ""}). Archiving deletes {files.length > 1 ? "them" : "it"}.
+        </Text>
+      ) : null}
+      <View style={styles.buttons}>
+        <Button
+          styles={styles}
+          label={
+            mutation.isPending
+              ? "Archiving…"
+              : files
+                ? `Archive and delete ${files.length} file${files.length > 1 ? "s" : ""}`
+                : "Archive explainer workspace"
+          }
+          disabled={mutation.isPending}
+          onPress={() => mutation.mutate(Boolean(files))}
+        />
+        {files ? <Button styles={styles} label="Keep it" onPress={() => setFiles(null)} /> : null}
+      </View>
     </View>
   );
 }

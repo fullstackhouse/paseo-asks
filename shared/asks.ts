@@ -220,11 +220,14 @@ export const discussAsk = defineRpc({
   output: z.object({ agentId: z.string(), workspaceId: z.string().optional(), created: z.boolean() }),
 });
 
-/** Archive the workspace a settled ask was explained in. Refuses, with the reason, while anything there would be lost. */
+/**
+ * Archive the workspace a settled ask was explained in. Refuses, with the reason, while anything there is still going
+ * on; `files` lists uncommitted files it would delete, which a second call with `discardFiles` confirms.
+ */
 export const archiveDiscussionRpc = defineRpc({
   name: "asks.archive-discussion",
-  input: z.object({ workspaceId: z.string(), id: z.string() }),
-  output: z.object({ archived: z.boolean(), reason: z.string().optional() }),
+  input: z.object({ workspaceId: z.string(), id: z.string(), discardFiles: z.boolean().optional() }),
+  output: z.object({ archived: z.boolean(), reason: z.string().optional(), files: z.array(z.string()).optional() }),
 });
 
 /** The title of the workspace an ask is explained in; the card names it, so both read the same. */

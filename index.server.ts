@@ -1,8 +1,7 @@
 import type { PaseoApi } from "@getpaseo/client";
 import { latestTurn, type PluginServerContext } from "@getpaseo/plugin/server";
 import { actOnAsk, archiveDiscussionRpc, discussAsk, listAsks, OPEN_STATUSES, oldestFirst, refreshAsks, showsIn } from "./shared/asks";
-import { archiveDiscussion, type ArchiveHost } from "./server/archive-discussion";
-import { uncommittedFiles } from "./server/worktree";
+import { archiveDiscussion, paseoArchiveHost } from "./server/archive-discussion";
 import { AgentDirectory, pickCaller } from "./server/agents";
 import { installBridge } from "./server/bridge";
 import { Discussions } from "./server/discuss";
@@ -241,35 +240,14 @@ export default function contribute(server: PluginServerContext) {
     capture(api);
     return startDiscussion(api, workspaceId, id, note);
   });
-  const archiveHost = (api: PaseoApi): ArchiveHost => ({
-    async workspace(workspaceId) {
-      const handle = api.workspaces.ref(workspaceId);
-      const workspace = await handle.refresh();
-      if (!workspace || workspace.archivingAt) return null;
-      // Per agent: the workspace's own status can read "failed" over an agent that is running.
-      const { entries } = await api.agents.list({
-        filter: { statuses: ["running", "initializing"], includeBackground: true },
-        includeBackground: true,
-        page: { limit: 200 },
-      });
-      const { entries: terminals } = await handle.terminals.list();
-      return {
-        directory: workspace.workspaceDirectory,
-        working: entries.some(({ agent }) => agent.workspaceId === workspaceId),
-        terminals: terminals.length,
-      };
-    },
-    uncommittedFiles,
-    archive: (workspaceId) => api.workspaces.archive(workspaceId),
-  });
-  const archiveExplainer = (api: PaseoApi, workspaceId: string, id: string) => {
-    const ask = store.get(workspaceId, id);
-    if (!ask) throw new Error(`No ask ${id} in this workspace`);
-    return archiveDiscussion({ store, service, host: archiveHost(api) }, ask);
+  const archiveExplainer = (api: PaseoApi, input: { workspaceId: string; id: string; discardFiles?: boolean }) => {
+    const ask = store.get(input.workspaceId, input.id);
+    if (!ask) throw new Error(`No ask ${input.id} in this workspace`);
+    return archiveDiscussion({ store, service, host: paseoArchiveHost(api) }, ask, { discardFiles: input.discardFiles });
   };
-  server.handle(archiveDiscussionRpc, ({ workspaceId, id }, { paseo: api }) => {
+  server.handle(archiveDiscussionRpc, (input, { paseo: api }) => {
     capture(api);
-    return archiveExplainer(api, workspaceId, id);
+    return archiveExplainer(api, input);
   });
 
   const listening = listen(dir, {
@@ -295,10 +273,7 @@ export default function contribute(server: PluginServerContext) {
       const { workspaceId, id, note } = discussAsk.input.parse(input);
       return startDiscussion(requirePaseo(), workspaceId, id, note);
     },
-    "/archive-discussion": async (input) => {
-      const { workspaceId, id } = archiveDiscussionRpc.input.parse(input);
-      return archiveExplainer(requirePaseo(), workspaceId, id);
-    },
+    "/archive-discussion": async (input) => archiveExplainer(requirePaseo(), archiveDiscussionRpc.input.parse(input)),
   });
   const timer = setInterval(() => {
     if (paseo && outbox.pending().length) void outbox.flush();

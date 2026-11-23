@@ -2,8 +2,8 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { beforeEach, describe, expect, it } from "vitest";
-import { archiveDiscussion, type ArchiveHost } from "../server/archive-discussion";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { archiveDiscussion, paseoArchiveHost, type ArchiveHost } from "../server/archive-discussion";
 import { Outbox } from "../server/outbox";
 import { AsksService } from "../server/service";
 import { AskStore } from "../server/store";
@@ -14,13 +14,16 @@ const EXPLAIN_WS = "wks_explain";
 const OWNER = "owner";
 const EXPLAINER = "explainer";
 
+type Workspace = NonNullable<Awaited<ReturnType<ArchiveHost["workspace"]>>>;
+
 describe("archiving an explainer's workspace", () => {
+  let dir: string;
   let store: AskStore;
   let service: AsksService;
   let archived: string[];
 
   beforeEach(async () => {
-    const dir = mkdtempSync(join(tmpdir(), "asks-archive-"));
+    dir = mkdtempSync(join(tmpdir(), "asks-archive-"));
     store = new AskStore(dir);
     archived = [];
     const workspaces: Record<string, string> = { [OWNER]: WS, [EXPLAINER]: EXPLAIN_WS };
@@ -36,14 +39,23 @@ describe("archiving an explainer's workspace", () => {
     await store.update(WS, "A1", { discussionAgentId: EXPLAINER, discussionWorkspaceId: EXPLAIN_WS });
     await store.reserveAfter(EXPLAIN_WS, "A1");
   });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
+  const idle = (overrides: Partial<Workspace> = {}): Workspace => ({
+    directory: "/worktrees/explain-a1",
+    archiving: false,
+    agents: [{ id: EXPLAINER, title: "Explain A1: Squash-only merges?", working: false }],
+    terminals: 0,
+    ...overrides,
+  });
   const host = (overrides: Partial<ArchiveHost> = {}): ArchiveHost => ({
-    workspace: async () => ({ directory: "/worktrees/explain-a1", working: false, terminals: 0 }),
+    workspace: async () => idle(),
     uncommittedFiles: async () => [],
     archive: async (workspaceId) => (archived.push(workspaceId), {}),
     ...overrides,
   });
-  const run = (overrides?: Partial<ArchiveHost>) => archiveDiscussion({ store, service, host: host(overrides) }, store.get(WS, "A1")!);
+  const run = (overrides?: Partial<ArchiveHost>, options?: { discardFiles?: boolean }) =>
+    archiveDiscussion({ store, service, host: host(overrides) }, store.get(WS, "A1")!, options);
   const settle = () => service.callTool(EXPLAINER, "ask_resolve", { id: "A1", actionId: "a2" });
 
   it("archives a settled discussion's idle, clean workspace and ends the discussion", async () => {
@@ -53,40 +65,56 @@ describe("archiving an explainer's workspace", () => {
     expect(store.get(WS, "A1")!.discussionWorkspaceId).toBeUndefined();
   });
 
-  it("refuses while the ask still waits on the human", async () => {
+  it("lists uncommitted files first, and deletes them only once the human confirms", async () => {
+    await settle();
+    const notes = async () => ["EXPLAIN.md", "fig/a.png", "fig/b.png", "notes.md"];
+    expect(await run({ uncommittedFiles: notes })).toEqual({
+      archived: false,
+      reason: "its worktree has uncommitted files (EXPLAIN.md, fig/a.png, fig/b.png and 1 more)",
+      files: ["EXPLAIN.md", "fig/a.png", "fig/b.png", "notes.md"],
+    });
+    expect(archived).toEqual([]);
+    expect(await run({ uncommittedFiles: notes }, { discardFiles: true })).toEqual({ archived: true });
+    expect(archived).toEqual([EXPLAIN_WS]);
+  });
+
+  it("refuses while the ask waits on the human or its owner works on it", async () => {
     expect(await run()).toEqual({ archived: false, reason: "A1 still waits on you; settle it first" });
+    await store.update(WS, "A1", { status: "in_progress" });
+    expect(await run()).toEqual({ archived: false, reason: "A1 is still being worked on" });
     expect(archived).toEqual([]);
   });
 
-  it("refuses while the explainer's own asks wait on the human", async () => {
+  it("refuses while the explainer's own asks are open", async () => {
     await settle();
     await service.callTool(EXPLAINER, "ask_create", { kind: "followup", title: "Send the summary to the lead?" });
     await service.callTool(EXPLAINER, "ask_create", { kind: "question", title: "Which region?" });
-    expect(await run()).toEqual({ archived: false, reason: "A2, A3 there still wait on you" });
+    expect(await run()).toEqual({ archived: false, reason: "A2, A3 there are still open" });
   });
 
-  it("refuses while an agent there works or a terminal is open", async () => {
+  it("refuses while an agent there works, another agent uses it, a terminal is open, or it is being archived", async () => {
     await settle();
-    expect(await run({ workspace: async () => ({ directory: "/w", working: true, terminals: 0 }) })).toEqual({
-      archived: false,
-      reason: "an agent there is still working",
-    });
-    expect(await run({ workspace: async () => ({ directory: "/w", working: false, terminals: 2 }) })).toEqual({
-      archived: false,
-      reason: "2 terminals are open there",
-    });
+    const refusal = async (workspace: Workspace) => (await run({ workspace: async () => workspace })) as { reason: string };
+    expect((await refusal(idle({ agents: [{ id: EXPLAINER, title: null, working: true }] }))).reason).toBe("an agent there is still working");
+    expect((await refusal(idle({ agents: [...idle().agents, { id: "other", title: "Try option B", working: false }] }))).reason).toBe(
+      "other agents use it too (Try option B); archive it from Paseo, which asks first",
+    );
+    expect((await refusal(idle({ terminals: 2 }))).reason).toBe("2 terminals are open there");
+    expect((await refusal(idle({ archiving: true }))).reason).toBe("it is already being archived");
     expect(archived).toEqual([]);
   });
 
-  it("refuses when the worktree has uncommitted files, naming them, or can't be read", async () => {
+  it("refuses when it can't read the worktree", async () => {
     await settle();
-    const dirty = await run({ uncommittedFiles: async () => ["EXPLAIN.md", "fig/a.png", "fig/b.png", "notes.md"] });
-    expect(dirty).toEqual({
-      archived: false,
-      reason: "its worktree has uncommitted files (EXPLAIN.md, fig/a.png, fig/b.png and 1 more); archive it from Paseo's sidebar to confirm losing them",
-    });
     expect((await run({ uncommittedFiles: async () => null })).archived).toBe(false);
-    expect((await run({ workspace: async () => ({ working: false, terminals: 0 }) })).archived).toBe(false);
+    expect((await run({ workspace: async () => idle({ directory: undefined }) })).archived).toBe(false);
+    expect(archived).toEqual([]);
+  });
+
+  it("never archives the workspace the ask itself lives in", async () => {
+    await settle();
+    await store.update(WS, "A1", { discussionWorkspaceId: WS });
+    expect(await run()).toEqual({ archived: false, reason: "A1 was discussed in its own workspace" });
     expect(archived).toEqual([]);
   });
 
@@ -101,6 +129,54 @@ describe("archiving an explainer's workspace", () => {
     await settle();
     expect(await run({ archive: async () => ({ error: "Workspace is busy" }) })).toEqual({ archived: false, reason: "Workspace is busy" });
     expect(store.get(WS, "A1")!.discussionWorkspaceId).toBe(EXPLAIN_WS);
+  });
+});
+
+describe("the daemon side", () => {
+  type Agent = { id: string; title: string | null; workspaceId: string; status: string; archivedAt?: string | null };
+  const api = (workspace: Record<string, unknown> | null, pages: Agent[][], terminals = 0) => {
+    const calls: unknown[] = [];
+    const fake = {
+      workspaces: {
+        ref: () => ({ refresh: async () => workspace, terminals: { list: async () => ({ entries: Array(terminals).fill({}) }) } }),
+        archive: async () => ({ error: null }),
+      },
+      agents: {
+        list: async (options: { page?: { cursor?: string } }) => {
+          calls.push(options);
+          const index = options.page?.cursor ? Number(options.page.cursor) : 0;
+          const more = index + 1 < pages.length;
+          return { entries: pages[index]!.map((agent) => ({ agent })), pageInfo: { hasMore: more, nextCursor: more ? String(index + 1) : null, prevCursor: null } };
+        },
+      },
+    };
+    return { fake: fake as unknown as Parameters<typeof paseoArchiveHost>[0], calls };
+  };
+  const explainer = (status: string): Agent => ({ id: EXPLAINER, title: "Explain A1", workspaceId: EXPLAIN_WS, status });
+
+  it("reads every agent of the workspace across pages, background ones included, and only those", async () => {
+    const { fake, calls } = api({ workspaceDirectory: "/w", archivingAt: null }, [
+      [{ id: "elsewhere", title: null, workspaceId: WS, status: "running" }],
+      [explainer("initializing"), { id: "gone", title: null, workspaceId: EXPLAIN_WS, status: "idle", archivedAt: "2026-11-01T00:00:00Z" }],
+    ]);
+    expect(await paseoArchiveHost(fake).workspace(EXPLAIN_WS)).toEqual({
+      directory: "/w",
+      archiving: false,
+      agents: [{ id: EXPLAINER, title: "Explain A1", working: true }],
+      terminals: 0,
+    });
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).toMatchObject({ includeBackground: true, filter: { includeBackground: true } });
+  });
+
+  it("reads an idle explainer as not working, and counts terminals", async () => {
+    const { fake } = api({ workspaceDirectory: "/w" }, [[explainer("idle")]], 1);
+    expect(await paseoArchiveHost(fake).workspace(EXPLAIN_WS)).toMatchObject({ agents: [{ working: false }], terminals: 1 });
+  });
+
+  it("reads an archived workspace as gone, and one being archived as archiving", async () => {
+    expect(await paseoArchiveHost(api(null, [[]]).fake).workspace(EXPLAIN_WS)).toBeNull();
+    expect(await paseoArchiveHost(api({ archivingAt: "2026-11-23T00:00:00Z" }, [[]]).fake).workspace(EXPLAIN_WS)).toMatchObject({ archiving: true });
   });
 });
 
