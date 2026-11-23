@@ -1,4 +1,4 @@
-import { OPEN_STATUSES, prUrlOf, type Ask, type PrState } from "../shared/asks";
+import { isMergeAction, mergeBlockedBy, OPEN_STATUSES, prUrlOf, type Ask, type PrState } from "../shared/asks";
 import { RateLimited } from "./gh";
 import { changesNewlyRequested, describePrChange, watchedAsks, type FetchPr } from "./github";
 import type { AsksService } from "./service";
@@ -69,7 +69,12 @@ export class PrWatcher {
       await this.store.update(ask.workspaceId, ask.id, { pr }, { touch: false });
       // The human may have closed the ask while gh was running.
       if (!current.subscribe || current.orphaned || !OPEN_STATUSES.includes(current.status)) continue;
-      if (change) this.service.notify(current, `[asks] ${current.id} (${current.title}) ${change}.`);
+      // A new required review (after a push, say) leaves a Merge button the card now hides: the agent must re-offer.
+      const hidden = !holdReview && mergeBlockedBy(pr) && !mergeBlockedBy(previous) && current.actions.some(isMergeAction);
+      const reoffer = hidden
+        ? ` Its Merge action is hidden while the PR needs a review: ask_update ${current.id} with what the human does now (reviewer choices, or a re-request once you have addressed the changes).`
+        : "";
+      if (change) this.service.notify(current, `[asks] ${current.id} (${current.title}) ${change}.${reoffer}`);
       if (holdReview) await this.service.raiseReview(current, pr, { newRound: previous !== undefined && changesNewlyRequested(previous, pr) });
     }
   }

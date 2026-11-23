@@ -14,6 +14,7 @@ import {
   listAsks,
   prPreviewOf,
   refreshAsks,
+  visibleActions,
   type Action,
   type Ask,
   type Deployment,
@@ -673,7 +674,8 @@ function AskDetail({
         ]),
   ];
   const menu = menuItems.length > 0 && <MoreMenu items={menuItems} disabled={busy} styles={styles} />;
-  const actions = ask.status === "open" ? ask.actions : [];
+  // A Merge button on a PR that still needs a review would merge past it, or fail; the agent hears about the change.
+  const actions = ask.status === "open" ? visibleActions(ask) : [];
 
   return (
     <View style={styles.detail}>

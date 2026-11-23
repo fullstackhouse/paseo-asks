@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { PrState } from "../shared/asks";
-import { prPreviewOf, prUrlOf } from "../shared/asks";
+import { isMergeAction, prPreviewOf, prUrlOf, visibleActions } from "../shared/asks";
 import { seedPrompt } from "../server/discuss";
 import { RateLimited } from "../server/gh";
 import { describePrChange, summarizeChecks } from "../server/github";
@@ -337,7 +337,9 @@ describe("phase 2", () => {
 
     await service.act({ workspaceId: WS, id: raised[0]!.id, verb: "action", actionId: raised[0]!.actions[0]!.id });
     await outbox.flush();
-    expect(sent.at(-1)).toContain("Address the review comments on PR #30 (https://github.com/o/r/pull/30) and push");
+    expect(sent.at(-1)).toContain(
+      "Address the review comments on PR #30 (https://github.com/o/r/pull/30), or report what you won't change, and push; then ask_update A1 with a send action that re-requests the review, not a Merge action",
+    );
   });
 
   it("raises a fresh review ask when the open one belongs to a gone owner", async () => {
@@ -394,22 +396,30 @@ describe("phase 2", () => {
   it("tells agents to leave requested changes to the human only while reviews are held", () => {
     const told = instructions();
     const held = instructions({ actOnReviewChanges: false });
-    expect(told).toContain('"CHANGES_REQUESTED": address the comments, or report what you will not change, and push.');
-    expect(held).not.toContain('"CHANGES_REQUESTED": address the comments');
-    expect(held).toContain("Do not start on it yourself");
-    expect(held).toContain("Do not give your own asks an action that starts the review");
+    expect(told).toContain('"CHANGES_REQUESTED": no Merge action. Address the comments');
+    expect(held).not.toContain("Address the comments");
+    expect(held).toContain("Don't start or offer it yourself");
     expect(held.replace(/\n  - "CHANGES_REQUESTED".*\n/, "\n")).toBe(told.replace(/\n  - "CHANGES_REQUESTED".*\n/, "\n"));
   });
 
   it("tells agents to read every review and comment before a Merge action, approvals included", () => {
     for (const rules of [instructions(), instructions({ actOnReviewChanges: false })]) {
-      expect(rules).toContain("Before any Merge action, read every review body and comment from people, approvals included");
+      expect(rules).toContain("Before any Merge action, read every human review and comment, approvals included (not bot status ones)");
       expect(rules).toContain("gh api --paginate repos/OWNER/REPO/pulls/N/comments");
-      expect(rules).toContain("skip bot status comments");
-      expect(rules).toContain("Resolved threads don't count");
-      expect(rules).toContain("afterwards you offer Merge, naming what changed in the ask body, not a re-review");
+      expect(rules).toContain("Resolved threads (reviewThreads { isResolved }, gh api graphql) don't count");
+      expect(rules).toContain("then offer Merge (not a re-review unless asked), naming what changed");
     }
-    expect(instructions({ actOnReviewChanges: false })).toContain("Comments on an approved PR raise no such ask");
+    expect(instructions({ actOnReviewChanges: false })).toContain("An approved PR's comments raise none");
+  });
+
+  // Claude Code cuts MCP server instructions at 4096 characters and appends "… [truncated]". An agent that lost the
+  // REVIEW_REQUIRED rule to that cut offered Merge on a PR still waiting for its review.
+  it("fits the instructions in the 4096 characters Claude Code keeps, with the no-Merge review rules in them", () => {
+    for (const rules of [instructions(), instructions({ actOnReviewChanges: false })]) {
+      expect(rules.length).toBeLessThanOrEqual(4096);
+      expect(rules).toContain('"REVIEW_REQUIRED": no Merge action; the human picks a reviewer.');
+      expect(rules).toContain('"CHANGES_REQUESTED": no Merge action.');
+    }
   });
 
   it("raises a review ask when the setting is turned off after changes were requested", async () => {
@@ -520,5 +530,126 @@ describe("phase 2", () => {
         { type: "assistant_message", text: "world." },
       ]),
     ).toBe("Hello, world.");
+  });
+
+  describe("no Merge action while the PR needs a review", () => {
+    const PR_URL = "https://github.com/o/r/pull/30";
+    let decision: string | null;
+    let lookups: string[];
+    const gated = (actOnReviewChanges = true) => {
+      const dir = mkdtempSync(join(tmpdir(), "asks-"));
+      store = new AskStore(dir);
+      outbox = new Outbox(dir, { state: async () => "idle", send: async (_agent, text) => void sent.push(text) });
+      const reviewOf = async (url: string) => {
+        lookups.push(url);
+        return { number: 30, state: "OPEN" as const, reviewDecision: decision };
+      };
+      service = new AsksService(store, outbox, async () => WS, undefined, undefined, reviewOf, async () => actOnReviewChanges);
+    };
+    const merge = { label: "Merge (squash)", kind: "send" as const, prompt: "Merge PR #30 with squash" };
+    const createWith = (actions: object[]) =>
+      service.callTool(OWNER, "ask_create", { kind: "pr", title: "PR #30", links: [{ label: "PR", url: PR_URL }], actions, subscribe: true });
+
+    beforeEach(() => {
+      decision = "REVIEW_REQUIRED";
+      lookups = [];
+      gated();
+    });
+
+    it("refuses a Merge action and names reviewer choices instead, saving nothing", async () => {
+      const result = await createWith([merge]);
+      expect(result.isError).toBe(true);
+      expect(result.text).toContain('PR #30 is REVIEW_REQUIRED on GitHub, so this ask cannot offer "Merge (squash)". Nothing was saved.');
+      expect(result.text).toContain("one send action per candidate reviewer");
+      expect(store.list(WS)).toEqual([]);
+      expect(lookups).toEqual([PR_URL]);
+    });
+
+    it("refuses a conditional Merge too, and one whose prompt alone says merge", async () => {
+      expect((await createWith([{ ...merge, label: "Merge (squash) when green" }])).isError).toBe(true);
+      expect((await createWith([{ label: "Ship it", kind: "send", prompt: "Merge PR #30 once checks pass" }])).isError).toBe(true);
+    });
+
+    it("lets review requests and an explicit --admin merge through", async () => {
+      const result = await createWith([
+        { label: "Request review from alice", kind: "send", prompt: "Request review on PR #30 from alice, then merge once approved" },
+        { label: "Merge with --admin", kind: "send", prompt: "Merge PR #30 with gh pr merge --squash --admin" },
+      ]);
+      expect(result.isError).toBeFalsy();
+    });
+
+    it("tells the agent to address requested changes, or to wait for the human when reviews are held", async () => {
+      decision = "CHANGES_REQUESTED";
+      expect((await createWith([merge])).text).toContain("Address the comments, or report what you will not change, and push.");
+      gated(false);
+      expect((await createWith([merge])).text).toContain('wait for the "Address review comments on PR #30" ask');
+    });
+
+    it("allows Merge on an approved PR, or when the decision can't be read", async () => {
+      decision = "APPROVED";
+      expect((await createWith([merge])).isError).toBeFalsy();
+      decision = null;
+      expect((await createWith([merge])).isError).toBeFalsy();
+      service = new AsksService(store, outbox, async () => WS, undefined, undefined, async () => {
+        throw new Error("gh: not logged in");
+      });
+      expect((await createWith([merge])).isError).toBeFalsy();
+    });
+
+    it("reads the PR only when a Merge action meets a PR link", async () => {
+      await createWith([{ label: "Request review from alice", kind: "send", prompt: "Request review on PR #30 from alice" }]);
+      await service.callTool(OWNER, "ask_create", { kind: "followup", title: "Merge the docs", actions: [merge] });
+      expect(lookups).toEqual([]);
+    });
+
+    it("refuses an update that adds Merge, or links a PR under an existing one", async () => {
+      await createWith([{ label: "Request review from alice", kind: "send", prompt: "Request review on PR #30 from alice" }]);
+      const added = await service.callTool(OWNER, "ask_update", { id: "A1", actions: [merge] });
+      expect(added.isError).toBe(true);
+      expect(store.get(WS, "A1")!.actions.map((action) => action.label)).toEqual(["Request review from alice"]);
+
+      await service.callTool(OWNER, "ask_create", { kind: "followup", title: "Merge when ready", actions: [merge] });
+      expect((await service.callTool(OWNER, "ask_update", { id: "A2", links: [{ label: "PR", url: PR_URL }] })).isError).toBe(true);
+      expect((await service.callTool(OWNER, "ask_update", { id: "A2", body: "Still waiting" })).isError).toBeFalsy();
+    });
+
+    it("hides an existing Merge button once the PR needs a review, and refuses a stale click", async () => {
+      decision = "APPROVED";
+      await createWith([merge, { label: "Request review from bob", kind: "send", prompt: "Request review on PR #30 from bob" }]);
+      await store.update(WS, "A1", { pr: pr({ reviewDecision: "REVIEW_REQUIRED" }) });
+      const ask = store.get(WS, "A1")!;
+      expect(visibleActions(ask).map((action) => action.label)).toEqual(["Request review from bob"]);
+      await expect(service.act({ workspaceId: WS, id: "A1", verb: "action", actionId: ask.actions[0]!.id })).rejects.toThrow(
+        'PR #30 still needs a review, so "Merge (squash)" is not offered until it is approved',
+      );
+      expect(store.get(WS, "A1")!.status).toBe("open");
+
+      await store.update(WS, "A1", { pr: pr({ reviewDecision: "APPROVED" }) });
+      expect(visibleActions(store.get(WS, "A1")!)).toHaveLength(2);
+    });
+
+    it("tells the owner to re-offer when a new required review hides its Merge button", async () => {
+      decision = "APPROVED";
+      await createWith([merge]);
+      let next = pr({ reviewDecision: "APPROVED" });
+      const watcher = new PrWatcher(store, service, async () => next);
+      await watcher.refresh();
+      next = pr({ reviewDecision: "REVIEW_REQUIRED" });
+      await watcher.refresh();
+      await outbox.flush();
+      expect(sent).toEqual([
+        "[asks] A1 (PR #30) PR #30 review: review required. Its Merge action is hidden while the PR needs a review: ask_update A1 with what the human does now (reviewer choices, or a re-request once you have addressed the changes).",
+      ]);
+    });
+
+    it("recognises merge actions by label or prompt", () => {
+      expect(isMergeAction({ kind: "send", label: "Merge (squash)" })).toBe(true);
+      expect(isMergeAction({ kind: "send", label: "Ship", prompt: "merge PR #30" })).toBe(true);
+      expect(isMergeAction({ kind: "resolve", label: "Merge" })).toBe(false);
+      expect(isMergeAction({ kind: "send", label: "Merge with --admin" })).toBe(false);
+      expect(isMergeAction({ kind: "send", label: "Request review from alice", prompt: "then merge" })).toBe(false);
+      expect(isMergeAction({ kind: "send", label: "Fix merge conflicts", prompt: "Resolve the merge conflict on PR #30" })).toBe(false);
+      expect(isMergeAction({ kind: "send", label: "Start once #12 is merged" })).toBe(false);
+    });
   });
 });

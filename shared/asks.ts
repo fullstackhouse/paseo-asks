@@ -250,3 +250,29 @@ export function prPreviewOf(url: string): string | undefined {
 export function prUrlOf(ask: Pick<Ask, "links">): string | undefined {
   return ask.links.map((link) => prLinkOf(link.url)).find(Boolean);
 }
+
+/** Review decisions that leave a PR unmergeable until someone reviews it again. */
+export const REVIEW_BLOCKS_MERGE = ["REVIEW_REQUIRED", "CHANGES_REQUESTED"] as const;
+
+/**
+ * A send action that merges the PR: its label or prompt says merge. Not merge conflicts, not a review request that merges afterwards, and
+ * not "Merge with --admin", which is how the human merges past a required review on purpose.
+ */
+export function isMergeAction(action: Pick<Action, "kind" | "label" | "prompt">): boolean {
+  if (action.kind !== "send") return false;
+  // "Fix merge conflicts" works on the PR without merging it.
+  const text = `${action.label}\n${action.prompt ?? ""}`.replace(/\bmerge[- ]conflicts?\b/gi, "");
+  return /\bmerge\b/i.test(text) && !/--admin\b/.test(text) && !/\breview\b/i.test(action.label);
+}
+
+/** The review decision that rules out a Merge button on this open PR, or null when there is none. */
+export function mergeBlockedBy(pr: Pick<PrState, "state" | "reviewDecision"> | undefined): string | null {
+  if (pr?.state !== "OPEN" || !pr.reviewDecision) return null;
+  return (REVIEW_BLOCKS_MERGE as readonly string[]).includes(pr.reviewDecision) ? pr.reviewDecision : null;
+}
+
+/** The actions to show: no Merge button while the PR's snapshot says it still needs a review. */
+export function visibleActions(ask: Pick<Ask, "actions" | "pr" | "links">): Action[] {
+  const pr = ask.pr && ask.pr.url === prUrlOf(ask) ? ask.pr : undefined;
+  return mergeBlockedBy(pr) ? ask.actions.filter((action) => !isMergeAction(action)) : ask.actions;
+}
