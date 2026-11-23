@@ -279,6 +279,27 @@ describe("asks", () => {
     expect(courier.sent).toHaveLength(1);
   });
 
+  it("moves an open ask to in progress on a reply, and back to open on new options", async () => {
+    await service.callTool(AGENT, "ask_create", decision);
+    await service.act({ workspaceId: WS, id: "A1", verb: "reply", note: "Why not both?" });
+    expect(store.get(WS, "A1")).toMatchObject({ status: "in_progress", outcome: { note: "Why not both?", by: "human" } });
+    await outbox.flush();
+    expect(courier.sent).toHaveLength(1);
+
+    await service.callTool(AGENT, "ask_update", {
+      id: "A1",
+      actions: [{ label: "Both", kind: "resolve" }, { label: "Squash only", kind: "resolve" }],
+    });
+    expect(store.get(WS, "A1")!.status).toBe("open");
+  });
+
+  it("leaves the status of an ask nobody waits on when the human replies", async () => {
+    await service.callTool(AGENT, "ask_create", decision);
+    await service.callTool(AGENT, "ask_update", { id: "A1", status: "done" });
+    await service.act({ workspaceId: WS, id: "A1", verb: "reply", note: "One more thing" });
+    expect(store.get(WS, "A1")!.status).toBe("done");
+  });
+
   it("survives a restart with messages still pending", async () => {
     await service.callTool(AGENT, "ask_create", decision);
     courier.states.set(AGENT, "running");

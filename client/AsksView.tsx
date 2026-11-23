@@ -4,6 +4,7 @@ import { Icon, ScrollView, TextInput, useToast } from "@getpaseo/plugin/client/r
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useContext, useMemo, useState, type ReactNode } from "react";
 import { Platform, Pressable, Text, View } from "react-native";
+import { asksChanged } from "./changes";
 import { useDraft } from "./drafts";
 import { MoreMenu, type MenuEntry } from "./menu";
 import {
@@ -615,6 +616,7 @@ function AskDetail({
           variant: "warning",
         });
       void queryClient.invalidateQueries({ queryKey: ["asks"] });
+      asksChanged();
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : String(error)),
   });
@@ -624,6 +626,7 @@ function AskDetail({
     onSuccess: ({ agentId }) => {
       setNote("");
       void queryClient.invalidateQueries({ queryKey: ["asks"] });
+      asksChanged();
       openAgent?.(agentId);
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : String(error)),
