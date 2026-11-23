@@ -88,3 +88,39 @@ export function watchedAsks(asks: readonly Ask[]): Ask[] {
     return !(ask.pr?.state === "MERGED" && ask.pr.url === url);
   });
 }
+
+const GITHUB_REMOTE = /github\.com[:/]([^/]+)\/([^/]+?)(?:\.git)?\/?$/;
+
+/** owner/name of a GitHub remote URL (https or ssh), or null for any other remote. */
+export function githubRepoOf(remoteUrl: string | null | undefined): string | null {
+  const match = remoteUrl ? GITHUB_REMOTE.exec(remoteUrl.trim()) : null;
+  return match ? `${match[1]}/${match[2]}` : null;
+}
+
+export type FetchBranchPr = (repo: string, branch: string) => Promise<(PrState & { title: string }) | null>;
+
+/**
+ * The newest PR whose head is this branch, any state. Only for hosts whose workspace snapshots carry no
+ * `githubRuntime` (the daemon's own PR polling); FSH hosts never reach it.
+ */
+export function ghBranchPrFetcher(gh: Gh): FetchBranchPr {
+  return async (repo, branch) => {
+    const stdout = await gh.run([
+      "pr", "list", "--repo", repo, "--head", branch, "--state", "all", "--limit", "1",
+      "--json", "number,url,title,state,isDraft,reviewDecision,mergeable,statusCheckRollup",
+    ]);
+    const [pr] = JSON.parse(stdout) as Array<Record<string, unknown> & { statusCheckRollup?: CheckItem[] }>;
+    if (!pr) return null;
+    return {
+      number: Number(pr.number),
+      url: String(pr.url),
+      title: String(pr.title ?? ""),
+      state: pr.state === "MERGED" || pr.state === "CLOSED" ? pr.state : "OPEN",
+      isDraft: Boolean(pr.isDraft),
+      reviewDecision: typeof pr.reviewDecision === "string" && pr.reviewDecision ? pr.reviewDecision : null,
+      mergeable: typeof pr.mergeable === "string" ? pr.mergeable : "UNKNOWN",
+      checks: summarizeChecks(pr.statusCheckRollup ?? []),
+      fetchedAt: new Date().toISOString(),
+    };
+  };
+}

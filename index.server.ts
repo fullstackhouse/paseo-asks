@@ -1,11 +1,12 @@
 import type { PaseoApi } from "@getpaseo/client";
 import { latestTurn, type PluginServerContext } from "@getpaseo/plugin/server";
-import { actOnAsk, discussAsk, listAsks, OPEN_STATUSES, oldestFirst, refreshAsks, showsIn } from "./shared/asks";
+import { actOnAsk, discussAsk, listAsks, OPEN_STATUSES, oldestFirst, prUrlOf, refreshAsks, showsIn } from "./shared/asks";
 import { AgentDirectory, pickCaller } from "./server/agents";
 import { installBridge } from "./server/bridge";
 import { Discussions } from "./server/discuss";
 import { Gh, ghExec } from "./server/gh";
-import { findGh, ghFetcher } from "./server/github";
+import { findGh, ghBranchPrFetcher, ghFetcher, githubRepoOf } from "./server/github";
+import { fetchDeployments } from "./server/deployments";
 import { LastOutputs } from "./server/last-output";
 import { listen } from "./server/listener";
 import { CLASSIFIER_PROMPT, NUDGE, paseoClassifier, shouldNudge } from "./server/nudge";
@@ -17,13 +18,19 @@ import { AsksService, instructions, TOOLS } from "./server/service";
 import { AskStore } from "./server/store";
 import { attentionForOpenAsks } from "./server/schedule-attention";
 import { PrWatcher } from "./server/watcher";
-import { activeWorkspaces, isBackground } from "./server/workspaces";
+import { activeWorkspaces, isBackground, visibleWorkspaces, type WorkspaceDescriptor } from "./server/workspaces";
 import { displaySettings, reviewSettings } from "./shared/settings";
 import { answerQuestion, dropQuestion, listQuestions, postponeQuestion } from "./shared/questions";
 import { QuestionBook } from "./server/questions";
+import { PrBoard, type WorkspacePr } from "./server/prs";
+import { actOnPr, fromHost, listPrs } from "./shared/prs";
 
 const FLUSH_EVERY_MS = 20_000;
 const PR_EVERY_MS = 120_000;
+/** PR cards read the daemon's own PR polling, which costs no GitHub quota, so they can follow it closely. */
+const PR_CARDS_EVERY_MS = 30_000;
+/** Hosts without that polling: one gh read per workspace branch this often. */
+const BRANCH_PR_EVERY_MS = 5 * 60_000;
 const STALE_EVERY_MS = 60 * 60 * 1000;
 
 type FetchedAgent = Awaited<ReturnType<PaseoApi["agents"]["list"]>>["entries"][number]["agent"];
@@ -116,8 +123,7 @@ export default function contribute(server: PluginServerContext) {
     },
   });
   // The host's pending requests per agent; the hooks miss the ones raised before this plugin (re)started.
-  const reconcileQuestions = async (api: PaseoApi) => {
-    // Idle agents too: a Codex async question stays pending after its turn ends.
+  const listAgents = async (api: PaseoApi) => {
     const agentsSeen: FetchedAgent[] = [];
     let cursor: string | undefined;
     do {
@@ -129,16 +135,75 @@ export default function contribute(server: PluginServerContext) {
       agentsSeen.push(...entries.map((entry) => entry.agent));
       cursor = pageInfo.hasMore ? (pageInfo.nextCursor ?? undefined) : undefined;
     } while (cursor);
-    questions.reconcile(agentsSeen.filter((agent) => !helpers.has(agent.id)));
+    return agentsSeen.filter((agent) => !helpers.has(agent.id));
   };
+  // Idle agents too: a Codex async question stays pending after its turn ends.
+  const reconcileQuestions = async (api: PaseoApi) => questions.reconcile(await listAgents(api));
   const lastOutputs = new LastOutputs(dir);
   const ghPath = findGh();
   if (!ghPath) console.error("[asks] gh not found; PR asks will show no live status");
   // Until a hook or RPC hands over a daemon session (e.g. right after a reload), every workspace is polled.
   const liveWorkspaces = async () => (paseo ? new Set((await activeWorkspaces(paseo)).keys()) : null);
-  const watcher = ghPath
-    ? new PrWatcher(store, service, ghFetcher(new Gh(ghExec(ghPath))), actOnReviewChanges, liveWorkspaces)
-    : null;
+  // One Gh for every read, so a spent rate limit pauses them all.
+  const gh = ghPath ? new Gh(ghExec(ghPath)) : null;
+  const watcher = gh ? new PrWatcher(store, service, ghFetcher(gh), actOnReviewChanges, liveWorkspaces) : null;
+  const legacyPrAsks = (url: string) =>
+    store.list().filter((ask) => ask.kind === "pr" && OPEN_STATUSES.includes(ask.status) && !ask.orphaned && prUrlOf(ask) === url);
+  const prs = new PrBoard(dir, {
+    fetchDeployments: gh ? (url) => fetchDeployments(gh, url) : null,
+    message: (agentId, workspaceId, text) => service.message(agentId, workspaceId, text),
+    async flush(agentId) {
+      await outbox.flush(agentId);
+      return outbox.pending(agentId).length === 0;
+    },
+    legacyOwner: (url) => legacyPrAsks(url)[0]?.ownerAgentId,
+    legacySubscribed: (url) => legacyPrAsks(url).some((ask) => ask.subscribe),
+  });
+  const branchPr = gh ? ghBranchPrFetcher(gh) : null;
+  const branchPrs = new Map<string, { at: number; pr: WorkspacePr["pr"] }>();
+  /** The workspace's PR from the daemon's snapshot; a gh read per branch only on hosts that don't poll PRs. */
+  const workspacePr = async (workspace: WorkspaceDescriptor, at: string): Promise<WorkspacePr["pr"]> => {
+    if (workspace.githubRuntime !== undefined) {
+      const pr = workspace.githubRuntime?.pullRequest;
+      return pr ? fromHost(pr, at) : null;
+    }
+    const repo = githubRepoOf(workspace.gitRuntime?.remoteUrl);
+    const branch = workspace.gitRuntime?.currentBranch;
+    if (!branchPr || !repo || !branch) return null;
+    const cached = branchPrs.get(workspace.id);
+    if (cached && Date.now() - cached.at < BRANCH_PR_EVERY_MS) return cached.pr;
+    const pr = await branchPr(repo, branch).catch((error) => {
+      console.error(`[asks] gh pr list failed for ${repo}:${branch}`, error instanceof Error ? error.message : error);
+      return cached?.pr ?? null;
+    });
+    branchPrs.set(workspace.id, { at: Date.now(), pr });
+    return pr;
+  };
+  /** Running agents (and ones stopped on a question) are working; the rest of the live ones are idle. */
+  const agentStates = (agentsSeen: readonly FetchedAgent[]) =>
+    new Map(
+      agentsSeen
+        .filter((agent) => !agent.archivedAt)
+        .map((agent) => [
+          agent.id,
+          agent.status === "running" || agent.status === "initializing" || questions.isWaiting(agent.id) ? "running" : "idle",
+        ] as const),
+    );
+  let prSync: Promise<void> = Promise.resolve();
+  const syncPrs = (api: PaseoApi) => {
+    prSync = prSync
+      .then(async () => {
+        const [workspaces, agentsSeen, actOnReviews] = await Promise.all([visibleWorkspaces(api), listAgents(api), actOnReviewChanges()]);
+        const at = new Date().toISOString();
+        const found: WorkspacePr[] = [];
+        for (const workspace of workspaces) found.push({ workspaceId: workspace.id, pr: await workspacePr(workspace, at) });
+        await prs.sync(found, agentsSeen, actOnReviews);
+      })
+      .catch((error) => console.error("[asks] PR cards sync failed", error));
+    return prSync;
+  };
+  const prCards = async (api: PaseoApi, workspaceId?: string) =>
+    prs.cards(agentStates(await listAgents(api)), await actOnReviewChanges(), workspaceId);
   // Short-lived classifier agents the plugin starts itself; its hooks leave them alone.
   const helpers = new Set<string>();
   const classifierFor = paseoClassifier(requirePaseo, helpers);
@@ -287,6 +352,17 @@ export default function contribute(server: PluginServerContext) {
     capture(api);
     return questions.drop(agentId, requestId);
   });
+  server.handle(listPrs, async ({ workspaceId }, { paseo: api }) => {
+    capture(api);
+    const cards = await prCards(api, workspaceId);
+    if (workspaceId) return { prs: cards };
+    const live = await activeWorkspaces(api);
+    return { prs: cards.filter((card) => live.has(card.workspaceId)), workspaceNames: Object.fromEntries(live) };
+  });
+  server.handle(actOnPr, async ({ url, button, note }, { paseo: api }) => {
+    capture(api);
+    return prs.press(url, button, note, agentStates(await listAgents(api)), await actOnReviewChanges());
+  });
   const discussions = new Discussions();
   const startDiscussion = (api: PaseoApi, workspaceId: string, id: string, note?: string) => {
     const ask = store.get(workspaceId, id);
@@ -338,6 +414,15 @@ export default function contribute(server: PluginServerContext) {
       const { agentId, requestId } = dropQuestion.input.parse(input);
       return questions.drop(agentId, requestId);
     },
+    "/prs": async (input) => {
+      const { workspaceId } = listPrs.input.parse(input ?? {});
+      return { prs: await prCards(requirePaseo(), workspaceId) };
+    },
+    "/prs/act": async (input) => {
+      const { url, button, note } = actOnPr.input.parse(input);
+      const api = requirePaseo();
+      return prs.press(url, button, note, agentStates(await listAgents(api)), await actOnReviewChanges());
+    },
     "/discuss": async (input) => {
       const { workspaceId, id, note } = discussAsk.input.parse(input);
       return startDiscussion(requirePaseo(), workspaceId, id, note);
@@ -348,6 +433,9 @@ export default function contribute(server: PluginServerContext) {
   }, FLUSH_EVERY_MS);
 
   const prTimer = setInterval(() => void watcher?.refresh(), PR_EVERY_MS);
+  const prCardsTimer = setInterval(() => {
+    if (paseo) void syncPrs(paseo);
+  }, PR_CARDS_EVERY_MS);
   // Also the backlog sweep: the first run after start reopens asks that went stale before this existed.
   const reopenStale = () => {
     if (!paseo) return;
@@ -360,6 +448,7 @@ export default function contribute(server: PluginServerContext) {
   return async () => {
     clearInterval(timer);
     clearInterval(prTimer);
+    clearInterval(prCardsTimer);
     clearInterval(staleTimer);
     clearTimeout(firstStale);
     (await listening).close();

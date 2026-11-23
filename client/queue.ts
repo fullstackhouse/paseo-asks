@@ -1,5 +1,6 @@
 import { awaitsYou, oldestFirst, type Ask } from "../shared/asks";
 import type { PendingQuestion } from "../shared/questions";
+import type { PrCard } from "../shared/prs";
 
 export type QueueFilter = "needs_you" | "later" | "in_progress" | "other";
 
@@ -30,5 +31,15 @@ export function askQueue(
     queue[filter].push(ask);
   }
   for (const rows of Object.values(queue)) rows.sort(oldestFirst);
+  return queue;
+}
+
+/** PR cards in the main queue: waiting on you, the agent's move (In progress), and merged or closed today (Other). */
+export function prQueue(cards: readonly PrCard[], snoozed: ReadonlySet<string>): Record<QueueFilter, PrCard[]> {
+  const queue: Record<QueueFilter, PrCard[]> = { needs_you: [], later: [], in_progress: [], other: [] };
+  for (const card of cards) {
+    const filter = snoozed.has(card.workspaceId) || card.phase === "done" ? "other" : card.phase === "waiting" ? "needs_you" : "in_progress";
+    queue[filter].push(card);
+  }
   return queue;
 }

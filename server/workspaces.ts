@@ -32,3 +32,17 @@ export async function isBackground(api: Pick<PaseoApi, "workspaces">, workspaceI
     return false;
   }
 }
+
+export type WorkspaceDescriptor = Awaited<ReturnType<PaseoApi["workspaces"]["list"]>>["entries"][number];
+
+/** Every visible workspace's full snapshot (git and PR runtime included); background and archived ones are absent. */
+export async function visibleWorkspaces(api: Pick<PaseoApi, "workspaces">): Promise<WorkspaceDescriptor[]> {
+  const all: WorkspaceDescriptor[] = [];
+  let cursor: string | undefined;
+  do {
+    const { entries, pageInfo } = await api.workspaces.list({ page: { limit: PAGE, cursor } });
+    all.push(...entries);
+    cursor = pageInfo.hasMore ? (pageInfo.nextCursor ?? undefined) : undefined;
+  } while (cursor);
+  return all;
+}

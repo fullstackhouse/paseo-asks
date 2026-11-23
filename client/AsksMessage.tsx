@@ -18,7 +18,7 @@ export function AsksMessage({ theme, askId, title, event, note }: { theme: Plugi
         <View style={styles.head}>
           <Icon name="MessageCircleQuestionMark" size={12} color={theme.colors.foregroundMuted} />
           <Text style={styles.headText} numberOfLines={1}>
-            {askId ? `${askId}${title ? ` · ${title}` : ""}` : "Asks"}
+            {askId ? `${askId}${title ? ` · ${title}` : ""}` : (title ?? "Asks")}
           </Text>
         </View>
         {lead && <Text style={note ? styles.event : styles.text}>{lead}</Text>}

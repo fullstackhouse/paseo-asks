@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { NUDGE, REFRESH, parseStuckReminder } from "./prompts";
+import { PR_BUTTON_LABELS } from "./prs";
 import { DROPPED_LATER, LATER_ANSWER_HEAD } from "./questions";
 
 /** The plugin timeline item that stands in for an `[asks]` message sent to the agent: what the human did, without the agent's instructions. */
@@ -68,6 +69,8 @@ export function parseAsksMessage(text: string): AsksMessage | undefined {
   const stuck = parseStuckReminder(text);
   if (stuck?.length === 1) return { askId: stuck[0].id, title: stuck[0].title, event: "Left in progress; asked the agent to hand it back or resolve it" };
   if (stuck?.length) return { event: `Left ${stuck.map((ask) => ask.id).join(", ")} in progress; asked the agent to hand them back or resolve them` };
+  const pr = parsePrMessage(text);
+  if (pr) return pr;
   const head = text.match(/^\[asks\] (A\d+) ([\s\S]*)$/);
   if (!head) return undefined;
   const [, askId, rest] = head;
@@ -77,4 +80,20 @@ export function parseAsksMessage(text: string): AsksMessage | undefined {
     if (match) return JSON.parse(JSON.stringify({ askId, title: match[1], ...view(match) })) as AsksMessage;
   }
   return undefined;
+}
+
+const PR_BUTTON = new RegExp(`^\\[asks\\] (${Object.values(PR_BUTTON_LABELS).join("|")}): [\\s\\S]*?\\bPR #(\\d+)\\b`);
+
+/** A PR card's button press ("[asks] Merge: Merge PR #30 …") or a PR change ("[asks] PR #30 merged."), as the human reads it. */
+function parsePrMessage(text: string): AsksMessage | undefined {
+  const button = text.match(PR_BUTTON);
+  if (button) {
+    const note = text.match(/ Note from the human: "([\s\S]*)"$/)?.[1];
+    return JSON.parse(JSON.stringify({ title: `PR #${button[2]}`, event: `chose “${button[1]}”`, note })) as AsksMessage;
+  }
+  const change = text.match(/^\[asks\] PR #(\d+) ([\s\S]*)\.$/);
+  if (!change) return undefined;
+  // "checks failing: fix them and push; merged" reads "checks failing, merged": the instructions are for the agent.
+  const event = change[2].split("; ").map((part) => part.split(":")[0]).join(", ");
+  return { title: `PR #${change[1]}`, event };
 }

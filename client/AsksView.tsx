@@ -15,19 +15,20 @@ import {
   refreshAsks,
   type Action,
   type Ask,
-  type Deployment,
-  type PrState,
 } from "../shared/asks";
 import { displaySettings } from "../shared/settings";
 import type { AskCard as AskCardData } from "../shared/timeline";
 import { Markdown } from "@getpaseo/plugin/client/ui";
 import { OpenPrContext } from "./inbox";
 import { openLink } from "./open-link";
-import { askQueue, questionQueue, type QueueFilter } from "./queue";
+import { askQueue, prQueue, questionQueue, type QueueFilter } from "./queue";
+import { PrRow, PrSections, usePrs } from "./PrCards";
+import { PR_ENTRY_PREFIX, prEntryId } from "../shared/prs";
 import { QuestionRow, QuestionSections, useQuestions } from "./QuestionsView";
 import { questionKey } from "../shared/questions";
 import { useSnoozedWorkspaceIds } from "./snoozed";
 import { age, Button, makeStyles, type Styles } from "./ui";
+import { Deployments, InboxLink, PrBadge, PrDetail } from "./pr-status";
 
 export const POLL_MS = 4000;
 
@@ -65,7 +66,7 @@ const FILTERS: { id: QueueFilter; label: string; description: string; empty: str
   {
     id: "needs_you",
     label: "Needs you",
-    description: "Questions, decisions and actions waiting on you.",
+    description: "Questions, decisions, actions and pull requests waiting on you.",
     empty: "Nothing waiting on you. In-progress work and other asks are in their own views.",
   },
   {
@@ -77,13 +78,13 @@ const FILTERS: { id: QueueFilter; label: string; description: string; empty: str
   {
     id: "in_progress",
     label: "In progress",
-    description: "Work agents are already handling.",
-    empty: "No asks in progress.",
+    description: "Work agents are already handling, and pull requests whose next move is theirs.",
+    empty: "Nothing in progress.",
   },
   {
     id: "other",
     label: "Other",
-    description: "Questions and asks from snoozed workspaces, and asks linked to merged or closed PRs.",
+    description: "Questions and asks from snoozed workspaces, asks linked to merged or closed PRs, and PRs merged or closed today.",
     empty: "No other open asks.",
   },
 ];
@@ -97,9 +98,11 @@ function MainAsks({ theme, compact, openAgent }: ViewProps) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const queue = useMemo(() => askQueue(asks.data?.asks ?? [], snoozed), [asks.data, snoozed]);
   const asked = useMemo(() => questionQueue(questions.data?.questions ?? [], snoozed), [questions.data, snoozed]);
-  const count = (id: QueueFilter) => queue[id].length + (id === "in_progress" ? 0 : asked[id].length);
+  const prs = usePrs();
+  const pulls = useMemo(() => prQueue(prs.data?.prs ?? [], snoozed), [prs.data, snoozed]);
+  const count = (id: QueueFilter) => queue[id].length + pulls[id].length + (id === "in_progress" ? 0 : asked[id].length);
   const shownQuestions = filter === "in_progress" ? [] : asked[filter];
-  const workspaceNames = { ...questions.data?.workspaceNames, ...asks.data?.workspaceNames };
+  const workspaceNames = { ...prs.data?.workspaceNames, ...questions.data?.workspaceNames, ...asks.data?.workspaceNames };
   const selected = FILTERS.find((item) => item.id === filter)!;
 
   if (asks.isPending) return <Message styles={styles} text="Loading asks…" />;
@@ -156,6 +159,23 @@ function MainAsks({ theme, compact, openAgent }: ViewProps) {
                     styles={styles}
                     theme={theme}
                     workspaceName={workspaceNames[question.workspaceId] ?? question.workspaceId}
+                    queue
+                    expanded={expanded === key}
+                    onToggle={() => setExpanded(expanded === key ? null : key)}
+                    openAgent={openAgent}
+                  />
+                </View>
+              );
+            })}
+            {pulls[filter].map((card) => {
+              const key = `pr:${card.url}`;
+              return (
+                <View key={key} style={styles.queueItem}>
+                  <PrRow
+                    card={card}
+                    styles={styles}
+                    theme={theme}
+                    workspaceName={workspaceNames[card.workspaceId] ?? card.workspaceId}
                     queue
                     expanded={expanded === key}
                     onToggle={() => setExpanded(expanded === key ? null : key)}
@@ -251,6 +271,7 @@ function WorkspaceAsks({ theme, compact, workspaceId, openAgent }: ViewProps) {
   const styles = useMemo(() => makeStyles(theme, compact), [theme, compact]);
   const asks = useAsks(workspaceId);
   const questions = useQuestions(workspaceId);
+  const prs = usePrs(workspaceId);
   const [expanded, setExpanded] = useState<string | null>(null);
 
   if (asks.isPending) return <Message styles={styles} text="Loading asks…" />;
@@ -258,7 +279,8 @@ function WorkspaceAsks({ theme, compact, workspaceId, openAgent }: ViewProps) {
     return <Message styles={styles} text={`Could not load asks: ${asks.error.message}`} danger />;
   const all = asks.data.asks;
   const asked = questions.data?.questions ?? [];
-  if (all.length === 0 && asked.length === 0)
+  const pulls = prs.data?.prs ?? [];
+  if (all.length === 0 && asked.length === 0 && pulls.length === 0)
     return (
       <Message
         styles={styles}
@@ -272,6 +294,7 @@ function WorkspaceAsks({ theme, compact, workspaceId, openAgent }: ViewProps) {
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       {asked.length > 0 && <QuestionSections questions={asked} styles={styles} theme={theme} openAgent={openAgent} />}
+      {pulls.length > 0 && <PrSections prs={pulls} styles={styles} theme={theme} openAgent={openAgent} />}
       {groups.map(([groupId, items]) => (
         <View key={groupId} style={styles.group}>
           {!workspaceId && (
@@ -341,6 +364,7 @@ export function AgentAsks(props: {
   const styles = useMemo(() => makeStyles(theme, compact), [theme, compact]);
   const asks = useAsks(workspaceId);
   const questions = useQuestions(workspaceId);
+  const prs = usePrs(workspaceId);
   const [expanded, setExpanded] = useState<string | null>(null);
   const refresh = useRpc(refreshAsks);
   const toast = useToast();
@@ -364,10 +388,14 @@ export function AgentAsks(props: {
   const asked = [...(questions.data?.questions ?? [])].sort(
     (a, b) => Number(a.agentId !== agentId) - Number(b.agentId !== agentId),
   );
+  const pulls = [...(prs.data?.prs ?? [])].sort((a, b) => Number(a.agentId !== agentId) - Number(b.agentId !== agentId));
   return (
     <View style={styles.popover}>
-      {ordered.length === 0 && asked.length === 0 && <Text style={styles.muted}>Nothing waiting on you in this workspace.</Text>}
+      {ordered.length === 0 && asked.length === 0 && pulls.length === 0 && (
+        <Text style={styles.muted}>Nothing waiting on you in this workspace.</Text>
+      )}
       <QuestionSections questions={asked} styles={styles} theme={theme} openAgent={openAgent} viewingAgentId={agentId} />
+      <PrSections prs={pulls} styles={styles} theme={theme} openAgent={openAgent} viewingAgentId={agentId} />
       <StatusSections
         asks={ordered}
         styles={styles}
@@ -562,9 +590,17 @@ export function WorkspaceAskEntry(props: {
   const { theme, compact, workspaceId, askId, defaultExpanded, onExpandedChange, openAgent } = props;
   const styles = useMemo(() => makeStyles(theme, compact), [theme, compact]);
   const asks = useAsks(workspaceId);
+  const prs = usePrs(workspaceId);
   const [localExpanded, setLocalExpanded] = useState(defaultExpanded);
   const expanded = props.expanded ?? localExpanded;
   const setExpanded = props.expanded === undefined ? setLocalExpanded : onExpandedChange;
+  if (askId.startsWith(PR_ENTRY_PREFIX)) {
+    const card = prs.data?.prs.find((candidate) => prEntryId(candidate) === askId);
+    if (!card) return null;
+    return (
+      <PrRow card={card} styles={styles} theme={theme} expanded={expanded} onToggle={() => setExpanded?.(!expanded)} openAgent={openAgent} />
+    );
+  }
   // The workspace's own ask first; else the one it explains.
   const ask =
     asks.data?.asks.find((candidate) => candidate.workspaceId === workspaceId && candidate.id === askId) ??
@@ -836,83 +872,6 @@ function OutcomeLine({ ask, styles }: { ask: Ask; styles: Styles }) {
       {what}
       {outcome.note ? `: ${outcome.note}` : ""} · {age(outcome.at)} ago
     </Text>
-  );
-}
-
-const PR_STATE: Record<PrState["state"], string> = {
-  OPEN: "open",
-  MERGED: "merged",
-  CLOSED: "closed",
-};
-const CHECKS: Record<PrState["checks"], string> = {
-  passing: "checks ✓",
-  failing: "checks ✗",
-  pending: "checks …",
-  none: "",
-};
-
-function PrBadge({ pr, styles }: { pr: PrState; styles: Styles }) {
-  const tone =
-    pr.state === "CLOSED" || pr.checks === "failing"
-      ? styles.bad
-      : pr.state === "MERGED" || pr.checks === "passing"
-        ? styles.good
-        : styles.muted;
-  const label =
-    pr.state === "OPEN" ? (pr.isDraft ? "draft" : CHECKS[pr.checks] || "open") : PR_STATE[pr.state];
-  return <Text style={[styles.badge, tone]}>{label}</Text>;
-}
-
-function PrDetail({ pr, styles }: { pr: PrState; styles: Styles }) {
-  const parts = [
-    `PR #${pr.number} ${pr.isDraft ? "draft" : PR_STATE[pr.state]}`,
-    CHECKS[pr.checks],
-    pr.reviewDecision ? pr.reviewDecision.toLowerCase().replace(/_/g, " ") : "no review decision",
-    pr.state === "OPEN" && pr.mergeable === "CONFLICTING" ? "has conflicts" : "",
-  ].filter(Boolean);
-  return <Text style={styles.prDetail}>{parts.join(" · ")}</Text>;
-}
-
-const DEPLOYMENT: Record<Deployment["state"], { mark: string; verb: string; tone: "good" | "muted" | "bad" }> = {
-  ready: { mark: "●", verb: "", tone: "good" },
-  deploying: { mark: "◌", verb: "deploying ", tone: "muted" },
-  failed: { mark: "✕", verb: "failed ", tone: "bad" },
-};
-
-/** Preview deployments of the PR's head commit: ready ones open the preview, the rest their logs. */
-function Deployments({ deployments, styles }: { deployments: Deployment[]; styles: Styles }) {
-  return (
-    <View style={styles.chips}>
-      {deployments.map((deployment) => {
-        const { mark, verb, tone } = DEPLOYMENT[deployment.state];
-        // The URL-less entry's label already says "Deploying".
-        const text = `${mark} ${deployment.url ? verb : ""}${deployment.label}`;
-        const link = deployment.link;
-        return (
-          <Pressable
-            key={`${deployment.url ?? ""}:${deployment.label}`}
-            accessibilityRole="link"
-            accessibilityLabel={text.slice(2)}
-            disabled={!link}
-            onPress={() => link && openLink(link)}
-            style={styles.chip}
-          >
-            <Text style={[styles.chipText, styles[tone]]} numberOfLines={1}>
-              {text}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
-
-/** A PR link that opens the PR's review screen in paseo-inbox. */
-function InboxLink({ onPress, children }: { onPress(): void; children: ReactNode }) {
-  return (
-    <Pressable accessibilityRole="link" accessibilityHint="Opens in Inbox" onPress={onPress} style={{ alignSelf: "flex-start" }}>
-      {children}
-    </Pressable>
   );
 }
 

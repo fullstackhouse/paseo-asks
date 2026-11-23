@@ -1,6 +1,6 @@
 # Asks for Paseo
 
-Asks is a [Paseo](https://paseo.sh) plugin. It lifts what your agents need from you out of their chats and into one list. When an agent needs a decision, an answer, a follow-up approved, a manual step done or the next move on a PR, it asks with its own question tool (Claude Code's AskUserQuestion, Codex's request_user_input). Asks collects those questions from every chat, so you answer them in one place, now or later. Agents without a question tool record an **ask** instead, with the buttons that answer it.
+Asks is a [Paseo](https://paseo.sh) plugin. It lifts what your agents need from you out of their chats and into one list. When an agent needs a decision, an answer, a follow-up approved or a manual step done, it asks with its own question tool (Claude Code's AskUserQuestion, Codex's request_user_input). Asks collects those questions from every chat, so you answer them in one place, now or later. Each workspace's pull request shows as a card with buttons for its next move, so agents don't ask about PRs. Agents without a question tool record an **ask** instead, with the buttons that answer it.
 
 | Workspace panel, a decision with a markdown brief | Every workspace, on a phone, a PR ask expanded |
 |---|---|
@@ -19,6 +19,28 @@ Asks is a [Paseo](https://paseo.sh) plugin. It lifts what your agents need from 
 
 Claude stops until a question is answered, and any message to it meanwhile cancels the question (Claude reads it as your answer). Asks holds its own messages to such an agent until the question is answered or put off. A question whose turn ends without an answer (a daemon restart, **Stop**) moves to Later, so your answer still reaches the agent.
 
+## What you can do with a pull request
+
+Every visible workspace's PR shows as a card: title, checks, review decision, conflicts, and the head commit's preview deployments as chips (GitHub Deployments with an environment URL, e.g. Vercel) that open the preview when ready, or the logs while deploying or failed. Its buttons depend on its state:
+
+| PR state (open, not a draft) | Buttons | Waits on you |
+| --- | --- | --- |
+| Conflicts with its base | Resolve conflicts | no |
+| Checks failing | Fix checks | no |
+| Changes requested | Address review comments | only with **Tell agents about requested changes** off |
+| Review required | Request review | yes |
+| Checks running | Merge when green | no |
+| Approved and green | Merge | yes |
+| Green, no review required | Merge, Request review | yes |
+
+A press sends the workspace's agent the instruction as an `[asks]` message, with the note from the card's field if you wrote one (the reviewer's name for Request review, say). Merges tell the agent to read every review and comment first. The chat shows it as *PR #30 · chose "Merge"*.
+
+**Waits on you** is the one rule the sidebar count, the composer pill, the screen's **Needs you** and the host's Overview share. A PR waits on you when it is open, not a draft, its agent is idle, no button was pressed since the PR last changed, and the move is yours (the table). It doesn't wait while checks run, while its agent is running (or stopped on a question), when checks fail or it conflicts (the agent's move: it is told about failing checks), on a draft, after a press until the PR's state changes, or when the workspace has no agent left. Those cards sit under **In progress**. Merged and closed PRs move to **Other** for a day, then fold away.
+
+The PR's agent hears, without anyone pressing a button, when its PR merges, closes, its checks start failing, or a reviewer requests changes (the last only with **Tell agents about requested changes** on; off, the card waits on you with **Address review comments**). Green checks, approvals and ready previews don't wake it: the card shows them to you.
+
+The PR's agent is the one already linked to the card while it stays in the workspace, else the owner of an older PR ask for the same PR, else the workspace's most recently used agent. Neither Paseo nor GitHub says which agent opened or pushed a PR.
+
 ## What you can do with an ask
 
 - **Pick an option.** A decision's options are buttons below the ask, and the agent's recommendation is the highlighted one. The agent gets `[asks] A3 resolved: b: squash-only`.
@@ -29,11 +51,11 @@ Claude stops until a question is answered, and any message to it meanwhile cance
 - **Open chat.** Jumps to the agent that raised the ask.
 - **PR links open in the Inbox.** A GitHub PR link on an ask, and its PR status line, open that PR's review screen in [paseo-inbox](https://github.com/fullstackhouse/paseo-inbox); GitHub is a tap away from there. Without the Inbox, or on a host that can't open another plugin's screen (not the FSH build), they open GitHub. Links inside the ask's text still open GitHub.
 
-PR asks show live status from `gh`: open, merged or closed, checks, review decision and conflicts, plus the head commit's preview deployments (GitHub Deployments with an environment URL, e.g. Vercel) as chips that open the preview when ready, or the logs while deploying or failed. An agent that subscribed to a PR ask is told when it merges, closes, its checks pass or fail, a preview becomes ready, or its review decision changes. While checks run, a PR ask can already carry a *Merge … when green* button: the agent merges once they pass, and fixes them first if they fail. To decide yourself when an agent works a review, turn off **Settings → Plugins → Asks → Tell agents about requested changes**: a reviewer requesting changes then raises an *Address review comments on PR #N* ask instead, and the agent starts only when you press its button. Agents are also told to leave requested changes to that ask; agents started or resumed before you change the setting keep the rules they started with.
+PR asks from before the cards show the same live status from `gh`. An agent that subscribed to a PR ask is told when it merges, closes, its checks pass or fail, a preview becomes ready, or its review decision changes. While checks run, a PR ask can already carry a *Merge … when green* button: the agent merges once they pass, and fixes them first if they fail. To decide yourself when an agent works a review, turn off **Settings → Plugins → Asks → Tell agents about requested changes**: a reviewer requesting changes then raises an *Address review comments on PR #N* ask instead, and the agent starts only when you press its button. Agents are also told to leave requested changes to that ask; agents started or resumed before you change the setting keep the rules they started with.
 
 ## Where questions and asks show up
 
-Native questions show in the chat as the host's own question card. Asks adds them, with **Answer later**, to the panel, the screen (pending ones under **Needs you**, put-off ones under **Later**) and the composer pill below. They stay out of the host's Overview summary, which lists pending questions itself.
+Native questions show in the chat as the host's own question card. Asks adds them, with **Answer later**, to the panel, the screen (pending ones under **Needs you**, put-off ones under **Later**) and the composer pill below. They stay out of the host's Overview summary, which lists pending questions itself. PR cards show in the panel, the screen and the pill, and the ones that wait on you also count in the Overview summary, which shows a PR's status but not that its next move is yours.
 
 - an **Asks** panel in each workspace, in the main area or the explorer (its **+** menu, or ⌘K: "Open asks for this workspace");
 - an **Asks** screen in the sidebar, covering every workspace, with a count of what's waiting (asks in snoozed workspaces still list but leave the count);
@@ -55,6 +77,7 @@ agent ──stdio MCP──▶ bridge.mjs ──HTTP 127.0.0.1──▶ plugin s
 - Agents sometimes ask in chat and skip their question tool. When a turn uses no question tool or asks tool and names none of its workspace's open asks (for an explainer, the ask it explains counts too), a short-lived child agent on the same provider (its cheapest model) judges whether the reply leaves anything for the human; if so, the plugin sends one `[asks]` reminder. If that check fails, a question mark in the last paragraph decides. Its answer is never reminded again.
 - Answers are written to an on-disk outbox first. On providers that take a steer (Claude, Codex, OpenCode, Pi), they join the agent's running turn right away. On others they wait until the turn ends, because a prompt sent mid-turn would interrupt it. Several answers are batched into one message. A plugin restart loses nothing.
 - If the agent that raised an ask is archived, the ask is marked *orphaned*: you can still close it, and nobody is notified.
+- PR cards read the PR that Paseo's daemon already polls for each workspace (`githubRuntime` on the workspace snapshot), every 30 seconds, so their state costs no GitHub quota. Preview deployments are one GraphQL point per read: when the PR's state changes, every minute while one deploys, otherwise every 10 minutes, about 6 points an hour per open PR. On hosts whose snapshots have no `githubRuntime`, the plugin reads each workspace branch's PR with `gh pr list` every 5 minutes instead. Cards and presses are saved in `prs.json`.
 
 ## Install
 
@@ -102,7 +125,8 @@ cd preview && npm install && npm run dev   # the UI with sample data, at localho
 ## Limits
 
 - Codex offers `request_user_input` only in Plan mode unless its `default_mode_request_user_input` feature is on. Without it, Codex agents fall back to `ask_create`. To turn it on for every Codex agent, add `default_mode_request_user_input = true` under `[features]` in `~/.codex/config.toml`, or point Paseo's Codex provider at a command with `-c features.default_mode_request_user_input=true` (see the Paseo docs on a custom binary for a provider). `send_message_to_user_async = true` makes Codex ask without stopping; Asks lists those questions too. Both flags are marked under development in Codex.
-- PRs no longer get asks: agents ask about a merge or a reviewer with their question tool, so a PR's live status, preview chips and change notifications only show on asks from before, or from agents without a question tool.
+- A PR card shows the one PR Paseo finds for the workspace's branch. A second PR from the same workspace (another branch pushed from it) gets no card.
+- The PR's agent is a guess when the workspace has several agents: the most recently used one, unless an older PR ask names the owner.
 - Claude subagents may not have AskUserQuestion; that is untested.
 
 - Lists refresh by polling (every 4 s, and every 8 s for pill counts). Paseo has no plugin channel for pushing updates to the app.

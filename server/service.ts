@@ -9,8 +9,8 @@ import type { Outbox } from "./outbox";
 import type { AskStore, NewAsk } from "./store";
 import type { PathCheck } from "./file-paths";
 
-const ADDRESS_REVIEW = `  - Changes requested: address the comments, or report what you will not change, and push. Then ask who should look again.`;
-const HOLD_REVIEW = `  - Changes requested: the human decides when the review is worked. Do not start on it yourself: ask whether to address the comments now, with options such as "Address them now" and "Not yet".`;
+const ADDRESS_REVIEW = `  - Changes requested: address the comments, or report what you will not change, and push. Then re-request review from the reviewers who asked for changes.`;
+const HOLD_REVIEW = `  - Changes requested: the human decides when the review is worked. Do not start on it yourself: the PR's card offers Address review comments, and its message tells you when.`;
 
 /** The question tool each provider gives its agents, as agents know it. */
 const QUESTION_TOOLS = "AskUserQuestion in Claude Code, request_user_input in Codex, question in OpenCode";
@@ -21,21 +21,21 @@ const QUESTION_TOOLS = "AskUserQuestion in Claude Code, request_user_input in Co
  */
 export const instructions = ({ actOnReviewChanges = true } = {}) => `Paseo collects what you need from the human, from every chat, into one Asks list where they answer it now or later.
 - Rule: never end a turn with a question, a choice or a request for the human in chat alone. Ask it with your question tool (${QUESTION_TOOLS}). Paseo shows it in this chat and in the Asks list.
-- Use the question tool for everything you need from the human: a decision, an answer, approval of a follow-up, a manual step you cannot do (an OAuth click, a vendor console), and the next move on a pull request (merge it, who reviews it). When a reply refers to something still waiting on the human, say what it is in a few words.
+- Use the question tool for everything you need from the human: a decision, an answer, approval of a follow-up, a manual step you cannot do (an OAuth click, a vendor console). When a reply refers to something still waiting on the human, say what it is in a few words.
 - Follow-ups count even when nothing blocks you: work you recommend or defer ("worth doing next time", "out of scope here") gets a question with options such as "Do it now" and "Skip", or it is lost when this chat is archived. Instructions against offering more work in your reply do not apply: the question replaces the offer. Skip it only if you would advise against doing the work at all.
 - Write each question for someone who hasn't seen the work. The question text is Markdown: start with a short paragraph that opens with "Simply put:" and a concrete example, then what is at stake and your recommendation, then the question itself on its own line. Keep file paths and internal codes (ticket or spec ids) out of the header and options; PR numbers are fine. The header is a few words.
-- Options: 2-4, each a short verb and its object ("Merge (squash)", "Request review from alice") with a description of what it leads to. Put the one you recommend first and end its label with "(Recommended)". The human can always type their own answer.
+- Options: 2-4, each a short verb and its object ("Keep carts in Postgres", "Drop the WinRE partition") with a description of what it leads to. Put the one you recommend first and end its label with "(Recommended)". The human can always type their own answer.
 - One topic per question. Several open questions go in one call as separate questions (up to 4), never bundled into one with "Accept all" or "answer in chat".
-- Ask when you need the answer: mid-task when it blocks you, at the end of your turn for follow-ups and pull requests. Write the summary of what you did before asking, since the question is the last thing in the turn.
+- Ask when you need the answer: mid-task when it blocks you, at the end of your turn for follow-ups. Write the summary of what you did before asking, since the question is the last thing in the turn.
 - The human may answer later. The tool then returns "Postponed: …". Carry on with work that does not depend on the answer, say in your final reply what waits on it, and do not ask the same question again. The answer arrives later as a message starting with [asks]; act on it then.
-- Choosing an option is the human acting, not you. Anything you were told to leave to the human (merge, deploy, delete, publish, spend) is a question with that option, not something you skip.
-- Never make the human wait to choose. When the move depends on something you can watch (CI, a release, another agent), offer it now as a conditional option ("Merge when green", "Start once #12 is released") and on that answer wait yourself, then act.
-- Pull requests: before asking about a merge, check gh pr view N --json reviewDecision,statusCheckRollup, and read every review body and comment from people, approvals included, skipping bot status comments: gh pr view N --json reviews,comments for review bodies and top-level comments, gh api --paginate repos/OWNER/REPO/pulls/N/comments for inline ones. Resolved threads don't count. Handle what they ask, or quote what you leave unaddressed, with why, in the question.
-  - Checks failing: fix them and push instead of asking. Checks pending: offer "Merge when green", and on that answer watch the checks (gh pr checks N --watch) and merge when they pass.
-  - Review required: offer one option per likely reviewer (2-4, from CODEOWNERS, recent reviewers of the touched files, or collaborators). If the human can merge past the review (gh api graphql -f query='{repository(owner:"OWNER",name:"REPO"){pullRequest(number:N){viewerCanMergeAsAdmin}}}' is true), add "Merge with --admin".
+- Choosing an option is the human acting, not you. Anything you were told to leave to the human (deploy, delete, publish, spend) is a question with that option, not something you skip.
+- Never make the human wait to choose. When the move depends on something you can watch (CI, a release, another agent), offer it now as a conditional option ("Start once #12 is released") and on that answer wait yourself, then act.
+- Pull requests: do not ask about them. Paseo shows your workspace's pull request in the Asks list as a card with its checks, reviews and previews, and buttons for the next move (Merge, Merge when green, Request review, Address review comments, Fix checks, Resolve conflicts). A press reaches you as a message starting with [asks] with the exact instruction; do what it says. Paseo also tells you when your PR merges, closes, or its checks fail. When you open or push a PR, end your reply with its number and state; the card does the asking.
+  - Checks failing: fix them and push without waiting to be told.
+  - Before any merge, read every review body and comment from people, approvals included, skipping bot status comments: gh pr view N --json reviews,comments for review bodies and top-level comments, gh api --paginate repos/OWNER/REPO/pulls/N/comments for inline ones. Resolved threads don't count. Handle what they ask; if something there should stop the merge, ask with your question tool.
 ${actOnReviewChanges ? ADDRESS_REVIEW : HOLD_REVIEW}
 - Asks from before: the asks tools (ask_create, ask_update, ask_resolve, ask_list) stay for asks created earlier. Keep those true: ask_resolve the ones you finish, ask_update when facts change. Answers to them arrive as messages starting with [asks]; act on them.
-- No question tool (some providers and modes have none): use ask_create instead, one item per ask, with a "Simply put:" body, one "resolve" action per option of a decision (mark one recommended), and "send" actions whose prompt is the exact instruction you want back for follow-ups and pull requests.
+- No question tool (some providers and modes have none): use ask_create instead, one item per ask, with a "Simply put:" body, one "resolve" action per option of a decision (mark one recommended), and "send" actions whose prompt is the exact instruction you want back for follow-ups. Never for pull requests: their cards ask.
 - Your own to-do list stays in your task tool. Questions are only for things whose next move is the human's.`;
 
 const ActionInput = z.object({

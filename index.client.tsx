@@ -19,6 +19,8 @@ import { observeSnoozedWorkspaces, snoozedWorkspaceIds, useSnoozedWorkspaceIds }
 import { listAsks, waitingByWorkspace, waitingCount, workspaceAsks } from "./shared/asks";
 import { listQuestions, pendingByWorkspace } from "./shared/questions";
 import { useQuestions } from "./client/QuestionsView";
+import { usePrs } from "./client/PrCards";
+import { listPrs, prEntryId, waitingPrsByWorkspace } from "./shared/prs";
 import { createWorkspaceSummaries, type SummaryEntryProps } from "./client/summary";
 import { ASKS_MESSAGE, AsksMessageSchema, parseAsksMessage, type AsksMessage as AsksMessageData } from "./shared/messages";
 import { ASK_CARD, AskCardSchema, askCardFor, type AskCard as AskCardData } from "./shared/timeline";
@@ -100,7 +102,9 @@ function SidebarItem({ theme, currentScreen, openScreen }: PluginSidebarItemProp
   const asked = (questions.data?.questions ?? []).filter(
     (question) => question.state === "pending" && !snoozed.has(question.workspaceId),
   ).length;
-  const waiting = waitingCount(asks.data?.asks ?? [], snoozed) + asked;
+  const prs = usePrs();
+  const pulls = [...waitingPrsByWorkspace(prs.data?.prs ?? [], snoozed).values()].flat().length;
+  const waiting = waitingCount(asks.data?.asks ?? [], snoozed) + asked + pulls;
   return (
     <SidebarRow
       icon="MessageCircleQuestionMark"
@@ -186,18 +190,32 @@ function contributePills(client: PluginClientContext): () => void {
 
   const refreshCounts = async () => {
     // Closed asks too: a workspace that ever had an ask reports "Nothing waiting" rather than nothing.
-    const [{ asks }, { questions }] = await Promise.all([
+    const [{ asks }, { questions }, { prs }] = await Promise.all([
       client.rpc(listAsks, { includeClosed: true }),
       client.rpc(listQuestions, {}).catch(() => ({ questions: [] })),
+      client.rpc(listPrs, {}).catch(() => ({ prs: [] })),
     ]);
     const waiting = waitingByWorkspace(asks);
     const asked = pendingByWorkspace(questions);
+    // The pill, like the sidebar row, leaves snoozed workspaces' PRs out.
+    const pulls = waitingPrsByWorkspace(prs, snoozedWorkspaceIds());
     for (const { workspaceId, pill } of pills.values()) {
-      pill.update(pillFace((waiting.get(workspaceId)?.count ?? 0) + (asked.get(workspaceId) ?? 0)));
+      const count = (waiting.get(workspaceId)?.count ?? 0) + (asked.get(workspaceId) ?? 0) + (pulls.get(workspaceId)?.length ?? 0);
+      pill.update(pillFace(count));
     }
     // Every workspace with asks, even one whose agents are gone, plus ones already reported, so a count drops to 0.
-    // Pending questions stay out: the host lists them in Overview itself, as permission prompts.
+    // Pending questions stay out: the host lists them in Overview itself, as permission prompts. PR cards that wait
+    // on you go in: the host shows a PR's status, not that its next move is yours.
     const summary = workspaceAsks(asks, snoozedWorkspaceIds());
+    for (const [workspaceId, cards] of pulls) {
+      const entry = summary.get(workspaceId) ?? { count: 0, entries: [] };
+      for (const card of cards) {
+        entry.count++;
+        entry.newestId = prEntryId(card);
+        entry.entries.push({ id: prEntryId(card), title: `#${card.number} ${card.title}`, detail: card.reason });
+      }
+      summary.set(workspaceId, entry);
+    }
     const workspaceIds = new Set([...summary.keys(), ...summaries.workspaceIds()]);
     for (const workspaceId of workspaceIds) summaries.set(workspaceId, summary.get(workspaceId));
   };

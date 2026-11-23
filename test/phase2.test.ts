@@ -400,13 +400,22 @@ describe("phase 2", () => {
     expect(held.replace(/\n  - Changes requested.*\n/, "\n")).toBe(told.replace(/\n  - Changes requested.*\n/, "\n"));
   });
 
-  it("tells agents to read every review and comment before asking about a merge, approvals included", () => {
+  it("tells agents to read every review and comment before any merge, approvals included", () => {
     for (const rules of [instructions(), instructions({ actOnReviewChanges: false })]) {
-      expect(rules).toContain("before asking about a merge");
+      expect(rules).toContain("Before any merge, read every review body");
       expect(rules).toContain("read every review body and comment from people, approvals included, skipping bot status comments");
       expect(rules).toContain("gh api --paginate repos/OWNER/REPO/pulls/N/comments");
       expect(rules).toContain("Resolved threads don't count");
     }
+  });
+
+  it("tells agents not to ask about pull requests, since their cards do", () => {
+    for (const rules of [instructions(), instructions({ actOnReviewChanges: false })]) {
+      expect(rules).toContain("Pull requests: do not ask about them.");
+      expect(rules).toContain("Never for pull requests: their cards ask.");
+      expect(rules).not.toContain("the next move on a pull request");
+    }
+    expect(instructions({ actOnReviewChanges: false })).toContain("the PR's card offers Address review comments");
   });
 
   it("tells agents to ask with their own question tool, and to keep ask_create for providers without one", () => {
