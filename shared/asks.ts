@@ -69,8 +69,10 @@ export const AskSchema = z.object({
   pr: PrStateSchema.optional(),
   /** When the owner was last reminded that this ask sat in progress at the end of its turn. */
   remindedAt: z.string().optional(),
-  /** The side chat opened to talk this ask through. */
+  /** The agent the human talks this ask through with; it may resolve or update the ask from its own workspace. */
   discussionAgentId: z.string().optional(),
+  /** The explainer's own workspace. Unset for a side chat in the ask's workspace (the fallback, and asks from before). */
+  discussionWorkspaceId: z.string().optional(),
   /** callKey() of the latest agent call on this ask; its chat card stays live, older ones show their own snapshot. */
   lastCall: z.string().optional(),
   createdAt: z.string(),
@@ -79,6 +81,17 @@ export const AskSchema = z.object({
 export type Ask = z.infer<typeof AskSchema>;
 
 export const OPEN_STATUSES: readonly Ask["status"][] = ["open", "in_progress"];
+
+/** The workspaces an ask shows in: its own, and the one it is being explained in, so the human answers it there. */
+export function workspacesOf(ask: Pick<Ask, "workspaceId" | "discussionWorkspaceId">): string[] {
+  return ask.discussionWorkspaceId && ask.discussionWorkspaceId !== ask.workspaceId
+    ? [ask.workspaceId, ask.discussionWorkspaceId]
+    : [ask.workspaceId];
+}
+
+export function showsIn(ask: Pick<Ask, "workspaceId" | "discussionWorkspaceId">, workspaceId: string): boolean {
+  return workspacesOf(ask).includes(workspaceId);
+}
 
 /** Waits on the human: open. A linked PR's state says nothing about it; the owner closes the ask when its work is done. */
 export function awaitsYou(ask: Pick<Ask, "status">): boolean {
@@ -95,16 +108,18 @@ export function waitingCount(
 
 /** Per workspace: how many asks wait on you and the newest one's id, which changes when a new ask arrives. */
 export function waitingByWorkspace(
-  asks: readonly Pick<Ask, "id" | "status" | "workspaceId" | "createdAt">[],
+  asks: readonly Pick<Ask, "id" | "status" | "workspaceId" | "discussionWorkspaceId" | "createdAt">[],
 ): Map<string, { count: number; newestId: string }> {
   const result = new Map<string, { count: number; newestId: string; newestAt: string }>();
   for (const ask of asks) {
     if (!awaitsYou(ask)) continue;
-    const entry = result.get(ask.workspaceId);
-    if (!entry) result.set(ask.workspaceId, { count: 1, newestId: ask.id, newestAt: ask.createdAt });
-    else {
-      entry.count++;
-      if (ask.createdAt > entry.newestAt) Object.assign(entry, { newestId: ask.id, newestAt: ask.createdAt });
+    for (const workspaceId of workspacesOf(ask)) {
+      const entry = result.get(workspaceId);
+      if (!entry) result.set(workspaceId, { count: 1, newestId: ask.id, newestAt: ask.createdAt });
+      else {
+        entry.count++;
+        if (ask.createdAt > entry.newestAt) Object.assign(entry, { newestId: ask.id, newestAt: ask.createdAt });
+      }
     }
   }
   return new Map([...result].map(([id, { count, newestId }]) => [id, { count, newestId }]));
@@ -154,17 +169,19 @@ export function askDetail(ask: Pick<Ask, "kind" | "actions" | "pr" | "orphaned">
  * Like `waitingCount`, asks in snoozed workspaces don't wait on you.
  */
 export function workspaceAsks(
-  asks: readonly Pick<Ask, "id" | "title" | "kind" | "actions" | "pr" | "orphaned" | "status" | "workspaceId" | "createdAt">[],
+  asks: readonly Pick<Ask, "id" | "title" | "kind" | "actions" | "pr" | "orphaned" | "status" | "workspaceId" | "discussionWorkspaceId" | "createdAt">[],
   snoozed: ReadonlySet<string>,
 ): Map<string, WorkspaceAsks> {
   const result = new Map<string, WorkspaceAsks>();
   for (const ask of [...asks].sort(oldestFirst)) {
-    let workspace = result.get(ask.workspaceId);
-    if (!workspace) result.set(ask.workspaceId, (workspace = { count: 0, entries: [] }));
-    if (!awaitsYou(ask) || snoozed.has(ask.workspaceId)) continue;
-    workspace.count++;
-    workspace.newestId = ask.id;
-    workspace.entries.push({ id: ask.id, title: ask.title, detail: askDetail(ask) });
+    for (const workspaceId of workspacesOf(ask)) {
+      let workspace = result.get(workspaceId);
+      if (!workspace) result.set(workspaceId, (workspace = { count: 0, entries: [] }));
+      if (!awaitsYou(ask) || snoozed.has(workspaceId)) continue;
+      workspace.count++;
+      workspace.newestId = ask.id;
+      workspace.entries.push({ id: ask.id, title: ask.title, detail: askDetail(ask) });
+    }
   }
   return result;
 }
@@ -192,12 +209,22 @@ export const actOnAsk = defineRpc({
   output: z.object({ ask: AskSchema, notified: z.boolean() }),
 });
 
-/** Open (or reopen) a read-only side chat about one ask; `note` is the human's first message to it. */
+/**
+ * Open (or reopen) the discussion of one ask: an explainer in a workspace of its own, or a read-only side chat in the
+ * ask's workspace when that can't be created. `note` is the human's first message to it.
+ */
 export const discussAsk = defineRpc({
   name: "asks.discuss",
   input: z.object({ workspaceId: z.string(), id: z.string(), note: z.string().optional() }),
-  output: z.object({ agentId: z.string(), created: z.boolean() }),
+  output: z.object({ agentId: z.string(), workspaceId: z.string().optional(), created: z.boolean() }),
 });
+
+/** The title of the workspace an ask is explained in; the card names it, so both read the same. */
+export function discussionTitle(ask: Pick<Ask, "id" | "title">): string {
+  const head = `Explain ${ask.id}: `;
+  const max = 60;
+  return ask.title.length + head.length <= max ? head + ask.title : `${head}${ask.title.slice(0, max - head.length - 1).trimEnd()}…`;
+}
 
 /** Ask an agent to bring its asks up to date. Sent now if it is idle or can take a steer, otherwise when its turn ends. */
 export const refreshAsks = defineRpc({

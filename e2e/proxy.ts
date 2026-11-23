@@ -261,6 +261,9 @@ function scrubText(text: string, root: string): string {
   return out
     .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, "<uuid>")
     .replace(/\bwks_[0-9a-f]+/g, "<workspace>")
+    // Worktrees Paseo creates (Discuss's explainer): a random directory, and a branch named with the time.
+    .replace(/<root>\/paseo\/worktrees\/[^/\s"\\]+\/[^/\s"\\]+/g, "<root>/paseo/worktrees/<worktree>")
+    .replace(/\bexplain-a\d+-[0-9a-z]+\b/g, "explain-<branch>")
     // `ls -l` lines: keep the type and name; owner, size and mtime differ between machines and runs.
     .replace(/^([-dl])[rwxsStT-]{9}[@+.]?\s+\d+\s+\S+\s+\S+\s+\d+\s+\w{3}\s+\d{1,2}\s+[\d:]{4,5}\s+(.*)$/gm, "$1 $2")
     .replace(/^total \d+$/gm, "total <n>")

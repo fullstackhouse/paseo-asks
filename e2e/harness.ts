@@ -89,7 +89,7 @@ export class Sandbox {
 
   /** Runs the paseo CLI against this sandbox's daemon. */
   async paseo(...args: string[]): Promise<string> {
-    const { stdout } = await exec(PASEO, [...args, "--home", this.paseoHome], { maxBuffer: 16 << 20 });
+    const { stdout } = await exec(PASEO, [...args, "--home", this.paseoHome], { maxBuffer: 16 << 20, env: cliEnv() });
     return stdout;
   }
 
@@ -143,6 +143,37 @@ export class Sandbox {
     });
     if (!res.ok) throw new Error(`/act ${res.status}: ${await res.text()}`);
     return res.json();
+  }
+
+  /** What pressing Discuss does, through the plugin's terminal endpoint. */
+  async discuss(askId: string, note?: string): Promise<{ agentId: string; workspaceId: string; created: boolean }> {
+    const { port, token } = JSON.parse(readFileSync(join(this.paseoHome, "plugin-data", "asks", "server.json"), "utf8"));
+    const res = await fetch(`http://127.0.0.1:${port}/discuss`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ workspaceId: this.workspaceOf(askId), id: askId, note }),
+    });
+    if (!res.ok) throw new Error(`/discuss ${res.status}: ${await res.text()}`);
+    return (await res.json()) as { agentId: string; workspaceId: string; created: boolean };
+  }
+
+  /** Sends the agent a message as the human would, and waits for its turn to end. */
+  async send(agentId: string, prompt: string): Promise<void> {
+    await this.paseo("send", agentId, prompt);
+  }
+
+  /** The agent's snapshot as `paseo inspect --json` prints it. */
+  async inspect(agentId: string): Promise<Record<string, unknown>> {
+    const out = await this.paseo("inspect", agentId, "--json");
+    return JSON.parse(out.slice(out.indexOf("{")));
+  }
+
+  /** Gives the sandbox project a first commit, so worktrees can branch off it. Changes what agents see of git. */
+  async commitProject(): Promise<void> {
+    await exec("git", ["commit", "-q", "--allow-empty", "-m", "init"], {
+      cwd: this.project,
+      env: { ...process.env, HOME: join(this.root, "home"), GIT_CONFIG_NOSYSTEM: "1", GIT_AUTHOR_DATE: "2026-01-01T00:00:00Z", GIT_COMMITTER_DATE: "2026-01-01T00:00:00Z" },
+    });
   }
 
   pluginLogs(): Promise<string> {
@@ -201,11 +232,22 @@ function writeCodexConfig(home: string, proxy: string): void {
   );
 }
 
+/**
+ * The CLI as the human runs it. Run from inside a Paseo agent, the caller's PASEO_AGENT_ID would make `paseo send`
+ * wrap the message as one from that agent, which the model sees, so a recording made there misses in CI.
+ */
+function cliEnv(): NodeJS.ProcessEnv {
+  return Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("PASEO_")));
+}
+
 function daemonEnv({ home, proxy }: { home: string; proxy: string }): NodeJS.ProcessEnv {
   // Start from a clean slate so the developer's Claude and Paseo settings cannot leak in.
   const env: NodeJS.ProcessEnv = {};
   for (const name of ["PATH", "TMPDIR", "LANG", "TERM", "USER", "SHELL"]) if (process.env[name]) env[name] = process.env[name];
   Object.assign(env, {
+    // Agents' commands run in this shell, and zsh and bash print different errors (e.g. an unmatched glob), which
+    // land in tool output: fixed, so a recording made on a zsh machine replays in CI.
+    SHELL: "/bin/bash",
     HOME: home,
     PATH: `${BIN}:${env.PATH ?? "/usr/bin:/bin"}`,
     ANTHROPIC_BASE_URL: proxy,

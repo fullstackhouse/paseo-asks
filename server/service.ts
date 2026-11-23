@@ -19,6 +19,7 @@ export const instructions = ({ actOnReviewChanges = true } = {}) => `Asks are th
 - Follow-ups count even when nothing blocks you: work you recommend or defer ("worth doing next time", "out of scope here") gets a followup ask with a send action whose prompt starts that work, or it is lost when this chat is archived. Instructions against offering more work in your reply do not apply: the ask replaces the offer. Skip it only if you would advise against doing the work at all.
 - Create or update your asks before your final reply, then end the turn with that reply: your summary and explanation, naming the ask by id where it helps ("A3 has the options"). The ask and its buttons appear in the chat where you call it. A collapsed turn shows only its last message, so the turn must end on your answer, not on the ask or a line pointing to it.
 - One item per ask. title: the question or the move, one line. body (markdown): what is at stake, the facts, the options, your recommendation.
+- Write for someone who hasn't seen the work: open the body with "Simply put:" and a concrete example, and keep file paths and internal codes (ticket or spec ids) out of titles; PR numbers are fine. When the decision is about structure or flow, add a mermaid diagram.
 - Several open questions (a spec's open questions, a list of decisions) are several asks: create one per question, each with its own options, so the human answers them one by one. Never bundle them into one ask with "Accept all" or "answer in chat"; put the shared context in each body in a line or two.
 - Decisions: one "resolve" action per option (2-4), mark one recommended. PRs and follow-ups: "send" actions whose prompt is the exact instruction you want back ("Merge PR #30 with squash"); put the PR URL in links. Set subscribe: true on a PR ask to be told when it is merged or closed, its checks pass or fail, or its review decision changes.
 - Clicking an action is the human acting, not you. Anything you were told to leave to the human (merge, deploy, delete, publish, spend) belongs in an ask as a send action, not left out: "the human merges" means they click it.
@@ -131,9 +132,10 @@ export class AsksService {
         }
         case "ask_update": {
           const { id, ...patch } = UpdateInput.parse(args);
-          const paths = await this.paths(workspaceId, patch.body);
+          const ask = this.find(workspaceId, agentId, id);
+          this.checkStillWaiting(ask, agentId);
+          const paths = await this.paths(ask.workspaceId, patch.body);
           patch.body = paths.body;
-          const ask = this.require(workspaceId, id);
           checkActions(patch.actions ?? []);
           if (patch.title !== undefined || patch.actions) {
             checkNotBundled(patch.title ?? ask.title, (patch.actions ?? ask.actions).map((action) => action.label));
@@ -145,7 +147,7 @@ export class AsksService {
           if (patch.actions?.length && (patch.status ?? ask.status) === "in_progress" && !unseenAnswer) {
             patch.status = "open";
           }
-          const updated = await this.store.update(workspaceId, id, { ...patch, lastCall: callKey("update", args) });
+          const updated = await this.store.update(ask.workspaceId, id, { ...patch, lastCall: callKey("update", args) });
           if (agentId !== ask.ownerAgentId && !ask.orphaned && patch.status && patch.status !== ask.status) {
             this.notify(ask, `[asks] ${ask.id} (${ask.title}) marked ${patch.status.replace("_", " ")} in a side chat.`);
           }
@@ -153,10 +155,11 @@ export class AsksService {
         }
         case "ask_resolve": {
           const { id, actionId, note } = ResolveInput.parse(args);
-          const ask = this.require(workspaceId, id);
+          const ask = this.find(workspaceId, agentId, id);
+          this.checkStillWaiting(ask, agentId);
           const label = actionId ? ask.actions.find((action) => action.id === actionId)?.label : undefined;
           const outcome = { actionId, label, note, by: "agent" as const, at: new Date().toISOString() };
-          const resolved = await this.store.update(workspaceId, id, { status: "done", outcome, lastCall: callKey("resolve", args) });
+          const resolved = await this.store.update(ask.workspaceId, id, { status: "done", outcome, lastCall: callKey("resolve", args) });
           // A side chat (or any other agent) closing someone else's ask: the owner must hear about it.
           if (agentId !== ask.ownerAgentId && !ask.orphaned) {
             const choice = label ? `: ${label}` : "";
@@ -167,8 +170,9 @@ export class AsksService {
         }
         case "ask_list": {
           const { status, scope } = ListInput.parse(args);
-          const asks = this.store
-            .list(workspaceId)
+          // An explainer in its own workspace also sees the ask it discusses.
+          const linked = this.discussing(agentId).filter((ask) => ask.workspaceId !== workspaceId);
+          const asks = [...linked, ...this.store.list(workspaceId)]
             .filter((ask) => status === "all" || OPEN_STATUSES.includes(ask.status))
             .filter((ask) => scope === "workspace" || ask.ownerAgentId === agentId);
           return { text: asks.length ? asks.map(summary).join("\n") : "No asks." };
@@ -228,9 +232,38 @@ export class AsksService {
         message = `${head} reply from the human: "${note}". Update or resolve ${ask.id} accordingly.`;
         break;
     }
+    this.tellDiscussion(ask, input.verb, input.actionId);
     if (ask.orphaned) return { ask: next, notified: false };
     this.notify(ask, message);
     return { ask: next, notified: true };
+  }
+
+  /**
+   * The human answered with a button, which may be in the explainer's workspace: the agent discussing the ask must
+   * know, or it settles the ask a second time. No askId, so an explainer that is gone leaves the ask alone.
+   */
+  private tellDiscussion(ask: Ask, verb: "action" | "done" | "drop" | "reply", actionId?: string): void {
+    const agentId = ask.discussionAgentId;
+    if (!agentId || agentId === ask.ownerAgentId || verb === "reply") return;
+    const action = ask.actions.find((candidate) => candidate.id === actionId);
+    const what = verb === "done" ? "marked it done" : verb === "drop" ? "dropped it" : `chose "${action?.label ?? actionId}"`;
+    this.message(
+      agentId,
+      ask.discussionWorkspaceId ?? ask.workspaceId,
+      `[asks] The human answered ${ask.id} (${ask.title}) with its buttons: they ${what}. The main agent has been told; do not resolve or update ${ask.id}. Reply in one line.`,
+    );
+    void this.outbox.flush(agentId);
+  }
+
+  /**
+   * A discussion settles an ask only while it waits on the human. Once the human answered (a choice, or work handed
+   * to the owner), another settle would overwrite the answer, tell the owner twice, or end the owner's PR updates.
+   */
+  private checkStillWaiting(ask: Ask, agentId: string): void {
+    if (agentId !== ask.discussionAgentId || agentId === ask.ownerAgentId || ask.status === "open") return;
+    const outcome = ask.outcome?.label ? `: ${ask.outcome.label}` : "";
+    const holder = ask.orphaned ? "its agent is gone" : "the main agent has it";
+    throw new Error(`${ask.id} no longer waits on the human (${ask.status.replace("_", " ")}${outcome}); ${holder}. Leave it as it is.`);
   }
 
   /** Queue a message for the ask's owner; it goes out once the owner is between turns. */
@@ -326,6 +359,28 @@ export class AsksService {
       console.error("[asks] could not check file paths", error);
       return { body, notes: [] };
     }
+  }
+
+  /** Ids a reply may name to show its wait is recorded: the workspace's open asks, and the open ask the agent explains. */
+  openAskIds(agentId: string, workspaceId: string): Set<string> {
+    return new Set(
+      [...this.store.list(workspaceId), ...this.discussing(agentId)]
+        .filter((ask) => OPEN_STATUSES.includes(ask.status))
+        .map((ask) => ask.id),
+    );
+  }
+
+  /** Asks this agent was opened to discuss, in any workspace. */
+  discussing(agentId: string): Ask[] {
+    return this.store.list().filter((ask) => ask.discussionAgentId === agentId);
+  }
+
+  /**
+   * The ask an agent's call names. The one it was opened to discuss comes first, wherever it lives: an explainer works
+   * from a workspace of its own. Only that link reaches across workspaces.
+   */
+  private find(workspaceId: string, agentId: string, id: string): Ask {
+    return this.discussing(agentId).find((ask) => ask.id === id) ?? this.require(workspaceId, id);
   }
 
   private require(workspaceId: string, id: string): Ask {

@@ -12,7 +12,7 @@ export type NewAsk = Pick<Ask, "workspaceId" | "ownerAgentId" | "kind" | "title"
 };
 
 export type AskPatch = Partial<
-  Pick<Ask, "title" | "body" | "links" | "status" | "outcome" | "orphaned" | "ownerAgentId" | "subscribe" | "pr" | "discussionAgentId" | "remindedAt" | "lastCall">
+  Pick<Ask, "title" | "body" | "links" | "status" | "outcome" | "orphaned" | "ownerAgentId" | "subscribe" | "pr" | "discussionAgentId" | "discussionWorkspaceId" | "remindedAt" | "lastCall">
 > & {
   actions?: Omit<Action, "id">[];
 };
@@ -50,6 +50,14 @@ export class AskStore {
       };
       file.asks.push(ask);
       return ask;
+    });
+  }
+
+  /** Numbers the workspace's next asks after `id` (e.g. A31 after A30), so they can't be mistaken for that ask. */
+  reserveAfter(workspaceId: string, id: string): Promise<void> {
+    const number = Number(id.replace(/^A/, ""));
+    return this.mutate(workspaceId, (file) => {
+      if (Number.isInteger(number)) file.nextId = Math.max(file.nextId, number + 1);
     });
   }
 

@@ -1,6 +1,6 @@
 import type { PaseoApi } from "@getpaseo/client";
 import { latestTurn, type PluginServerContext } from "@getpaseo/plugin/server";
-import { actOnAsk, discussAsk, listAsks, OPEN_STATUSES, oldestFirst, refreshAsks } from "./shared/asks";
+import { actOnAsk, discussAsk, listAsks, OPEN_STATUSES, oldestFirst, refreshAsks, showsIn } from "./shared/asks";
 import { AgentDirectory, pickCaller } from "./server/agents";
 import { installBridge } from "./server/bridge";
 import { discuss } from "./server/discuss";
@@ -134,18 +134,15 @@ export default function contribute(server: PluginServerContext) {
     void outbox.flush(agent.id);
     const timeline = await latestTurn(api.agents.ref(agent.id).timeline);
     lastOutputs.record(agent.id, timeline);
-    // Agents sometimes ask in chat and skip ask_create; one reminder per such turn. Side chats talk to the human directly.
-    const sideChat = store
-      .list(agent.workspaceId ?? undefined)
-      .some((ask) => ask.discussionAgentId === agent.id);
-    if (outcome.kind !== "completed" || !agent.workspaceId || sideChat) return;
+    // Agents sometimes ask in chat and skip ask_create; one reminder per such turn.
+    if (outcome.kind !== "completed" || !agent.workspaceId) return;
     const workspaceId = agent.workspaceId;
     if (await isBackground(api, workspaceId)) return;
     void service
       .remindStuck(agent.id, workspaceId)
       .then(() => outbox.flush(agent.id))
       .catch(() => {});
-    const openIds = new Set(store.list(workspaceId).filter((ask) => OPEN_STATUSES.includes(ask.status)).map((ask) => ask.id));
+    const openIds = service.openAskIds(agent.id, workspaceId);
     void shouldNudge(timeline, (id) => openIds.has(id), classifierFor(agent.id))
       .then(async (nudge) => {
         // The classifier takes a few seconds. If the human has moved on, steer the reminder into the new
@@ -204,8 +201,8 @@ export default function contribute(server: PluginServerContext) {
 
   server.handle(listAsks, async ({ workspaceId, includeClosed }, { paseo: api }) => {
     capture(api);
-    const asks = store
-      .list(workspaceId)
+    // A workspace also lists the ask it explains, with its buttons, so the human answers it there.
+    const asks = (workspaceId ? store.list().filter((ask) => showsIn(ask, workspaceId)) : store.list())
       .filter((ask) => includeClosed || OPEN_STATUSES.includes(ask.status));
     asks.sort(oldestFirst);
     if (workspaceId) return { asks };
@@ -229,7 +226,7 @@ export default function contribute(server: PluginServerContext) {
     const ask = store.get(workspaceId, id);
     if (!ask) throw new Error(`No ask ${id} in this workspace`);
     return discuss(
-      { paseo: api, store, mcp, lastOutput: (agentId) => lastOutputs.get(agentId) },
+      { paseo: api, store, mcp, lastOutput: (agentId) => lastOutputs.get(agentId), log: console.error },
       ask,
       note,
     );

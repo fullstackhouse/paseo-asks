@@ -57,6 +57,8 @@ export const asks: Ask[] = [
       { id: "a2", label: "Redis", kind: "resolve" },
       { id: "a3", label: "Keep the cookie", kind: "resolve" },
     ],
+    discussionAgentId: "explainer",
+    discussionWorkspaceId: "explain-a3",
     updatedAt: ago(120),
   },
   {
