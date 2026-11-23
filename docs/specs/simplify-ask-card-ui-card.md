@@ -42,7 +42,7 @@ Map: [simplify-ask-card-ui-map.md](./simplify-ask-card-ui-map.md). Spec: [simpli
 - **Short.** The rare and closing moves, out of the way of the main one.
 - **Extended.** Items, in order:
   - *Mark done*: you did it yourself; closes the ask as done and tells the agent.
-  - *Discuss in side chat*: opens a read-only child chat about this ask; becomes *Open discussion* once one exists.
+  - *Discuss*: opens a workspace where an agent explains this ask (a read-only side chat when the agent is not in a git repo); becomes *Open discussion* once one exists.
   - *Open chat*: goes to the agent that raised the ask.
   - A separator, then *Drop ask* in the destructive tone: closes the ask and tells the agent not to pursue it.
   - Text in the reply field goes along as the note; the labels don't change. Picking an item closes the menu. A popover on desktop, a bottom sheet on phones.
@@ -54,7 +54,7 @@ Map: [simplify-ask-card-ui-map.md](./simplify-ask-card-ui-map.md). Spec: [simpli
   - Discussion already open: *Open discussion*.
   - Phone bottom sheet.
   - On A3 (in progress): *Mark done*, *Discuss*, *Open chat*, *Drop ask*.
-  - On A4 (closed): *Discuss*, *Open chat* only.
+  - On A4 (closed): *Open chat*, plus *Open discussion* while one is live. A closed ask starts no new discussion.
 - **Edge cases.**
   - Orphaned ask → no *Discuss*. *Mark done* and *Drop ask* close it silently, and the toast says nobody was told.
   - Discuss on an agent whose provider has no read-only mode → toast "Side chats need a provider with a read-only mode (Claude)."
@@ -63,12 +63,12 @@ Map: [simplify-ask-card-ui-map.md](./simplify-ask-card-ui-map.md). Spec: [simpli
 
 - **Short.** You answered; the agent is working on it.
 - **Extended.** No agent actions: the move is the agent's. Shows what you chose and when, in the form "You chose QA-approve + merge · 2 min ago". The answer bar keeps the reply field and ⋯, so you can add "actually, wait" or drop it. The ask returns to A1 when the agent gives it new actions, when its agent is archived, or after a day with the agent not running. In lists it sits under *In progress*.
-- **Get here.** A *send* action or a reply on A1.
+- **Get here.** A *send* action on A1. A reply alone leaves the ask waiting on you.
 - **Shows.** Header with the *in progress* badge. The outcome line. Body (collapsed by default outside the chat). PR line and chips, still live. Answer bar: reply field with ⋯ beside it.
 - **Variants.**
   - Right after you chose a send action.
   - PR checks still running, chips deploying.
-  - After a reply, with the note quoted in the outcome line.
+  - After a send action with a note, the note quoted in the outcome line.
 - **Edge cases.**
   - The agent's turn ended without moving it → the agent gets one reminder. The card itself doesn't change.
 

@@ -22,7 +22,7 @@ Status: draft, waiting for approval. Reviewed at `52e68f5` (`client/AsksView.tsx
 - PR line and preview chips: show whether the suggested move is safe right now.
 - Note field: free-text answer, or a note sent along with any button.
 - Reply / Done / Drop: built-in ways to answer when the agent's actions don't fit.
-- Discuss: a read-only side chat about this one ask.
+- Discuss: a workspace where an agent explains this one ask.
 - Open chat: go to the agent that raised the ask.
 
 ## Current state
@@ -74,7 +74,7 @@ PR #1265 open · checks ✓ · review required
 - **One reply field**, full width, starts at one line and grows to about 6 lines as you type. A send icon inside it appears once there is text; Enter sends on web. Removes the `Reply` button.
 - **One `⋯` menu** at the end of the action row (beside the reply field when there are no actions), holding:
   - `Mark done`
-  - `Discuss in side chat` (`Open discussion` when one exists)
+  - `Discuss` (`Open discussion` when one exists)
   - `Open chat` (hidden for the agent viewing it, as today)
   - separator, then `Drop ask` (destructive tone)
   

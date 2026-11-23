@@ -61,7 +61,7 @@ export function askCardStates({ ic, esc }) {
   const toast = (t) => `<div class="ak-toast">${ic('alert-circle')}<span>${esc(t)}</span></div>`
 
   const DONE = ['check-circle', 'Mark done']
-  const DISCUSS = ['messages-square', 'Discuss in side chat']
+  const DISCUSS = ['messages-square', 'Discuss']
   const OPEN_CHAT = ['message-square', 'Open chat']
   const DROP = ['x-circle', 'Drop ask', true]
   const FULL = [DONE, DISCUSS, OPEN_CHAT, '-', DROP]
@@ -130,7 +130,7 @@ export function askCardStates({ ic, esc }) {
       { id: 's7', caption: 'Edge — orphaned ask: no Discuss, silent close', html: desk(`${card({ ...prAsk, orphaned: true, more: { open: true, popover: menu([DONE, OPEN_CHAT, '-', DROP]) } })}`, 'ak-tall'),
         notes: ['Mark done and Drop ask close it silently; the toast says "A12 closed; its agent is gone, so nobody was told."'] },
       { id: 's8', caption: 'Edge — provider has no read-only mode', html: desk(`${card({ ...prAsk })}${toast('Side chats need a provider with a read-only mode (Claude).')}`),
-        notes: ['Shown after picking Discuss in side chat on such an agent; the menu has already closed.'] },
+        notes: ['Shown after picking Discuss on such an agent; the menu has already closed.'] },
     ],
     A3: [
       { id: 's1', caption: 'Right after you chose a send action', html: desk(card(handed)),

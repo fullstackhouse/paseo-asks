@@ -138,6 +138,17 @@ describe("asks", () => {
     );
   });
 
+  it("records the send action the human chose, so the in-progress card can show it", async () => {
+    await service.callTool(AGENT, "ask_create", {
+      kind: "pr",
+      title: "Ship the export fix",
+      actions: [{ label: "Merge (squash)", kind: "send", prompt: "Merge PR #30 with squash" }],
+    });
+    const { ask } = await service.act({ workspaceId: WS, id: "A1", verb: "action", actionId: "a1", note: "after lunch" });
+    expect(ask.status).toBe("in_progress");
+    expect(ask.outcome).toMatchObject({ actionId: "a1", label: "Merge (squash)", note: "after lunch", by: "human" });
+  });
+
   it("steers a human's choice into a running turn when the provider can take it", async () => {
     await service.callTool(AGENT, "ask_create", decision);
     courier.states.set(AGENT, "steerable");
