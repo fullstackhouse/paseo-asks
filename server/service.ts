@@ -102,7 +102,17 @@ export interface ToolResult {
 export const BACKGROUND_SKIP =
   "Skipped: this workspace runs in the background (an automated run hidden from the sidebar), so nobody reads asks here. Put what you have in your final reply. Asks work again once the human opens this chat.";
 
-/** How long an explainer's workspace stays after its ask is settled, so the human can finish reading it. */
+/** What the discussion sweep needs from the host; every answer it can't get keeps the workspace. */
+export interface SweepHost {
+  /** Null when the agent is gone. */
+  agentActivity(agentId: string): Promise<{ working: boolean; lastActiveAt?: string } | null>;
+  /** True only when the workspace's worktree has no uncommitted or untracked files. */
+  isClean(workspaceId: string): Promise<boolean>;
+  archive(workspaceId: string): Promise<{ error?: string | null }>;
+  log(line: string): void;
+}
+
+/** How long an explainer's workspace stays after its ask is settled and its agent goes quiet. */
 export const SETTLED_DISCUSSION_MS = 24 * 60 * 60 * 1000;
 
 export class AsksService {
@@ -388,7 +398,7 @@ export class AsksService {
     );
   }
 
-  /** Explainer workspaces whose ask was settled a day ago or more: nothing left to discuss there. */
+  /** Explainer workspaces whose ask was settled a day ago or more: candidates for `archiveSettledDiscussions`. */
   settledDiscussions(now = new Date()): Ask[] {
     return this.store
       .list()
@@ -399,6 +409,38 @@ export class AsksService {
           !OPEN_STATUSES.includes(ask.status) &&
           now.getTime() - Date.parse(ask.updatedAt) >= SETTLED_DISCUSSION_MS,
       );
+  }
+
+  /**
+   * Archives explainer workspaces nobody needs any more. Archiving removes the worktree (`git worktree remove
+   * --force`) and every agent in it, so each must hold: the explained ask settled, no open ask in that workspace (the
+   * explainer's own would drop out of the queue), the explainer idle for a day, and nothing uncommitted in the
+   * worktree (its notes would be deleted). Anything else, or anything unknown, keeps the workspace. Returns those archived.
+   */
+  async archiveSettledDiscussions(host: SweepHost, now = new Date()): Promise<string[]> {
+    const archived: string[] = [];
+    for (const ask of this.settledDiscussions(now)) {
+      const agentId = ask.discussionAgentId!;
+      const workspaceId = ask.discussionWorkspaceId!;
+      try {
+        if (this.store.list(workspaceId).some((own) => OPEN_STATUSES.includes(own.status))) continue;
+        const agent = await host.agentActivity(agentId);
+        if (agent?.working) continue;
+        const lastActive = Math.max(Date.parse(ask.updatedAt), agent?.lastActiveAt ? Date.parse(agent.lastActiveAt) : 0);
+        if (now.getTime() - lastActive < SETTLED_DISCUSSION_MS) continue;
+        if (!(await host.isClean(workspaceId))) continue;
+        const result = await host.archive(workspaceId);
+        if (result.error) {
+          host.log(`[asks] could not archive ${workspaceId}: ${result.error}`);
+          continue;
+        }
+        await this.endDiscussion(agentId);
+        archived.push(workspaceId);
+      } catch (error) {
+        host.log(`[asks] left ${workspaceId} as it is: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    return archived;
   }
 
   /** Asks this agent was opened to discuss, in any workspace. */

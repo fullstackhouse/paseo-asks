@@ -13,7 +13,8 @@ import { isWorking, Outbox, type Courier } from "./server/outbox";
 import { checkFilePaths, diskPathEnv } from "./server/file-paths";
 import { dataDir } from "./server/paths";
 import { isAsksPermission } from "./server/permissions";
-import { AsksService, instructions, TOOLS } from "./server/service";
+import { AsksService, instructions, TOOLS, type SweepHost } from "./server/service";
+import { isCleanWorktree } from "./server/worktree";
 import { AskStore } from "./server/store";
 import { attentionForOpenAsks } from "./server/schedule-attention";
 import { PrWatcher } from "./server/watcher";
@@ -273,18 +274,23 @@ export default function contribute(server: PluginServerContext) {
   const reopenStale = () => {
     if (!paseo) return;
     void service.reopenStale(async (agentId) => isWorking(await courier.state(agentId)));
-    void archiveSettledDiscussions(paseo);
+    void service.archiveSettledDiscussions(sweepHost(paseo)).catch(() => {});
   };
-  // An explainer's workspace (a worktree) outlives its ask by a day, unless its agent is still at work.
-  const archiveSettledDiscussions = async (api: PaseoApi) => {
-    for (const ask of service.settledDiscussions()) {
-      const state = await courier.state(ask.discussionAgentId!).catch(() => "running" as const);
-      if (isWorking(state)) continue;
-      const archived = await api.workspaces.archive(ask.discussionWorkspaceId!).catch((error: unknown) => ({ error: String(error) }));
-      if (archived.error) console.log(`[asks] could not archive ${ask.discussionWorkspaceId}: ${archived.error}`);
-      else await service.endDiscussion(ask.discussionAgentId!);
-    }
-  };
+  const sweepHost = (api: PaseoApi): SweepHost => ({
+    async agentActivity(agentId) {
+      const handle = api.agents.ref(agentId);
+      if (!(await handle.refresh()) || handle.archivedAt) return null;
+      const agent = handle.current();
+      const times = [agent?.updatedAt, agent?.lastUserMessageAt].filter((at): at is string => Boolean(at)).sort();
+      return { working: handle.status === "running" || handle.status === "initializing", lastActiveAt: times.at(-1) };
+    },
+    async isClean(workspaceId) {
+      const directory = (await api.workspaces.ref(workspaceId).refresh())?.workspaceDirectory;
+      return directory ? isCleanWorktree(directory) : false;
+    },
+    archive: (workspaceId) => api.workspaces.archive(workspaceId),
+    log: console.log,
+  });
   const staleTimer = setInterval(reopenStale, STALE_EVERY_MS);
   const firstStale = setTimeout(reopenStale, PR_EVERY_MS);
   void watcher?.refresh();

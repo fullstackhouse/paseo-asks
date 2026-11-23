@@ -4,7 +4,10 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { discuss, Discussions, type DiscussDeps } from "../server/discuss";
 import { Outbox, type Courier } from "../server/outbox";
-import { AsksService, SETTLED_DISCUSSION_MS } from "../server/service";
+import { AsksService, SETTLED_DISCUSSION_MS, type SweepHost } from "../server/service";
+import { isCleanWorktree } from "../server/worktree";
+import { execFileSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
 import { AskStore } from "../server/store";
 import { discussionTitle, showsIn, waitingByWorkspace, workspaceAsks } from "../shared/asks";
 
@@ -362,6 +365,78 @@ describe("Discuss", () => {
     const settled = Date.parse(store.get(WS, "A1")!.updatedAt);
     expect(service.settledDiscussions(new Date(settled + SETTLED_DISCUSSION_MS - 1))).toEqual([]);
     expect(service.settledDiscussions(new Date(settled + SETTLED_DISCUSSION_MS)).map((ask) => ask.id)).toEqual(["A1"]);
+  });
+
+  describe("archiving settled explainer workspaces", () => {
+    const DAY = SETTLED_DISCUSSION_MS;
+    let archived: string[];
+    let logged: string[];
+    const host = (overrides: Partial<SweepHost> = {}): SweepHost => ({
+      agentActivity: async () => ({ working: false, lastActiveAt: "2000-01-01T00:00:00.000Z" }),
+      isClean: async () => true,
+      archive: async (workspaceId) => (archived.push(workspaceId), {}),
+      log: (line) => logged.push(line),
+      ...overrides,
+    });
+    const settle = async () => {
+      archived = [];
+      logged = [];
+      await decision();
+      await store.update(WS, "A1", { discussionAgentId: EXPLAINER, discussionWorkspaceId: EXPLAIN_WS });
+      await service.callTool(EXPLAINER, "ask_resolve", { id: "A1", actionId: "a2" });
+      return new Date(Date.parse(store.get(WS, "A1")!.updatedAt) + DAY);
+    };
+
+    it("archives a clean, idle explainer's workspace a day after its ask settled, and ends the discussion", async () => {
+      const later = await settle();
+      expect(await service.archiveSettledDiscussions(host(), new Date(later.getTime() - 1))).toEqual([]);
+      expect(await service.archiveSettledDiscussions(host(), later)).toEqual([EXPLAIN_WS]);
+      expect(archived).toEqual([EXPLAIN_WS]);
+      expect(store.get(WS, "A1")!.discussionAgentId).toBeUndefined();
+    });
+
+    it("archives the workspace of an explainer that is gone", async () => {
+      const later = await settle();
+      expect(await service.archiveSettledDiscussions(host({ agentActivity: async () => null }), later)).toEqual([EXPLAIN_WS]);
+    });
+
+    it("keeps it while the explainer's own asks are open", async () => {
+      const later = await settle();
+      await service.callTool(EXPLAINER, "ask_create", { kind: "followup", title: "Send the summary to the lead?" });
+      expect(await service.archiveSettledDiscussions(host(), later)).toEqual([]);
+      expect(archived).toEqual([]);
+    });
+
+    it("keeps it while the explainer works, or was used within the day", async () => {
+      const later = await settle();
+      expect(await service.archiveSettledDiscussions(host({ agentActivity: async () => ({ working: true }) }), later)).toEqual([]);
+      const recent = new Date(later.getTime() - 60_000).toISOString();
+      expect(await service.archiveSettledDiscussions(host({ agentActivity: async () => ({ working: false, lastActiveAt: recent }) }), later)).toEqual([]);
+      expect(archived).toEqual([]);
+    });
+
+    it("keeps it while its worktree holds uncommitted files", async () => {
+      const later = await settle();
+      expect(await service.archiveSettledDiscussions(host({ isClean: async () => false }), later)).toEqual([]);
+      expect(archived).toEqual([]);
+    });
+
+    it("keeps the link when archiving fails or the host can't answer, and says why", async () => {
+      const later = await settle();
+      await service.archiveSettledDiscussions(host({ archive: async () => ({ error: "Workspace busy" }) }), later);
+      await service.archiveSettledDiscussions(host({ agentActivity: async () => Promise.reject(new Error("daemon unreachable")) }), later);
+      expect(logged).toEqual([`[asks] could not archive ${EXPLAIN_WS}: Workspace busy`, `[asks] left ${EXPLAIN_WS} as it is: daemon unreachable`]);
+      expect(store.get(WS, "A1")!.discussionWorkspaceId).toBe(EXPLAIN_WS);
+    });
+  });
+
+  it("calls a worktree clean only with nothing uncommitted or untracked", async () => {
+    const repo = mkdtempSync(join(tmpdir(), "asks-worktree-"));
+    expect(await isCleanWorktree(repo)).toBe(false);
+    execFileSync("git", ["init", "-q"], { cwd: repo });
+    expect(await isCleanWorktree(repo)).toBe(true);
+    writeFileSync(join(repo, "EXPLAIN.md"), "notes");
+    expect(await isCleanWorktree(repo)).toBe(false);
   });
 
   it("ends the old discussion when the owner reopens a settled ask, so later clicks don't reach it", async () => {
