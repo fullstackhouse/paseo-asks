@@ -3,7 +3,7 @@ import { latestTurn, type PluginServerContext } from "@getpaseo/plugin/server";
 import { actOnAsk, discussAsk, listAsks, OPEN_STATUSES, oldestFirst, refreshAsks, showsIn } from "./shared/asks";
 import { AgentDirectory, pickCaller } from "./server/agents";
 import { installBridge } from "./server/bridge";
-import { discuss } from "./server/discuss";
+import { Discussions } from "./server/discuss";
 import { Gh, ghExec } from "./server/gh";
 import { findGh, ghFetcher } from "./server/github";
 import { LastOutputs } from "./server/last-output";
@@ -134,8 +134,10 @@ export default function contribute(server: PluginServerContext) {
     void outbox.flush(agent.id);
     const timeline = await latestTurn(api.agents.ref(agent.id).timeline);
     lastOutputs.record(agent.id, timeline);
-    // Agents sometimes ask in chat and skip ask_create; one reminder per such turn.
-    if (outcome.kind !== "completed" || !agent.workspaceId) return;
+    // Agents sometimes ask in chat and skip ask_create; one reminder per such turn. A read-only side chat (a
+    // discussion in the ask's own workspace) talks to the human directly and could not carry out an ask of its own.
+    const sideChat = service.discussing(agent.id).some((ask) => !ask.discussionWorkspaceId);
+    if (outcome.kind !== "completed" || !agent.workspaceId || sideChat) return;
     const workspaceId = agent.workspaceId;
     if (await isBackground(api, workspaceId)) return;
     void service
@@ -197,6 +199,7 @@ export default function contribute(server: PluginServerContext) {
     capture(api);
     void outbox.flush(agent.id);
     void service.releaseOwner(agent.id);
+    void service.endDiscussion(agent.id);
   });
 
   server.handle(listAsks, async ({ workspaceId, includeClosed }, { paseo: api }) => {
@@ -222,11 +225,12 @@ export default function contribute(server: PluginServerContext) {
     capture(api);
     return service.refresh(agentId);
   });
+  const discussions = new Discussions();
   const startDiscussion = (api: PaseoApi, workspaceId: string, id: string, note?: string) => {
     const ask = store.get(workspaceId, id);
     if (!ask) throw new Error(`No ask ${id} in this workspace`);
-    return discuss(
-      { paseo: api, store, mcp, lastOutput: (agentId) => lastOutputs.get(agentId), log: console.error },
+    return discussions.start(
+      { paseo: api, store, mcp, lastOutput: (agentId) => lastOutputs.get(agentId), log: console.log },
       ask,
       note,
     );
@@ -267,7 +271,8 @@ export default function contribute(server: PluginServerContext) {
   const prTimer = setInterval(() => void watcher?.refresh(), PR_EVERY_MS);
   // Also the backlog sweep: the first run after start reopens asks that went stale before this existed.
   const reopenStale = () => {
-    if (paseo) void service.reopenStale(async (agentId) => isWorking(await courier.state(agentId)));
+    if (!paseo) return;
+    void service.reopenStale(async (agentId) => isWorking(await courier.state(agentId)));
   };
   const staleTimer = setInterval(reopenStale, STALE_EVERY_MS);
   const firstStale = setTimeout(reopenStale, PR_EVERY_MS);

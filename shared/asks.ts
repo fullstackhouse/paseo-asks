@@ -177,7 +177,8 @@ export function workspaceAsks(
     for (const workspaceId of workspacesOf(ask)) {
       let workspace = result.get(workspaceId);
       if (!workspace) result.set(workspaceId, (workspace = { count: 0, entries: [] }));
-      if (!awaitsYou(ask) || snoozed.has(workspaceId)) continue;
+      // Snoozing the ask's own workspace quiets it in the explainer's too, as the sidebar count does.
+      if (!awaitsYou(ask) || snoozed.has(workspaceId) || snoozed.has(ask.workspaceId)) continue;
       workspace.count++;
       workspace.newestId = ask.id;
       workspace.entries.push({ id: ask.id, title: ask.title, detail: askDetail(ask) });
