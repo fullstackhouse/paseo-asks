@@ -242,7 +242,7 @@ describe("Discuss", () => {
     // The owner is merging: a settle from the explainer would end its PR updates.
     expect(await service.callTool(EXPLAINER, "ask_resolve", { id: "A1" })).toMatchObject({
       isError: true,
-      text: expect.stringContaining("A1 no longer waits on the human (in progress)"),
+      text: expect.stringContaining("A1 no longer waits on the human (in progress: Merge)"),
     });
     expect(store.get(WS, "A1")!.status).toBe("in_progress");
     // Any other agent of the owner's workspace keeps working the ask as before.

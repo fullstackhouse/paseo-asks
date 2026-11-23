@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useContext, useMemo, useState, type ReactNode } from "react";
 import { Platform, Pressable, Text, View } from "react-native";
 import { useDraft } from "./drafts";
+import { MoreMenu, type MenuEntry } from "./menu";
 import {
   actOnAsk,
   archiveDiscussionRpc,
@@ -211,7 +212,7 @@ function QueueRow(props: {
       </Pressable>
       {expanded && (
         <View style={styles.queueDetail}>
-          <AskDetail {...props} actionsFirst />
+          <AskDetail {...props} />
         </View>
       )}
     </View>
@@ -428,7 +429,6 @@ export function AskCard(
           onToggle={() => setToggled(!expanded)}
           openAgent={openAgent}
           viewingAgentId={agentId}
-          actionsFirst
           foldBody={settings.status === "ready" && settings.values.foldChatBodies}
         />
       ) : loaded ? (
@@ -558,7 +558,6 @@ function AskRow(props: {
   openAgent?: (agentId: string) => void;
   /** The agent whose chat this is shown in, so "Open chat" does not point at itself. */
   viewingAgentId?: string;
-  actionsFirst?: boolean;
   foldBody?: boolean;
 }) {
   const { ask, styles, theme, expanded } = props;
@@ -587,17 +586,16 @@ function AskRow(props: {
 function AskDetail({
   ask,
   styles,
+  theme,
   openAgent,
   viewingAgentId,
-  actionsFirst = false,
   foldBody = false,
 }: {
   ask: Ask;
   styles: Styles;
+  theme: PluginTheme;
   openAgent?: (agentId: string) => void;
   viewingAgentId?: string;
-  /** Show the action buttons above the body. */
-  actionsFirst?: boolean;
   /** Keep the body behind a "Details" link. */
   foldBody?: boolean;
 }) {
@@ -608,6 +606,9 @@ function AskDetail({
   const [note, setNote] = useDraft(ask.workspaceId, ask.id);
   const [bodyOpened, setBodyOpened] = useState(false);
   const bodyShown = !foldBody || bodyOpened;
+  // One line when empty, then the field follows its text up to about six lines and scrolls.
+  const [contentHeight, setContentHeight] = useState(0);
+  const inputHeight = Math.min(132, Math.max(36, contentHeight + 16));
   const mutation = useMutation({
     mutationFn: (input: { verb: "action" | "done" | "drop" | "reply"; actionId?: string }) =>
       act({ workspaceId: ask.workspaceId, id: ask.id, note, ...input }),
@@ -631,29 +632,58 @@ function AskDetail({
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : String(error)),
   });
+  const busy = mutation.isPending || discussion.isPending;
   const press = (action: Action) => {
     if (action.kind === "open" && action.url) return openLink(action.url);
     mutation.mutate({ verb: "action", actionId: action.id });
   };
+  const reply = () => {
+    if (!busy && note.trim()) mutation.mutate({ verb: "reply" });
+  };
 
-  const actions = ask.status === "open" && ask.actions.length > 0 && (
-    <View style={styles.buttons}>
-      {ask.actions.map((action) => (
-        <Button
-          key={action.id}
-          styles={styles}
-          primary={action.recommended}
-          disabled={mutation.isPending}
-          label={`${action.label}${action.recommended ? " ★" : ""}${action.kind === "open" ? " ↗" : ""}`}
-          onPress={() => press(action)}
-        />
-      ))}
-    </View>
-  );
+  const closed = ask.status === "done" || ask.status === "dropped";
+  const menuItems: MenuEntry[] = [
+    ...(closed
+      ? []
+      : [{ id: "done", label: "Mark done", icon: "CircleCheck", onSelect: () => mutation.mutate({ verb: "done" }) }]),
+    // An ask you already answered has nothing left to settle: only its live discussion reopens.
+    ...(ask.orphaned || !(ask.status === "open" || ask.discussionAgentId)
+      ? []
+      : [
+          {
+            id: "discuss",
+            label: ask.discussionAgentId ? "Open discussion" : "Discuss",
+            icon: "MessagesSquare",
+            onSelect: () => discussion.mutate(),
+          },
+        ]),
+    ...(openAgent && ask.ownerAgentId !== viewingAgentId
+      ? [{ id: "chat", label: "Open chat", icon: "MessageSquare", onSelect: () => openAgent(ask.ownerAgentId) }]
+      : []),
+    ...(closed
+      ? []
+      : [
+          { id: "sep", separator: true as const },
+          {
+            id: "drop",
+            label: "Drop ask",
+            icon: "CircleX",
+            destructive: true,
+            onSelect: () => mutation.mutate({ verb: "drop" }),
+          },
+        ]),
+  ];
+  const menu = menuItems.length > 0 && <MoreMenu items={menuItems} disabled={busy} styles={styles} />;
+  const actions = ask.status === "open" ? ask.actions : [];
 
   return (
     <View style={styles.detail}>
-      {actionsFirst && actions}
+      {ask.status !== "open" && ask.outcome && <OutcomeLine ask={ask} styles={styles} />}
+      {ask.orphaned && (
+        <Text style={styles.orphaned}>
+          The agent that raised this is archived. Closing it here notifies nobody.
+        </Text>
+      )}
       {foldBody && ask.body?.trim() ? (
         <Pressable accessibilityRole="button" onPress={() => setBodyOpened(!bodyOpened)}>
           <Text style={styles.link}>{bodyOpened ? "Hide details" : "Details"}</Text>
@@ -691,68 +721,58 @@ function AskDetail({
       {ask.discussionWorkspaceId && ask.discussionAgentId && (ask.status === "done" || ask.status === "dropped") && (
         <SettledDiscussion ask={ask} styles={styles} open={ask.discussionAgentId !== viewingAgentId ? openAgent : undefined} />
       )}
-      {ask.orphaned && (
-        <Text style={styles.orphaned}>
-          The agent that raised this is archived. Closing it here notifies nobody.
-        </Text>
+      {actions.length > 0 && (
+        <View style={styles.actionRow}>
+          <View style={styles.buttons}>
+            {actions.map((action) => (
+              <Button
+                key={action.id}
+                styles={styles}
+                primary={action.recommended}
+                disabled={busy}
+                label={`${action.label}${action.kind === "open" ? " ↗" : ""}`}
+                onPress={() => press(action)}
+              />
+            ))}
+          </View>
+          {menu}
+        </View>
       )}
-      {!actionsFirst && actions}
-      <TextInput
-        value={note}
-        onChangeText={setNote}
-        placeholder="Note or reply (optional)"
-        placeholderTextColor={styles.placeholder.color}
-        style={styles.input}
-        multiline
-        onKeyPress={(event) => {
-          // Desktop/web: Enter sends the reply, Shift+Enter adds a line. Native keeps Return as newline.
-          const e = event.nativeEvent as typeof event.nativeEvent & {
-            shiftKey?: boolean;
-            isComposing?: boolean;
-          };
-          if (Platform.OS !== "web" || e.key !== "Enter" || e.shiftKey || e.isComposing) return;
-          event.preventDefault();
-          if (!mutation.isPending && note.trim()) mutation.mutate({ verb: "reply" });
-        }}
-      />
-      <View style={styles.buttons}>
-        <Button
-          styles={styles}
-          label="Reply"
-          disabled={mutation.isPending || !note.trim()}
-          onPress={() => mutation.mutate({ verb: "reply" })}
-        />
-        <Button
-          styles={styles}
-          label="Done"
-          disabled={mutation.isPending}
-          onPress={() => mutation.mutate({ verb: "done" })}
-        />
-        <Button
-          styles={styles}
-          label="Drop"
-          disabled={mutation.isPending}
-          onPress={() => mutation.mutate({ verb: "drop" })}
-        />
-        {/* An ask the human already answered has nothing left to settle: only its live discussion reopens. */}
-        {!ask.orphaned && (ask.status === "open" || ask.discussionAgentId) && (
-          <Button
-            styles={styles}
-            label={
-              discussion.isPending
-                ? "Opening…"
-                : ask.discussionAgentId
-                  ? "Open discussion"
-                  : "Discuss"
-            }
-            disabled={discussion.isPending || mutation.isPending}
-            onPress={() => discussion.mutate()}
+      <View style={styles.replyRow}>
+        <View style={styles.replyField}>
+          <TextInput
+            value={note}
+            onChangeText={setNote}
+            placeholder="Reply to the agent…"
+            placeholderTextColor={styles.placeholder.color}
+            style={[styles.input, { height: note ? inputHeight : 36 }]}
+            multiline
+            numberOfLines={1}
+            onContentSizeChange={(event) => setContentHeight(event.nativeEvent.contentSize.height)}
+            onKeyPress={(event) => {
+              // Desktop/web: Enter sends the reply, Shift+Enter adds a line. Native keeps Return as newline.
+              const e = event.nativeEvent as typeof event.nativeEvent & {
+                shiftKey?: boolean;
+                isComposing?: boolean;
+              };
+              if (Platform.OS !== "web" || e.key !== "Enter" || e.shiftKey || e.isComposing) return;
+              event.preventDefault();
+              reply();
+            }}
           />
-        )}
-        {openAgent && ask.ownerAgentId !== viewingAgentId && (
-          <Button styles={styles} label="Open chat" onPress={() => openAgent(ask.ownerAgentId)} />
-        )}
-
+          {note.trim() ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Send reply"
+              disabled={busy}
+              onPress={reply}
+              style={styles.send}
+            >
+              <Icon name="SendHorizontal" size={16} color={theme.colors.accentForeground} />
+            </Pressable>
+          ) : null}
+        </View>
+        {actions.length === 0 && menu}
       </View>
     </View>
   );
@@ -824,6 +844,26 @@ function SettledDiscussion({ ask, styles, open }: { ask: Ask; styles: Styles; op
         {files ? <Button styles={styles} label="Keep it" onPress={() => setFiles(null)} /> : null}
       </View>
     </View>
+  );
+}
+
+/** What happened to an ask that no longer waits on you: "You chose QA-approve + merge · 2m ago". */
+function OutcomeLine({ ask, styles }: { ask: Ask; styles: Styles }) {
+  const { outcome } = ask;
+  if (!outcome) return null;
+  const who = outcome.by === "human" ? "You" : "The agent";
+  const what = outcome.label
+    ? `${who} chose “${outcome.label}”`
+    : ask.status === "dropped"
+      ? `Dropped by ${who === "You" ? "you" : "the agent"}`
+      : ask.status === "done"
+        ? `Marked done by ${who === "You" ? "you" : "the agent"}`
+        : `${who} answered`;
+  return (
+    <Text style={styles.muted}>
+      {what}
+      {outcome.note ? `: ${outcome.note}` : ""} · {age(outcome.at)} ago
+    </Text>
   );
 }
 
@@ -1041,7 +1081,22 @@ function makeStyles(theme: PluginTheme, compact: boolean) {
     orphaned: { color: colors.statusWarning, fontSize: 12 },
     detail: { paddingHorizontal: compact ? 12 : 10, paddingBottom: 12, gap: 10 },
     link: { color: colors.accent, fontSize: 13 },
-    buttons: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: 8 },
+    buttons: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: 8, flex: 1 },
+    actionRow: { flexDirection: "row" as const, alignItems: "flex-end" as const, gap: 8 },
+    replyRow: { flexDirection: "row" as const, alignItems: "flex-end" as const, gap: 8 },
+    replyField: { flex: 1, flexDirection: "row" as const, alignItems: "flex-end" as const },
+    send: {
+      position: "absolute" as const,
+      right: 6,
+      bottom: 6,
+      padding: 6,
+      borderRadius: 6,
+      backgroundColor: colors.accent,
+    },
+    fallback: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: 4 },
+    fallbackItem: { paddingVertical: compact ? 10 : 6, paddingHorizontal: 8 },
+    fallbackText: { color: colors.foregroundMuted, fontSize: 13 },
+    fallbackDestructive: { color: colors.statusDanger },
     button: {
       paddingVertical: compact ? 10 : 6,
       paddingHorizontal: 12,
@@ -1060,7 +1115,10 @@ function makeStyles(theme: PluginTheme, compact: boolean) {
       borderColor: colors.border,
       borderRadius: 6,
       padding: 8,
+      paddingRight: 40,
       minHeight: 36,
+      maxHeight: 132,
+      flex: 1,
       fontSize: 13,
     },
     placeholder: { color: colors.foregroundMuted },
