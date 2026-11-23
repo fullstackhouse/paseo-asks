@@ -53,6 +53,6 @@ flowchart LR
 
 None planned. Prompt change for action labels (verb + object, no PR number) ships with A1 and has no screen.
 
-## Open questions
+## Decisions (map, 2026-11-23)
 
-1. Should E2–E5 be in the atlas at all, or is A1–A4 at desktop and phone width enough?
+1. The atlas draws the card only: A1–A4 at desktop and phone width. E1–E5 get cards with no mockups (A5).
