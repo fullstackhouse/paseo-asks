@@ -253,11 +253,15 @@ export class AsksService {
     void this.outbox.flush(agentId);
   }
 
-  /** Only the owner reopens a closed ask; a discussion would settle it a second time. */
+  /**
+   * A discussion settles an ask only while it waits on the human. Once the human answered (a choice, or work handed
+   * to the owner), another settle would overwrite the answer, tell the owner twice, or end the owner's PR updates.
+   */
   private checkStillWaiting(ask: Ask, agentId: string): void {
-    if (agentId === ask.ownerAgentId || OPEN_STATUSES.includes(ask.status)) return;
+    if (agentId !== ask.discussionAgentId || agentId === ask.ownerAgentId || ask.status === "open") return;
     const outcome = ask.outcome?.label ? `: ${ask.outcome.label}` : "";
-    throw new Error(`${ask.id} no longer waits on the human (${ask.status.replace("_", " ")}${outcome}); the main agent has it. Leave it as it is.`);
+    const holder = ask.orphaned ? "its agent is gone" : "the main agent has it";
+    throw new Error(`${ask.id} no longer waits on the human (${ask.status.replace("_", " ")}${outcome}); ${holder}. Leave it as it is.`);
   }
 
   /** Queue a message for the ask's owner; it goes out once the owner is between turns. */

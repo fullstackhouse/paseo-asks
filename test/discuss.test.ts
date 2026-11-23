@@ -226,6 +226,15 @@ describe("Discuss", () => {
     await service.act({ workspaceId: WS, id: "A1", verb: "action", actionId: "a1" });
     await outbox.flush();
     expect(toOwner).toContainEqual(expect.stringContaining('they chose "Merge". The main agent has been told; do not resolve or update A1.'));
+    // The owner is merging: a settle from the explainer would end its PR updates.
+    expect(await service.callTool(EXPLAINER, "ask_resolve", { id: "A1" })).toMatchObject({
+      isError: true,
+      text: expect.stringContaining("A1 no longer waits on the human (in progress)"),
+    });
+    expect(store.get(WS, "A1")!.status).toBe("in_progress");
+    // Any other agent of the owner's workspace keeps working the ask as before.
+    workspaces.sibling = WS;
+    expect((await service.callTool("sibling", "ask_update", { id: "A1", body: "Merging after CI." })).isError).toBeFalsy();
     await service.callTool(OWNER, "ask_resolve", { id: "A1" });
     expect((await service.callTool(OWNER, "ask_update", { id: "A1", status: "open" })).isError).toBeFalsy();
   });
