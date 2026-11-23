@@ -4,6 +4,7 @@ import { REFRESH } from "./nudge";
 import { stuckReminder } from "../shared/prompts";
 import { isStale, needsReminder } from "./stuck";
 import { checkNotBundled } from "./bundle";
+import { callKey } from "../shared/timeline";
 import type { Outbox } from "./outbox";
 import type { AskStore, NewAsk } from "./store";
 import type { PathCheck } from "./file-paths";
@@ -125,7 +126,8 @@ export class AsksService {
         case "ask_create": {
           const input = CreateInput.parse(args);
           const paths = await this.paths(workspaceId, input.body);
-          return render(await this.create(workspaceId, agentId, { ...input, body: paths.body }), paths.notes);
+          const lastCall = callKey("create", args);
+          return render(await this.create(workspaceId, agentId, { ...input, body: paths.body }, lastCall), paths.notes);
         }
         case "ask_update": {
           const { id, ...patch } = UpdateInput.parse(args);
@@ -143,7 +145,7 @@ export class AsksService {
           if (patch.actions?.length && (patch.status ?? ask.status) === "in_progress" && !unseenAnswer) {
             patch.status = "open";
           }
-          const updated = await this.store.update(workspaceId, id, patch);
+          const updated = await this.store.update(workspaceId, id, { ...patch, lastCall: callKey("update", args) });
           if (agentId !== ask.ownerAgentId && !ask.orphaned && patch.status && patch.status !== ask.status) {
             this.notify(ask, `[asks] ${ask.id} (${ask.title}) marked ${patch.status.replace("_", " ")} in a side chat.`);
           }
@@ -154,7 +156,7 @@ export class AsksService {
           const ask = this.require(workspaceId, id);
           const label = actionId ? ask.actions.find((action) => action.id === actionId)?.label : undefined;
           const outcome = { actionId, label, note, by: "agent" as const, at: new Date().toISOString() };
-          const resolved = await this.store.update(workspaceId, id, { status: "done", outcome });
+          const resolved = await this.store.update(workspaceId, id, { status: "done", outcome, lastCall: callKey("resolve", args) });
           // A side chat (or any other agent) closing someone else's ask: the owner must hear about it.
           if (agentId !== ask.ownerAgentId && !ask.orphaned) {
             const choice = label ? `: ${label}` : "";
@@ -305,13 +307,13 @@ export class AsksService {
     });
   }
 
-  private async create(workspaceId: string, agentId: string, input: z.output<typeof CreateInput>): Promise<Ask> {
+  private async create(workspaceId: string, agentId: string, input: z.output<typeof CreateInput>, lastCall: string): Promise<Ask> {
     checkActions(input.actions);
     checkNotBundled(input.title, input.actions.map((action) => action.label));
     if (input.kind === "decision" && input.actions.filter((action) => action.kind === "resolve").length < 2) {
       throw new Error('A decision needs at least two "resolve" actions, one per option');
     }
-    const ask: NewAsk = { ...input, workspaceId, ownerAgentId: agentId };
+    const ask: NewAsk = { ...input, workspaceId, ownerAgentId: agentId, lastCall };
     return this.store.create(ask);
   }
 

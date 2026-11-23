@@ -71,6 +71,8 @@ export const AskSchema = z.object({
   remindedAt: z.string().optional(),
   /** The side chat opened to talk this ask through. */
   discussionAgentId: z.string().optional(),
+  /** callKey() of the latest agent call on this ask; its chat card stays live, older ones show their own snapshot. */
+  lastCall: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
