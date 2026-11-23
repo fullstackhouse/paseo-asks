@@ -107,4 +107,7 @@ Scenarios 3 and 4 gain a click; they are the rare ones, and Drop moves out of re
 
 ## Next step
 
-Approve this spec, then `design-storyboard` for the card's states (PR ask, decision with 4 options, question with no actions, in progress, orphaned) at desktop and phone width.
+Atlas: [`docs/prototypes/ask-card/`](../prototypes/ask-card/index.html), with cards in [simplify-ask-card-ui-card.md](./simplify-ask-card-ui-card.md). Once it is signed off, two PRs, in this order:
+
+1. paseo (FSH): a `Menu` export in `@getpaseo/plugin/client/ui`, on the host menu engine.
+2. paseo-asks: the card (answer bar, ⋯ menu, header status badge, no ★ or PR number on live buttons), plus the action-label rule in the agent instructions.
