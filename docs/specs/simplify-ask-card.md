@@ -1,0 +1,113 @@
+# Simplify the open ask card
+
+Status: draft, waiting for approval. Reviewed at `52e68f5` (`client/AsksView.tsx`).
+
+## Context
+
+**Personas**
+
+- **Owner** (the one human running the agents): checks many times a day on desktop, either in the chat or in the Explorer Asks panel, and sometimes on a phone. Wants to unblock agents fast.
+- **Owner on a phone** (same person, narrow screen): only clears the obvious ones and leaves the rest for desktop.
+
+**Top scenarios, ranked**
+
+1. Press the agent's suggested move ("QA-approve + merge").
+2. Tell the agent something else ("no, fix the docs preview first").
+3. Close an ask the owner no longer needs: done it myself, or don't pursue it.
+4. Rare: talk the ask through in a side chat (Discuss), or jump to the agent that raised it (Open chat).
+
+**What each thing on the card is for**
+
+- Agent actions: the answers the agent prepared. This is why the card exists.
+- PR line and preview chips: show whether the suggested move is safe right now.
+- Note field: free-text answer, or a note sent along with any button.
+- Reply / Done / Drop: built-in ways to answer when the agent's actions don't fit.
+- Discuss: a read-only side chat about this one ask.
+- Open chat: go to the agent that raised the ask.
+
+## Current state
+
+An open PR ask, expanded (screenshot in the request; `AskDetail`, `client/AsksView.tsx:572`):
+
+| Row | Contents |
+|---|---|
+| PR line | `PR #1265 open · checks ✓ · review required` |
+| Chips | 2 preview deployments |
+| Agent actions | `QA-approve + merge #1265 ★` (primary), `Changes` |
+| Note | 3-line textarea, "Note or reply (optional)" (`:678`) |
+| Built-in actions | `Reply` (disabled until text is typed, `:696`), `Done` (`:702`), `Drop` (`:708`), `Discuss` (`:720`), `Open chat` (`:727`) |
+
+That is **7 buttons in two rows of equal visual weight** below the agent's own two, plus an input. In the chat view `Open chat` is hidden for the agent viewing it, so the chat shows 6.
+
+**Scenario cost (counted on the card above)**
+
+| Scenario | Clicks | Controls to scan before acting |
+|---|---|---|
+| 1. Suggested move | 1 | 8 (7 buttons + input) |
+| 2. Other answer | 2 + typing (focus, Reply or Enter) | 8 |
+| 3. Done / Drop | 1 | 8 |
+| 4. Discuss / Open chat | 1 | 8 |
+
+## Findings
+
+Ranked by effect on scenario 1.
+
+1. **Rare and destructive actions sit next to the main one.** Rule: main-scenario, "only the main scenario's action visible, rare lifecycle and destructive actions together under one ⋯ menu". Evidence: `:693-729` renders Done, Drop, Discuss, Open chat as always-visible buttons. Drop (ends the ask, tells the agent not to pursue it) is one click away from Done and styled the same. Impact: the owner scans 8 controls to press 1.
+2. **Three ways to talk to the agent, shown as three buttons.** Reply (to the main agent), Discuss (side chat), Open chat (navigate). Rule: main-scenario, "each step offers one forward action". Evidence: `:696`, `:720`, `:727`. Impact: Reply is the common one; the other two are rare.
+3. **The Reply button is a disabled button that duplicates Enter.** Rule: main-scenario, "disabled controls only where the user can unlock them and the reason shown". Evidence: `:696` disabled until text; `:680-689` Enter already sends on web. Impact: one dead button always on screen.
+4. **The note field takes three lines while empty.** Rule: scope, controls sized for real data. Evidence: `styles.input`, `multiline`, `:675`. Most answers are a button press, not text.
+5. **Labels restate what the card already shows.** Rule: scope, "free of text that restates its container"; naming, "each label states the effect". Evidence: `★` on a button already drawn as primary (`:632`); `#1265` in the action label while the PR line shows it. `Done` and `Drop` don't say their effect (mark resolved vs. tell the agent to stop).
+
+Passes: PR line and preview chips each serve scenario 1 (is it safe to merge?) and stay.
+
+## Desired state
+
+```
+PR #1265 open · checks ✓ · review required
+● pr-1265.casteo.dev   ● docs-pr-1265.casteo.dev
+[ QA-approve + merge ]  [ Changes ]                      ⋯
+[ Reply to the agent…                                 ➤ ]
+```
+
+- **Agent actions stay first.** Recommended one is primary, no `★` on live cards (the snapshot row at `:486` keeps it, since its chips have no primary style).
+- **One reply field**, single line, grows as you type. A send icon inside it appears once there is text; Enter sends on web. Removes the `Reply` button.
+- **One `⋯` menu** at the end of the agent-action row (or alone, for asks with no agent actions), holding:
+  - `Mark done`
+  - `Discuss in side chat` (`Open discussion` when one exists)
+  - `Open chat` (hidden for the agent viewing it, as today)
+  - separator, then `Drop ask` (destructive tone)
+  
+  Text typed in the reply field still goes along with whichever item is chosen, as today.
+- **Agent instructions** (`server/service.ts`): action labels are verb + object, no PR number (the card shows it).
+
+**Scenario cost after**
+
+| Scenario | Clicks | Controls to scan |
+|---|---|---|
+| 1. Suggested move | 1 | 4 (2 actions, ⋯, input) |
+| 2. Other answer | 2 + typing | 4 |
+| 3. Done / Drop | 2 (was 1) | 4, then the menu |
+| 4. Discuss / Open chat | 2 (was 1) | 4, then the menu |
+
+Scenarios 3 and 4 gain a click; they are the rare ones, and Drop moves out of reach of a stray press.
+
+## What stays
+
+- Every capability: Reply, Done, Drop, Discuss, Open chat, a note with any of them.
+- PR line, preview chips, links, orphaned notice.
+- Snapshot (earlier version) rows, unchanged.
+- No data or protocol change; `act` keeps its four verbs.
+
+## Open questions
+
+1. **Where does the `⋯` menu come from?** The plugin UI kit (`@getpaseo/plugin/client/ui`) exports no menu.
+   - a) Add a `Menu` export to the plugin SDK backed by the host menu engine (`docs/menus.md` in paseo): popover on desktop, sheet on phone. **Recommended**: matches every other ⋯ in Paseo; FSH plugins can use new host exports right away.
+   - b) Build it in the plugin from `Modal`. Ships without a host change, but looks unlike host menus.
+2. **Should `Mark done` stay visible next to `⋯`?** Owners sometimes do the step themselves (merged by hand).
+   - a) No, menu only. **Recommended**: an agent that sees the PR merged usually resolves the ask itself.
+   - b) Yes, as a quiet text button.
+3. **Phone layout**: put `⋯` on the card header row instead of the action row, so long agent labels can wrap? Recommended: header row on compact, action row on desktop — decide in the storyboard.
+
+## Next step
+
+Approve this spec, then `design-storyboard` for the card's states (PR ask, decision with 4 options, question with no actions, in progress, orphaned) at desktop and phone width.
