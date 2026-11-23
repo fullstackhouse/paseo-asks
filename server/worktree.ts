@@ -17,7 +17,8 @@ export async function uncommittedFiles(directory: string): Promise<string[] | nu
       const entry = entries[index]!;
       if (!entry) continue;
       files.push(entry.slice(3));
-      if (entry[0] === "R" || entry[0] === "C") index++;
+      // Renamed or copied in the index (first letter) or the work tree (second, e.g. after git add -N).
+      if ("RC".includes(entry[0]!) || "RC".includes(entry[1]!)) index++;
     }
     return files;
   } catch {

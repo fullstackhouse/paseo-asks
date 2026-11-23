@@ -217,6 +217,11 @@ it("lists uncommitted and untracked files whatever git's settings, and null outs
     execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "notes"], { cwd: repo });
     execFileSync("git", ["mv", "EXPLAIN.md", "NOTES.md"], { cwd: repo });
     expect((await uncommittedFiles(repo))?.sort()).toEqual(["NOTES.md", "fig ą.png"]);
+    // Renamed in the work tree: git lists " R new\0old", and the old path must not become an entry of its own.
+    execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "rename"], { cwd: repo });
+    execFileSync("mv", ["NOTES.md", "README.md"], { cwd: repo });
+    execFileSync("git", ["add", "-N", "README.md"], { cwd: repo });
+    expect((await uncommittedFiles(repo))?.sort()).toEqual(["README.md", "fig ą.png"]);
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }
