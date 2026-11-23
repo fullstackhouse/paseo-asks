@@ -194,6 +194,42 @@ describe("Discuss", () => {
     expect(toOwner).toEqual(["[asks] A1 (Squash-only merges?) marked dropped in a side chat."]);
   });
 
+  it("tells the explainer when the human answers with a button, and keeps it from settling the ask again", async () => {
+    await decision();
+    await store.update(WS, "A1", { discussionAgentId: EXPLAINER, discussionWorkspaceId: EXPLAIN_WS });
+    await service.act({ workspaceId: WS, id: "A1", verb: "action", actionId: "a2" });
+    await outbox.flush();
+    // Both agents' messages land in one list here: the owner's answer and the explainer's notice.
+    expect(toOwner).toHaveLength(2);
+    expect(toOwner).toEqual(
+      expect.arrayContaining([
+        "[asks] A1 (Squash-only merges?) resolved: squash-only.",
+        '[asks] The human answered A1 (Squash-only merges?) with its buttons: they chose "squash-only". The main agent has been told; do not resolve or update A1. Reply in one line.',
+      ]),
+    );
+
+    const again = await service.callTool(EXPLAINER, "ask_resolve", { id: "A1", actionId: "a1" });
+    expect(again).toMatchObject({ isError: true, text: expect.stringContaining("A1 no longer waits on the human (done: squash-only)") });
+    expect(await service.callTool(EXPLAINER, "ask_update", { id: "A1", status: "dropped" })).toMatchObject({ isError: true });
+    expect(store.get(WS, "A1")).toMatchObject({ status: "done", outcome: { by: "human", label: "squash-only" } });
+    await outbox.flush();
+    expect(toOwner).toHaveLength(2);
+  });
+
+  it("tells the explainer when the human hands the work to the owner, and lets the owner reopen a closed ask", async () => {
+    await service.callTool(OWNER, "ask_create", {
+      kind: "pr",
+      title: "Merge PR #30",
+      actions: [{ label: "Merge", kind: "send", prompt: "Merge PR #30" }],
+    });
+    await store.update(WS, "A1", { discussionAgentId: EXPLAINER, discussionWorkspaceId: EXPLAIN_WS });
+    await service.act({ workspaceId: WS, id: "A1", verb: "action", actionId: "a1" });
+    await outbox.flush();
+    expect(toOwner).toContainEqual(expect.stringContaining('they chose "Merge". The main agent has been told; do not resolve or update A1.'));
+    await service.callTool(OWNER, "ask_resolve", { id: "A1" });
+    expect((await service.callTool(OWNER, "ask_update", { id: "A1", status: "open" })).isError).toBeFalsy();
+  });
+
   it("keeps every other agent in the explainer's workspace away from the ask", async () => {
     await decision();
     await store.update(WS, "A1", { discussionAgentId: EXPLAINER, discussionWorkspaceId: EXPLAIN_WS });
