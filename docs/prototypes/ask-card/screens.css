@@ -519,8 +519,10 @@
 .ak-outcome b { color: var(--foreground); font-weight: 600; }
 .ak-notice { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; color: var(--status-warning-text); background: var(--status-warning-bg); border: 1px solid var(--status-warning-border); border-radius: 6px; padding: 8px; }
 .ak-notice svg { margin-top: 2px; }
-.ak-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.ak-tail { display: flex; align-items: center; gap: 8px; flex: 1 1 200px; min-width: 200px; }
+.ak-bar { display: flex; flex-direction: column; gap: 8px; }
+.ak-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ak-actions .ak-more-wrap { margin-left: auto; }
+.ak-tail { display: flex; align-items: flex-start; gap: 8px; }
 .ak-tail .ak-reply { flex: 1; min-width: 0; }
 .ak-btn { font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--secondary); color: var(--foreground); text-align: left; }
 .ak-btn-primary { background: var(--primary); border-color: var(--primary); color: var(--primary-foreground); }
@@ -547,8 +549,8 @@
 .ak-chip-deploying b { color: var(--status-warning-text); }
 .ak-chip-failed { color: var(--status-error-text); border-color: var(--status-error-border); }
 .ak-chip-failed b { color: var(--status-error-text); }
-.ak-reply { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 6px; padding: 8px; background: var(--background); min-height: 34px; box-sizing: border-box; }
-.ak-reply-text { flex: 1; color: var(--app-fg-extra-muted); font-size: 13px; }
+.ak-reply { display: flex; align-items: flex-end; gap: 8px; border: 1px solid var(--border); border-radius: 6px; padding: 8px; background: var(--background); min-height: 34px; box-sizing: border-box; }
+.ak-reply-text { flex: 1; min-width: 0; line-height: 1.5; color: var(--app-fg-extra-muted); font-size: 13px; }
 .ak-reply.has-text .ak-reply-text { color: var(--foreground); }
 .ak-send { display: inline-flex; color: var(--primary-foreground); background: var(--primary); border-radius: 6px; padding: 4px; }
 .ak-menu { position: absolute; bottom: calc(100% + 4px); right: 0; z-index: 5; min-width: 220px; background: var(--popover); border: 1px solid var(--border); border-radius: 8px; padding: 4px; box-shadow: var(--shadow-lg); }

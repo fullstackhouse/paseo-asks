@@ -40,9 +40,12 @@ export function askCardStates({ ic, esc }) {
     const chips = c.chips
       ? `<div class="ak-chips">${c.chips.map(([s, l]) => `<span class="ak-chip ak-chip-${s}"><b>${{ live: '●', deploying: '◌', failed: '✕' }[s]}</b>${esc(l)}</span>`).join('')}</div>`
       : ''
-    // answer bar: actions, reply field (flex 1, min 200px, wraps below when short), ⋯ last
+    // answer bar: row 1 actions with ⋯ at its far end; row 2 full-width reply field (grows). No actions: field + ⋯ on one row.
     const replyField = `<div class="ak-reply${c.reply ? ' has-text' : ''}"><span class="ak-reply-text">${c.reply ? esc(c.reply) : 'Reply to the agent…'}</span>${c.reply ? `<span class="ak-send">${ic('send')}</span>` : ''}</div>`
-    const bar = `<div class="ak-bar">${(c.actions || []).map(([l, pri]) => `<button type="button" class="ak-btn${pri ? ' ak-btn-primary' : ''}">${esc(l)}</button>`).join('')}<span class="ak-tail">${replyField}<span class="ak-more-wrap">${moreBtn}</span></span></div>`
+    const btns = (c.actions || []).map(([l, pri]) => `<button type="button" class="ak-btn${pri ? ' ak-btn-primary' : ''}">${esc(l)}</button>`).join('')
+    const bar = c.actions && c.actions.length
+      ? `<div class="ak-bar"><div class="ak-actions">${btns}<span class="ak-more-wrap">${moreBtn}</span></div>${replyField}</div>`
+      : `<div class="ak-bar"><div class="ak-tail">${replyField}<span class="ak-more-wrap">${moreBtn}</span></div></div>`
     const inner = c.deleted ? '' : `${outcome}${notice}${body}${links}${prLine}${chips}${bar}`
     return `<div class="ak-card${p}">${head}${inner ? `<div class="ak-detail">${inner}</div>` : ''}</div>`
   }
@@ -102,7 +105,7 @@ export function askCardStates({ ic, esc }) {
         notes: ['Primary = the agent\'s recommended action. A send action moves the ask to A3; a resolve action closes it as A4; an open action just opens its URL.', 'Any answer disables the card until the server confirms, then the reply field clears.'] },
       { id: 's2', caption: 'Decision — four options, one recommended', html: desk(card(decision)) },
       { id: 's3', caption: 'Question — no agent actions; reply field and ⋯ stand alone', html: desk(card(question)) },
-      { id: 's4', caption: 'Reply field with text — send icon showing', html: desk(card({ ...prAsk, reply: 'Fix the docs preview first, then merge' })),
+      { id: 's4', caption: 'Reply field with text — send icon showing', html: desk(card({ ...prAsk, reply: 'Hold the merge — the docs preview still shows the old CSV example. Fix that first, then merge.' })),
         notes: ['Web: Enter sends, Shift+Enter adds a line. Phone: Return adds a line, tap send. The field grows as you type.', 'Text in the field goes along with whichever action or menu item is pressed next.'] },
       { id: 's5', caption: 'Phone — long action labels wrap, ⋯ ends the last row', html: phone(card(phoneAsk)) },
       { id: 's6', caption: 'Orphaned — the raising agent is archived', html: desk(card({ ...prAsk, orphaned: true, notice: 'The agent that raised this is archived. Closing it here notifies nobody.' })),
