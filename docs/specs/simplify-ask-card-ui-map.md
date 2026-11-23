@@ -36,18 +36,11 @@ flowchart LR
 
 ## A — Ask card (the redesign)
 
-- **A1 Open ask** (P1) — the expanded card for an ask waiting on you: header row, PR line and preview chips when it has a PR, the body, the agent's actions with the recommended one primary, a ⋯ button, and a one-line reply field with a send icon. Kinds: PR, decision, follow-up, question with no actions, orphaned. Get here: expand a row on any E view; chat cards of open asks open expanded. Permission: none (whoever has the app).
-- **A2 More menu** (P1, menu on A1) — Mark done, Discuss in side chat (or Open discussion), Open chat (hidden in the raising agent's own chat), then Drop ask in the destructive tone. Text typed in the reply field goes along with the chosen item. Get here: ⋯ on A1. Permission: none.
-- **A3 Handed back** (P1) — an ask in progress after you acted: header, PR line, the outcome ("You chose QA-approve + merge"), no buttons, no reply field. Get here: any answer on A1 that goes to the agent. Permission: none.
-- **A4 Closed ask** (P1) — done or dropped: collapsed row with the status badge; expanded shows the outcome and the body read-only. Get here: Mark done or Drop ask on A2, or the agent resolving. Permission: none.
+Views: A1 Open ask, A2 More menu, A3 Handed back, A4 Closed ask.
 
-## E — Existing screens that host the card
+## E — Existing screens that host the card (cards only)
 
-- **E1 Chat card** (P1) — the card inline in the agent's chat, actions above the body; earlier calls on the same ask stay folded read-only rows (unchanged). Get here: scroll the agent's chat. Permission: none.
-- **E2 Workspace Asks panel** (P1) — the workspace's asks grouped by status, in the main area or the narrow Explorer. Get here: the panel's tab, Explorer + menu, or ⌘K. Permission: none.
-- **E3 Asks screen** (P1) — every workspace's asks with the Needs you / In progress / … filters. Get here: Asks in the sidebar header. Permission: none.
-- **E4 Composer pill popover** (P1) — this agent's asks first, others with Open chat, plus Refresh asks. Get here: the question-bubble pill in the composer. Permission: none.
-- **E5 Overview entry** (P1) — one waiting ask per row in the host's Overview, expandable in place. Get here: Overview, *Your move*. Permission: none.
+Views: E1 Chat card, E2 Workspace Asks panel, E3 Asks screen, E4 Composer pill popover, E5 Overview entry.
 
 ## Later phases
 
