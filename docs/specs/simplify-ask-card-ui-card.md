@@ -88,7 +88,4 @@ Map: [simplify-ask-card-ui-map.md](./simplify-ask-card-ui-map.md). Spec: [simpli
 
 1. Content first; every way to answer sits in one answer bar at the bottom (owner review of the atlas).
 2. *Mark done* lives in the ⋯ menu only; nothing sits next to ⋯ (A2).
-
-## Open questions
-
-1. Where does the ⋯ menu come from: a host `Menu` export in the plugin SDK, or one built in the plugin from `Modal`? (A1; recommended: host export.)
+3. The ⋯ menu is the host's menu through a new plugin SDK `Menu` export (A1).

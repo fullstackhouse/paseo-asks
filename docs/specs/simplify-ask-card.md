@@ -98,17 +98,12 @@ Scenarios 3 and 4 gain a click; they are the rare ones, and Drop moves out of re
 - Snapshot (earlier version) rows, unchanged.
 - No data or protocol change; `act` keeps its four verbs.
 
-## Open questions
-
-1. **Where does the `⋯` menu come from?** The plugin UI kit (`@getpaseo/plugin/client/ui`) exports no menu.
-   - a) Add a `Menu` export to the plugin SDK backed by the host menu engine (`docs/menus.md` in paseo): popover on desktop, sheet on phone. **Recommended**: matches every other ⋯ in Paseo; FSH plugins can use new host exports right away.
-   - b) Build it in the plugin from `Modal`. Ships without a host change, but looks unlike host menus.
-
 ## Decisions (2026-11-23)
 
 1. *Mark done* lives in the ⋯ menu only (A2).
 2. Phone layout: ⋯ ends the answer bar, which wraps below the actions when narrow (atlas review). This replaces the header-row idea.
 3. Content first, answer bar at the bottom, on every surface including the chat (atlas review).
+4. The ⋯ menu comes from a new `Menu` export in the plugin SDK (`@getpaseo/plugin/client/ui`), backed by the host menu engine: popover on desktop, sheet on phones (A1). This needs a paseo (FSH) PR before the card PR.
 
 ## Next step
 
