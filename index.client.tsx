@@ -17,6 +17,8 @@ import { AgentAsks, AskCard, AsksView, POLL_MS, useAsks, WorkspaceAskEntry } fro
 import { SettingsScreen } from "./client/SettingsScreen";
 import { observeSnoozedWorkspaces, snoozedWorkspaceIds, useSnoozedWorkspaceIds } from "./client/snoozed";
 import { listAsks, waitingByWorkspace, waitingCount, workspaceAsks } from "./shared/asks";
+import { listQuestions, pendingByWorkspace } from "./shared/questions";
+import { useQuestions } from "./client/QuestionsView";
 import { createWorkspaceSummaries, type SummaryEntryProps } from "./client/summary";
 import { ASKS_MESSAGE, AsksMessageSchema, parseAsksMessage, type AsksMessage as AsksMessageData } from "./shared/messages";
 import { ASK_CARD, AskCardSchema, askCardFor, type AskCard as AskCardData } from "./shared/timeline";
@@ -93,8 +95,12 @@ function attentionColor(theme: PluginSidebarItemProps["theme"]): string {
 
 function SidebarItem({ theme, currentScreen, openScreen }: PluginSidebarItemProps) {
   const asks = useAsks();
+  const questions = useQuestions();
   const snoozed = useSnoozedWorkspaceIds();
-  const waiting = waitingCount(asks.data?.asks ?? [], snoozed);
+  const asked = (questions.data?.questions ?? []).filter(
+    (question) => question.state === "pending" && !snoozed.has(question.workspaceId),
+  ).length;
+  const waiting = waitingCount(asks.data?.asks ?? [], snoozed) + asked;
   return (
     <SidebarRow
       icon="MessageCircleQuestionMark"
@@ -180,12 +186,17 @@ function contributePills(client: PluginClientContext): () => void {
 
   const refreshCounts = async () => {
     // Closed asks too: a workspace that ever had an ask reports "Nothing waiting" rather than nothing.
-    const { asks } = await client.rpc(listAsks, { includeClosed: true });
+    const [{ asks }, { questions }] = await Promise.all([
+      client.rpc(listAsks, { includeClosed: true }),
+      client.rpc(listQuestions, {}).catch(() => ({ questions: [] })),
+    ]);
     const waiting = waitingByWorkspace(asks);
+    const asked = pendingByWorkspace(questions);
     for (const { workspaceId, pill } of pills.values()) {
-      pill.update(pillFace(waiting.get(workspaceId)?.count ?? 0));
+      pill.update(pillFace((waiting.get(workspaceId)?.count ?? 0) + (asked.get(workspaceId) ?? 0)));
     }
     // Every workspace with asks, even one whose agents are gone, plus ones already reported, so a count drops to 0.
+    // Pending questions stay out: the host lists them in Overview itself, as permission prompts.
     const summary = workspaceAsks(asks, snoozedWorkspaceIds());
     const workspaceIds = new Set([...summary.keys(), ...summaries.workspaceIds()]);
     for (const workspaceId of workspaceIds) summaries.set(workspaceId, summary.get(workspaceId));

@@ -7,6 +7,8 @@ import { NUDGE } from "../shared/prompts";
 export { NUDGE, REFRESH } from "../shared/prompts";
 
 const ASK_TOOL = /(^|[_.])ask_(create|update|resolve|list)$/;
+/** Each provider's own question tool, as it shows in the timeline: a turn that asked with it recorded its question. */
+const QUESTION_TOOL = /^(AskUserQuestion|request_user_input(_async)?|question)$/i;
 const ASK_ID = /\bA\d+\b/g;
 
 /** Whether an ask id names an open ask in the agent's own workspace. Ids are numbered per workspace. */
@@ -28,7 +30,7 @@ export function unrecordedReply(timeline: readonly AgentTimelineItem[], isOpenAs
       if (item.text.includes(NUDGE)) return null;
       break;
     }
-    if (item.type === "tool_call" && ASK_TOOL.test(item.name)) return null;
+    if (item.type === "tool_call" && (ASK_TOOL.test(item.name) || QUESTION_TOOL.test(item.name))) return null;
     if (item.type === "assistant_message") reply.unshift(item.text);
   }
   const text = reply.join("").trim();

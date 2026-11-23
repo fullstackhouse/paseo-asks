@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { NUDGE, REFRESH, parseStuckReminder } from "./prompts";
+import { DROPPED_LATER, LATER_ANSWER_HEAD } from "./questions";
 
 /** The plugin timeline item that stands in for an `[asks]` message sent to the agent: what the human did, without the agent's instructions. */
 export const ASKS_MESSAGE = { kind: "asks-message", version: 1 } as const;
@@ -60,6 +61,10 @@ const PATTERNS: { re: RegExp; view: (m: RegExpMatchArray) => Omit<AsksMessage, "
 export function parseAsksMessage(text: string): AsksMessage | undefined {
   if (text === NUDGE) return { event: "Reminded the agent to record what it needs from you as asks" };
   if (text === REFRESH) return { event: "Asked the agent to bring its asks up to date" };
+  if (text.startsWith(LATER_ANSWER_HEAD))
+    return { event: "Answered a question you put off", note: text.slice(LATER_ANSWER_HEAD.length).trim() };
+  if (text.startsWith(DROPPED_LATER))
+    return { event: "Dismissed a question you put off", note: text.slice(DROPPED_LATER.length).trim() };
   const stuck = parseStuckReminder(text);
   if (stuck?.length === 1) return { askId: stuck[0].id, title: stuck[0].title, event: "Left in progress; asked the agent to hand it back or resolve it" };
   if (stuck?.length) return { event: `Left ${stuck.map((ask) => ask.id).join(", ")} in progress; asked the agent to hand them back or resolve them` };

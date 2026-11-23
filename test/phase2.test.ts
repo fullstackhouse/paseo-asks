@@ -394,22 +394,27 @@ describe("phase 2", () => {
   it("tells agents to leave requested changes to the human only while reviews are held", () => {
     const told = instructions();
     const held = instructions({ actOnReviewChanges: false });
-    expect(told).toContain('"CHANGES_REQUESTED": address the comments, or report what you will not change, and push.');
-    expect(held).not.toContain('"CHANGES_REQUESTED": address the comments');
+    expect(told).toContain("Changes requested: address the comments, or report what you will not change, and push.");
+    expect(held).not.toContain("Changes requested: address the comments");
     expect(held).toContain("Do not start on it yourself");
-    expect(held).toContain("Do not give your own asks an action that starts the review");
-    expect(held.replace(/\n  - "CHANGES_REQUESTED".*\n/, "\n")).toBe(told.replace(/\n  - "CHANGES_REQUESTED".*\n/, "\n"));
+    expect(held.replace(/\n  - Changes requested.*\n/, "\n")).toBe(told.replace(/\n  - Changes requested.*\n/, "\n"));
   });
 
-  it("tells agents to read every review and comment before a Merge action, approvals included", () => {
+  it("tells agents to read every review and comment before asking about a merge, approvals included", () => {
     for (const rules of [instructions(), instructions({ actOnReviewChanges: false })]) {
-      expect(rules).toContain("Before any Merge action, read every review body and comment from people, approvals included");
+      expect(rules).toContain("before asking about a merge");
+      expect(rules).toContain("read every review body and comment from people, approvals included, skipping bot status comments");
       expect(rules).toContain("gh api --paginate repos/OWNER/REPO/pulls/N/comments");
-      expect(rules).toContain("skip bot status comments");
       expect(rules).toContain("Resolved threads don't count");
-      expect(rules).toContain("afterwards you offer Merge, naming what changed in the ask body, not a re-review");
     }
-    expect(instructions({ actOnReviewChanges: false })).toContain("Comments on an approved PR raise no such ask");
+  });
+
+  it("tells agents to ask with their own question tool, and to keep ask_create for providers without one", () => {
+    const rules = instructions();
+    expect(rules).toContain("Ask it with your question tool (AskUserQuestion in Claude Code, request_user_input in Codex");
+    expect(rules).toContain('The tool then returns "Postponed: …"');
+    expect(rules).toContain("No question tool (some providers and modes have none): use ask_create instead");
+    expect(rules).not.toContain("one subscribed ask per PR");
   });
 
   it("raises a review ask when the setting is turned off after changes were requested", async () => {

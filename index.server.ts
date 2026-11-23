@@ -19,10 +19,14 @@ import { attentionForOpenAsks } from "./server/schedule-attention";
 import { PrWatcher } from "./server/watcher";
 import { activeWorkspaces, isBackground } from "./server/workspaces";
 import { displaySettings, reviewSettings } from "./shared/settings";
+import { answerQuestion, dropQuestion, listQuestions, postponeQuestion } from "./shared/questions";
+import { QuestionBook } from "./server/questions";
 
 const FLUSH_EVERY_MS = 20_000;
 const PR_EVERY_MS = 120_000;
 const STALE_EVERY_MS = 60 * 60 * 1000;
+
+type FetchedAgent = Awaited<ReturnType<PaseoApi["agents"]["list"]>>["entries"][number]["agent"];
 
 export default function contribute(server: PluginServerContext) {
   server.registerSettings(displaySettings);
@@ -63,6 +67,9 @@ export default function contribute(server: PluginServerContext) {
   const store = new AskStore(dir);
   const courier: Courier = {
     async state(agentId) {
+      // An agent stopped on its own question tool: a steer would cancel the question (Claude treats it as the
+      // human answering in chat). Hold messages until the question is answered or postponed.
+      if (questions.isWaiting(agentId)) return "running";
       const handle = requirePaseo().agents.ref(agentId);
       const found = await handle.refresh();
       if (!found || handle.archivedAt) return "gone";
@@ -99,6 +106,31 @@ export default function contribute(server: PluginServerContext) {
       return workspace?.workspaceDirectory ? checkFilePaths(body, workspace.workspaceDirectory, diskPathEnv) : { body, notes: [] };
     },
   );
+  const questions = new QuestionBook(dir, {
+    async respond(agentId, requestId, response) {
+      await requirePaseo().agents.ref(agentId).respondToPermission({ requestId, response });
+    },
+    message(agentId, workspaceId, text) {
+      service.message(agentId, workspaceId, text);
+      void outbox.flush(agentId);
+    },
+  });
+  // The host's pending requests per agent; the hooks miss the ones raised before this plugin (re)started.
+  const reconcileQuestions = async (api: PaseoApi) => {
+    // Idle agents too: a Codex async question stays pending after its turn ends.
+    const agentsSeen: FetchedAgent[] = [];
+    let cursor: string | undefined;
+    do {
+      const { entries, pageInfo } = await api.agents.list({
+        includeBackground: true,
+        filter: { includeBackground: true },
+        page: { limit: 200, ...(cursor ? { cursor } : {}) },
+      });
+      agentsSeen.push(...entries.map((entry) => entry.agent));
+      cursor = pageInfo.hasMore ? (pageInfo.nextCursor ?? undefined) : undefined;
+    } while (cursor);
+    questions.reconcile(agentsSeen.filter((agent) => !helpers.has(agent.id)));
+  };
   const lastOutputs = new LastOutputs(dir);
   const ghPath = findGh();
   if (!ghPath) console.error("[asks] gh not found; PR asks will show no live status");
@@ -169,7 +201,10 @@ export default function contribute(server: PluginServerContext) {
       });
       return;
     }
-    if (!isAsksPermission(request)) return;
+    if (!isAsksPermission(request)) {
+      questions.track(agent, request);
+      return;
+    }
     await api.agents
       .ref(agent.id)
       .respondToPermission({ requestId: request.id, response: { behavior: "allow" } });
@@ -195,8 +230,15 @@ export default function contribute(server: PluginServerContext) {
   } catch {
     // COMPAT(scheduleRunAttention): hosts before fullstackhouse/paseo#106 don't know the hook.
   }
+  server.on("agent.permission_resolved", ({ agent, requestId, resolution }, { paseo: api }) => {
+    capture(api);
+    questions.resolved(agent.id, requestId, resolution);
+    // Messages held while the agent waited on its question can go out now.
+    void outbox.flush(agent.id);
+  });
   server.on("agent.archived", ({ agent }, { paseo: api }) => {
     capture(api);
+    questions.forgetAgent(agent.id);
     void outbox.flush(agent.id);
     void service.releaseOwner(agent.id);
     void service.endDiscussion(agent.id);
@@ -224,6 +266,26 @@ export default function contribute(server: PluginServerContext) {
   server.handle(refreshAsks, ({ agentId }, { paseo: api }) => {
     capture(api);
     return service.refresh(agentId);
+  });
+  server.handle(listQuestions, async ({ workspaceId }, { paseo: api }) => {
+    capture(api);
+    await reconcileQuestions(api).catch((error) => console.error("[asks] could not list pending questions", error));
+    const all = questions.list(workspaceId);
+    if (workspaceId) return { questions: all };
+    const live = await activeWorkspaces(api);
+    return { questions: all.filter((question) => live.has(question.workspaceId)), workspaceNames: Object.fromEntries(live) };
+  });
+  server.handle(answerQuestion, ({ agentId, requestId, answers }, { paseo: api }) => {
+    capture(api);
+    return questions.answer(agentId, requestId, answers);
+  });
+  server.handle(postponeQuestion, async ({ agentId, requestId }, { paseo: api }) => {
+    capture(api);
+    return { question: await questions.postpone(agentId, requestId) };
+  });
+  server.handle(dropQuestion, ({ agentId, requestId }, { paseo: api }) => {
+    capture(api);
+    return questions.drop(agentId, requestId);
   });
   const discussions = new Discussions();
   const startDiscussion = (api: PaseoApi, workspaceId: string, id: string, note?: string) => {
@@ -259,6 +321,23 @@ export default function contribute(server: PluginServerContext) {
     // The same disposal the UI does, for scripts and terminal use.
     "/act": async (input) => service.act(actOnAsk.input.parse(input)),
     "/refresh": async (input) => service.refresh(refreshAsks.input.parse(input).agentId),
+    "/questions": async (input) => {
+      const { workspaceId } = listQuestions.input.parse(input ?? {});
+      if (paseo) await reconcileQuestions(paseo).catch((error) => console.error("[asks] could not list pending questions", error));
+      return { questions: questions.list(workspaceId) };
+    },
+    "/questions/answer": async (input) => {
+      const { agentId, requestId, answers } = answerQuestion.input.parse(input);
+      return questions.answer(agentId, requestId, answers);
+    },
+    "/questions/later": async (input) => {
+      const { agentId, requestId } = postponeQuestion.input.parse(input);
+      return { question: await questions.postpone(agentId, requestId) };
+    },
+    "/questions/drop": async (input) => {
+      const { agentId, requestId } = dropQuestion.input.parse(input);
+      return questions.drop(agentId, requestId);
+    },
     "/discuss": async (input) => {
       const { workspaceId, id, note } = discussAsk.input.parse(input);
       return startDiscussion(requirePaseo(), workspaceId, id, note);

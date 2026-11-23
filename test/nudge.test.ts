@@ -26,6 +26,12 @@ describe("shouldNudge", () => {
   const none = () => false;
   const openA3 = (id: string) => id === "A3";
 
+  it("leaves alone a turn that asked with the provider's own question tool", async () => {
+    for (const name of ["AskUserQuestion", "request_user_input", "request_user_input_async", "question"]) {
+      expect(await shouldNudge([user("go"), tool(name), reply("Done. Which license do you want?")], none, yes)).toBe(false);
+    }
+  });
+
   it("nudges a turn that ends on a question with no ask", async () => {
     expect(
       await shouldNudge([

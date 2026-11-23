@@ -1,6 +1,6 @@
 # Asks for Paseo
 
-Asks is a [Paseo](https://paseo.sh) plugin. It lifts what your agents need from you out of their chats and into one list. When an agent needs a PR reviewed, a decision made, a follow-up approved or a manual step done, it records an **ask**. Each ask carries the buttons that answer it, and pressing one sends the answer back to the agent that raised it.
+Asks is a [Paseo](https://paseo.sh) plugin. It lifts what your agents need from you out of their chats and into one list. When an agent needs a decision, an answer, a follow-up approved, a manual step done or the next move on a PR, it asks with its own question tool (Claude Code's AskUserQuestion, Codex's request_user_input). Asks collects those questions from every chat, so you answer them in one place, now or later. Agents without a question tool record an **ask** instead, with the buttons that answer it.
 
 | Workspace panel, a decision with a markdown brief | Every workspace, on a phone, a PR ask expanded |
 |---|---|
@@ -9,6 +9,15 @@ Asks is a [Paseo](https://paseo.sh) plugin. It lifts what your agents need from 
 ![An ask shown inline in the agent chat](docs/chat.png)
 
 <sub>The screenshots render the plugin's own React Native components with sample data, using react-native-web (`preview/`). Inside Paseo they sit in its panel and screen chrome.</sub>
+
+## What you can do with a question
+
+- **Answer it.** The question shows its context (Markdown), its options and a field for an answer of your own. With one question, tapping an option answers it. With several, pick one per question and press **Send**. The agent's question tool returns your answer, as if you had answered it in the chat.
+- **Answer later.** The agent carries on with whatever doesn't depend on the answer: its question tool returns "Postponed", and it is told not to ask again. The question moves to **Later**, out of the waiting count. When you answer it there, the agent gets the answer as an `[asks]` message and acts on it. A Codex async question never stopped its agent, so Answer later only moves it to Later.
+- **Dismiss** (⋯). A pending question is declined; for one you put off, the agent is told not to wait for it.
+- **Open chat** (⋯). Jumps to the agent that asked.
+
+Claude stops until a question is answered, and any message to it meanwhile cancels the question (Claude reads it as your answer). Asks holds its own messages to such an agent until the question is answered or put off. A question whose turn ends without an answer (a daemon restart, **Stop**) moves to Later, so your answer still reaches the agent.
 
 ## What you can do with an ask
 
@@ -22,7 +31,9 @@ Asks is a [Paseo](https://paseo.sh) plugin. It lifts what your agents need from 
 
 PR asks show live status from `gh`: open, merged or closed, checks, review decision and conflicts, plus the head commit's preview deployments (GitHub Deployments with an environment URL, e.g. Vercel) as chips that open the preview when ready, or the logs while deploying or failed. An agent that subscribed to a PR ask is told when it merges, closes, its checks pass or fail, a preview becomes ready, or its review decision changes. While checks run, a PR ask can already carry a *Merge … when green* button: the agent merges once they pass, and fixes them first if they fail. To decide yourself when an agent works a review, turn off **Settings → Plugins → Asks → Tell agents about requested changes**: a reviewer requesting changes then raises an *Address review comments on PR #N* ask instead, and the agent starts only when you press its button. Agents are also told to leave requested changes to that ask; agents started or resumed before you change the setting keep the rules they started with.
 
-## Where asks show up
+## Where questions and asks show up
+
+Native questions show in the chat as the host's own question card. Asks adds them, with **Answer later**, to the panel, the screen (pending ones under **Needs you**, put-off ones under **Later**) and the composer pill below. They stay out of the host's Overview summary, which lists pending questions itself.
 
 - an **Asks** panel in each workspace, in the main area or the explorer (its **+** menu, or ⌘K: "Open asks for this workspace");
 - an **Asks** screen in the sidebar, covering every workspace, with a count of what's waiting (asks in snoozed workspaces still list but leave the count);
@@ -39,8 +50,9 @@ agent ──stdio MCP──▶ bridge.mjs ──HTTP 127.0.0.1──▶ plugin s
   └──── "[asks] …" message, steered into the turn or held ────────┘
 ```
 
-- Every agent created after the plugin is installed gets an `asks` MCP server with `ask_create`, `ask_update`, `ask_resolve` and `ask_list`. Its instructions tell the agent when to use them, so no `CLAUDE.md` edit is needed.
-- Agents sometimes ask in chat and skip `ask_create`. When a turn uses no asks tool and names none of its workspace's open asks (for an explainer, the ask it explains counts too), a short-lived child agent on the same provider (its cheapest model) judges whether the reply leaves anything for the human; if so, the plugin sends one `[asks]` reminder. If that check fails, a question mark in the last paragraph decides. Its answer is never reminded again.
+- Every agent created after the plugin is installed gets an `asks` MCP server with `ask_create`, `ask_update`, `ask_resolve` and `ask_list`. Its instructions tell the agent to ask with its own question tool, to write each question for someone who hasn't seen the work, and to use `ask_create` only without such a tool, so no `CLAUDE.md` edit is needed. Agents started before an instructions change keep the rules they started with.
+- A pending native question is a permission request of kind `question` in Paseo. The plugin follows them on every agent through the permission hooks, and re-reads each agent's pending requests when a list is opened, so it also finds questions raised before it started. They are saved in `questions.json`, so put-off questions survive restarts.
+- Agents sometimes ask in chat and skip their question tool. When a turn uses no question tool or asks tool and names none of its workspace's open asks (for an explainer, the ask it explains counts too), a short-lived child agent on the same provider (its cheapest model) judges whether the reply leaves anything for the human; if so, the plugin sends one `[asks]` reminder. If that check fails, a question mark in the last paragraph decides. Its answer is never reminded again.
 - Answers are written to an on-disk outbox first. On providers that take a steer (Claude, Codex, OpenCode, Pi), they join the agent's running turn right away. On others they wait until the turn ends, because a prompt sent mid-turn would interrupt it. Several answers are batched into one message. A plugin restart loses nothing.
 - If the agent that raised an ask is archived, the ask is marked *orphaned*: you can still close it, and nobody is notified.
 
@@ -88,6 +100,10 @@ cd preview && npm install && npm run dev   # the UI with sample data, at localho
 - **External events only if subscribed,** so polling `gh` never wakes an agent for nothing.
 
 ## Limits
+
+- Codex offers `request_user_input` only in Plan mode unless its `default_mode_request_user_input` feature is on. Without it, Codex agents fall back to `ask_create`. To turn it on for every Codex agent, add `default_mode_request_user_input = true` under `[features]` in `~/.codex/config.toml`, or point Paseo's Codex provider at a command with `-c features.default_mode_request_user_input=true` (see the Paseo docs on a custom binary for a provider). `send_message_to_user_async = true` makes Codex ask without stopping; Asks lists those questions too. Both flags are marked under development in Codex.
+- PRs no longer get asks: agents ask about a merge or a reviewer with their question tool, so a PR's live status, preview chips and change notifications only show on asks from before, or from agents without a question tool.
+- Claude subagents may not have AskUserQuestion; that is untested.
 
 - Lists refresh by polling (every 4 s, and every 8 s for pill counts). Paseo has no plugin channel for pushing updates to the app.
 - An explainer's workspace stays after the ask is settled; archive it when you are done with it.

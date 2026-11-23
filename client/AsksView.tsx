@@ -23,8 +23,11 @@ import type { AskCard as AskCardData } from "../shared/timeline";
 import { Markdown } from "@getpaseo/plugin/client/ui";
 import { OpenPrContext } from "./inbox";
 import { openLink } from "./open-link";
-import { askQueue, type QueueFilter } from "./queue";
+import { askQueue, questionQueue, type QueueFilter } from "./queue";
+import { QuestionRow, QuestionSections, useQuestions } from "./QuestionsView";
+import { questionKey } from "../shared/questions";
 import { useSnoozedWorkspaceIds } from "./snoozed";
+import { age, Button, makeStyles, type Styles } from "./ui";
 
 export const POLL_MS = 4000;
 
@@ -36,8 +39,6 @@ const KIND_ICONS: Record<Ask["kind"], string> = {
   action: "Hand",
   question: "MessageCircle",
 };
-
-type Styles = ReturnType<typeof makeStyles>;
 
 interface ViewProps {
   theme: PluginTheme;
@@ -64,8 +65,14 @@ const FILTERS: { id: QueueFilter; label: string; description: string; empty: str
   {
     id: "needs_you",
     label: "Needs you",
-    description: "Decisions and actions waiting on you.",
+    description: "Questions, decisions and actions waiting on you.",
     empty: "Nothing waiting on you. In-progress work and other asks are in their own views.",
+  },
+  {
+    id: "later",
+    label: "Later",
+    description: "Questions you put off. Their agents carried on; your answer reaches them as a message.",
+    empty: "Nothing put off.",
   },
   {
     id: "in_progress",
@@ -76,7 +83,7 @@ const FILTERS: { id: QueueFilter; label: string; description: string; empty: str
   {
     id: "other",
     label: "Other",
-    description: "Asks from snoozed workspaces or linked to merged or closed PRs.",
+    description: "Questions and asks from snoozed workspaces, and asks linked to merged or closed PRs.",
     empty: "No other open asks.",
   },
 ];
@@ -84,10 +91,15 @@ const FILTERS: { id: QueueFilter; label: string; description: string; empty: str
 function MainAsks({ theme, compact, openAgent }: ViewProps) {
   const styles = useMemo(() => makeStyles(theme, compact), [theme, compact]);
   const asks = useAsks();
+  const questions = useQuestions();
   const snoozed = useSnoozedWorkspaceIds();
   const [filter, setFilter] = useState<QueueFilter>("needs_you");
   const [expanded, setExpanded] = useState<string | null>(null);
   const queue = useMemo(() => askQueue(asks.data?.asks ?? [], snoozed), [asks.data, snoozed]);
+  const asked = useMemo(() => questionQueue(questions.data?.questions ?? [], snoozed), [questions.data, snoozed]);
+  const count = (id: QueueFilter) => queue[id].length + (id === "in_progress" ? 0 : asked[id].length);
+  const shownQuestions = filter === "in_progress" ? [] : asked[filter];
+  const workspaceNames = { ...questions.data?.workspaceNames, ...asks.data?.workspaceNames };
   const selected = FILTERS.find((item) => item.id === filter)!;
 
   if (asks.isPending) return <Message styles={styles} text="Loading asks…" />;
@@ -102,7 +114,7 @@ function MainAsks({ theme, compact, openAgent }: ViewProps) {
             <Pressable
               key={item.id}
               accessibilityRole="button"
-              accessibilityLabel={`${item.label}, ${queue[item.id].length} asks`}
+              accessibilityLabel={`${item.label}, ${count(item.id)} items`}
               accessibilityState={{ selected: filter === item.id }}
               onPress={() => {
                 setFilter(item.id);
@@ -118,13 +130,13 @@ function MainAsks({ theme, compact, openAgent }: ViewProps) {
                 {item.label}
               </Text>
               <Text style={[styles.filterCount, filter === item.id && styles.filterTextSelected]}>
-                {queue[item.id].length}
+                {count(item.id)}
               </Text>
             </Pressable>
           ))}
         </View>
         <Text style={styles.queueDescription}>{selected.description}</Text>
-        {queue[filter].length === 0 ? (
+        {count(filter) === 0 ? (
           <View style={styles.queueEmpty}>
             <Icon
               name={filter === "needs_you" ? "Check" : "MessageCircleQuestionMark"}
@@ -135,6 +147,23 @@ function MainAsks({ theme, compact, openAgent }: ViewProps) {
           </View>
         ) : (
           <View style={styles.queueList}>
+            {shownQuestions.map((question) => {
+              const key = `q:${questionKey(question)}`;
+              return (
+                <View key={key} style={styles.queueItem}>
+                  <QuestionRow
+                    question={question}
+                    styles={styles}
+                    theme={theme}
+                    workspaceName={workspaceNames[question.workspaceId] ?? question.workspaceId}
+                    queue
+                    expanded={expanded === key}
+                    onToggle={() => setExpanded(expanded === key ? null : key)}
+                    openAgent={openAgent}
+                  />
+                </View>
+              );
+            })}
             {queue[filter].map((ask) => {
               const key = `${ask.workspaceId}/${ask.id}`;
               return (
@@ -221,13 +250,15 @@ function QueueRow(props: {
 function WorkspaceAsks({ theme, compact, workspaceId, openAgent }: ViewProps) {
   const styles = useMemo(() => makeStyles(theme, compact), [theme, compact]);
   const asks = useAsks(workspaceId);
+  const questions = useQuestions(workspaceId);
   const [expanded, setExpanded] = useState<string | null>(null);
 
   if (asks.isPending) return <Message styles={styles} text="Loading asks…" />;
   if (asks.isError)
     return <Message styles={styles} text={`Could not load asks: ${asks.error.message}`} danger />;
   const all = asks.data.asks;
-  if (all.length === 0)
+  const asked = questions.data?.questions ?? [];
+  if (all.length === 0 && asked.length === 0)
     return (
       <Message
         styles={styles}
@@ -240,6 +271,7 @@ function WorkspaceAsks({ theme, compact, workspaceId, openAgent }: ViewProps) {
     : [...groupBy(all, (ask) => ask.workspaceId)];
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+      {asked.length > 0 && <QuestionSections questions={asked} styles={styles} theme={theme} openAgent={openAgent} />}
       {groups.map(([groupId, items]) => (
         <View key={groupId} style={styles.group}>
           {!workspaceId && (
@@ -308,6 +340,7 @@ export function AgentAsks(props: {
   const { theme, compact, workspaceId, agentId, openAgent } = props;
   const styles = useMemo(() => makeStyles(theme, compact), [theme, compact]);
   const asks = useAsks(workspaceId);
+  const questions = useQuestions(workspaceId);
   const [expanded, setExpanded] = useState<string | null>(null);
   const refresh = useRpc(refreshAsks);
   const toast = useToast();
@@ -328,9 +361,13 @@ export function AgentAsks(props: {
   // This agent's asks first, the one it discusses included.
   const own = (ask: Ask) => (ask.ownerAgentId === agentId || ask.discussionAgentId === agentId ? 0 : 1);
   const ordered = [...asks.data.asks].sort((a, b) => own(a) - own(b));
+  const asked = [...(questions.data?.questions ?? [])].sort(
+    (a, b) => Number(a.agentId !== agentId) - Number(b.agentId !== agentId),
+  );
   return (
     <View style={styles.popover}>
-      {ordered.length === 0 && <Text style={styles.muted}>No open asks in this workspace.</Text>}
+      {ordered.length === 0 && asked.length === 0 && <Text style={styles.muted}>Nothing waiting on you in this workspace.</Text>}
+      <QuestionSections questions={asked} styles={styles} theme={theme} openAgent={openAgent} viewingAgentId={agentId} />
       <StatusSections
         asks={ordered}
         styles={styles}
@@ -879,33 +916,6 @@ function InboxLink({ onPress, children }: { onPress(): void; children: ReactNode
   );
 }
 
-function Button(props: {
-  styles: Styles;
-  label: string;
-  onPress(): void;
-  primary?: boolean;
-  disabled?: boolean;
-}) {
-  const { styles } = props;
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={props.label}
-      disabled={props.disabled}
-      onPress={props.onPress}
-      style={[
-        styles.button,
-        props.primary && styles.buttonPrimary,
-        props.disabled && styles.buttonDisabled,
-      ]}
-    >
-      <Text style={props.primary ? styles.buttonPrimaryText : styles.buttonText}>
-        {props.label}
-      </Text>
-    </Pressable>
-  );
-}
-
 function Message({ styles, text, danger }: { styles: Styles; text: string; danger?: boolean }) {
   return (
     <View style={[styles.screen, styles.content]}>
@@ -918,161 +928,4 @@ function groupBy<T>(items: readonly T[], key: (item: T) => string): Map<string, 
   const groups = new Map<string, T[]>();
   for (const item of items) groups.set(key(item), [...(groups.get(key(item)) ?? []), item]);
   return groups;
-}
-
-function age(iso: string): string {
-  const minutes = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60_000));
-  if (minutes < 60) return `${minutes}m`;
-  if (minutes < 48 * 60) return `${Math.round(minutes / 60)}h`;
-  return `${Math.round(minutes / 1440)}d`;
-}
-
-function makeStyles(theme: PluginTheme, compact: boolean) {
-  const { colors } = theme;
-  return {
-    screen: { flex: 1, backgroundColor: colors.surface0 },
-    content: { padding: compact ? 12 : 16, gap: 16 },
-    queueContent: { paddingHorizontal: compact ? 12 : 32, paddingVertical: compact ? 16 : 24 },
-    queueWidth: { width: "100%" as const, maxWidth: 960, alignSelf: "center" as const },
-    filters: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: 4 },
-    filter: {
-      flexDirection: "row" as const,
-      alignItems: "center" as const,
-      gap: 8,
-      paddingHorizontal: compact ? 10 : 14,
-      minHeight: compact ? 44 : 36,
-      borderRadius: 6,
-    },
-    filterSelected: { backgroundColor: colors.surface2 },
-    filterText: { color: colors.foregroundMuted, fontSize: 14 },
-    filterTextSelected: { color: colors.foreground },
-    filterCount: {
-      color: colors.foregroundMuted,
-      fontSize: 12,
-      fontVariant: ["tabular-nums" as const],
-    },
-    queueDescription: {
-      color: colors.foregroundMuted,
-      fontSize: 13,
-      lineHeight: 20,
-      marginTop: 12,
-      marginBottom: 24,
-    },
-    queueList: { borderTopWidth: 1, borderTopColor: colors.border },
-    queueItem: { borderBottomWidth: 1, borderBottomColor: colors.border },
-    queueRow: {
-      flexDirection: "row" as const,
-      alignItems: "flex-start" as const,
-      gap: 12,
-      paddingHorizontal: compact ? 8 : 12,
-      paddingVertical: 16,
-    },
-    queuePressed: { backgroundColor: colors.surface1 },
-    queueIcon: { paddingTop: 2 },
-    queueText: { flex: 1, minWidth: 0, gap: 8 },
-    queueTitle: { color: colors.foreground, fontSize: 14, lineHeight: 21 },
-    queueMeta: {
-      flexDirection: "row" as const,
-      flexWrap: "wrap" as const,
-      alignItems: "center" as const,
-      gap: 8,
-    },
-    queueWorkspace: {
-      color: colors.foregroundMuted,
-      fontSize: 12,
-      flexShrink: 1,
-      maxWidth: "100%" as const,
-    },
-    queueDetail: {
-      paddingLeft: compact ? 0 : 28,
-      paddingRight: compact ? 0 : 12,
-      paddingBottom: 8,
-    },
-    queueEmpty: { flexDirection: "row" as const, gap: 12, paddingVertical: 24 },
-    queueEmptyText: { color: colors.foregroundMuted, fontSize: 14, lineHeight: 21, flex: 1 },
-    // The host popover already pads, scrolls and caps the size (420×440); sizing it here again clips it.
-    popover: { gap: 8 },
-    inline: { gap: 6, paddingVertical: 4 },
-    group: { gap: 12 },
-    section: { gap: 6 },
-    workspace: { color: colors.foreground, fontSize: 15, fontWeight: "600" as const },
-    sectionTitle: { color: colors.foregroundMuted, fontSize: 11, letterSpacing: 0.5 },
-    card: {
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 8,
-      backgroundColor: colors.surface1,
-    },
-    cardExpanded: { borderColor: colors.accent },
-    row: {
-      flexDirection: "row" as const,
-      alignItems: "center" as const,
-      gap: 8,
-      padding: compact ? 12 : 10,
-    },
-    id: { color: colors.foregroundMuted, fontSize: 12, fontVariant: ["tabular-nums" as const] },
-    title: { color: colors.foreground, flex: 1, fontSize: 14 },
-    age: { color: colors.foregroundMuted, fontSize: 12 },
-    orphaned: { color: colors.statusWarning, fontSize: 12 },
-    detail: { paddingHorizontal: compact ? 12 : 10, paddingBottom: 12, gap: 10 },
-    link: { color: colors.accent, fontSize: 13 },
-    buttons: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: 8, flex: 1 },
-    actionRow: { flexDirection: "row" as const, alignItems: "flex-end" as const, gap: 8 },
-    replyRow: { flexDirection: "row" as const, alignItems: "flex-end" as const, gap: 8 },
-    replyField: { flex: 1, flexDirection: "row" as const, alignItems: "flex-end" as const },
-    send: {
-      position: "absolute" as const,
-      right: 6,
-      bottom: 6,
-      padding: 6,
-      borderRadius: 6,
-      backgroundColor: colors.accent,
-    },
-    fallback: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: 4 },
-    fallbackItem: { paddingVertical: compact ? 10 : 6, paddingHorizontal: 8 },
-    fallbackText: { color: colors.foregroundMuted, fontSize: 13 },
-    fallbackDestructive: { color: colors.statusDanger },
-    button: {
-      paddingVertical: compact ? 10 : 6,
-      paddingHorizontal: 12,
-      borderRadius: 6,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.surface2,
-    },
-    buttonPrimary: { backgroundColor: colors.accent, borderColor: colors.accent },
-    buttonDisabled: { opacity: 0.5 },
-    buttonText: { color: colors.foreground, fontSize: 13 },
-    buttonPrimaryText: { color: colors.accentForeground, fontSize: 13 },
-    input: {
-      color: colors.foreground,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 6,
-      padding: 8,
-      paddingRight: 40,
-      minHeight: 36,
-      maxHeight: 132,
-      flex: 1,
-      fontSize: 13,
-    },
-    placeholder: { color: colors.foregroundMuted },
-    badge: { fontSize: 11 },
-    good: { color: colors.statusSuccess },
-    bad: { color: colors.statusDanger },
-    prDetail: { color: colors.foregroundMuted, fontSize: 12 },
-    chips: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: 6 },
-    chip: {
-      maxWidth: "100%" as const,
-      paddingVertical: compact ? 6 : 3,
-      paddingHorizontal: 8,
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.surface1,
-    },
-    chipText: { fontSize: 12 },
-    muted: { color: colors.foregroundMuted },
-    danger: { color: colors.statusDanger },
-  };
 }
