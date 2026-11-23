@@ -220,6 +220,16 @@ export const discussAsk = defineRpc({
   output: z.object({ agentId: z.string(), workspaceId: z.string().optional(), created: z.boolean() }),
 });
 
+export const TimelinePositionSchema = z.object({ epoch: z.string(), seq: z.number().int().nonnegative() });
+export type TimelinePosition = z.infer<typeof TimelinePositionSchema>;
+
+/** Where an ask was raised in its owner's chat, so "Show in chat" scrolls there. No position: open the chat at its end. */
+export const locateAsk = defineRpc({
+  name: "asks.locate",
+  input: z.object({ workspaceId: z.string(), id: z.string() }),
+  output: z.object({ agentId: z.string(), position: TimelinePositionSchema.optional() }),
+});
+
 /** The title of the workspace an ask is explained in; the card names it, so both read the same. */
 export function discussionTitle(ask: Pick<Ask, "id" | "title">): string {
   const head = `Explain ${ask.id}: `;
