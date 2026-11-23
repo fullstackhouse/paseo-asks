@@ -55,6 +55,12 @@ describe("parseAsksMessage", () => {
     expect(await last()).toEqual({ askId: "A1", title: TITLE, event: "replied", note });
   });
 
+  it("reads a reply that leaves the ask open", async () => {
+    await service.callTool(OWNER, "ask_create", { kind: "followup", title: TITLE });
+    await service.act({ workspaceId: WS, id: "A1", verb: "reply", note });
+    expect(await last()).toEqual({ askId: "A1", title: TITLE, event: "replied", note });
+  });
+
   it("reads a chosen option, with and without a note", async () => {
     const ask = await create();
     await service.act({ workspaceId: WS, id: "A1", verb: "action", actionId: ask.actions[0].id });

@@ -314,6 +314,38 @@ describe("asks", () => {
     expect(store.get(WS, "A1")?.orphaned).toBeFalsy();
   });
 
+  it("closes a decision or question on a reply, since the reply is the answer", async () => {
+    await service.callTool(AGENT, "ask_create", decision);
+    await service.callTool(AGENT, "ask_create", { kind: "question", title: "Which region?" });
+    const { ask } = await service.act({ workspaceId: WS, id: "A1", verb: "reply", note: "squash, but keep merge commits on release/*" });
+    expect(ask).toMatchObject({ status: "done", outcome: { note: "squash, but keep merge commits on release/*", by: "human" } });
+    await service.act({ workspaceId: WS, id: "A2", verb: "reply", note: "eu-central" });
+    expect(store.get(WS, "A2")).toMatchObject({ status: "done", outcome: { note: "eu-central", by: "human" } });
+    await outbox.flush();
+    expect(courier.sent.map((message) => message.text)).toEqual([
+      '[asks] A1 (Squash-only merges?) answered by the human: "squash, but keep merge commits on release/*". A1 is done; act on the answer without resolving it.',
+      '[asks] A2 (Which region?) answered by the human: "eu-central". A2 is done; act on the answer without resolving it.',
+    ]);
+  });
+
+  it("leaves a follow-up or PR ask open on a reply, for the agent to settle", async () => {
+    await service.callTool(AGENT, "ask_create", { kind: "followup", title: "Add retries next?" });
+    await service.callTool(AGENT, "ask_create", {
+      kind: "pr",
+      title: "Merge PR #30?",
+      actions: [{ label: "Merge", kind: "send", prompt: "Merge PR #30 with squash" }],
+    });
+    await service.act({ workspaceId: WS, id: "A1", verb: "reply", note: "only for the webhook client" });
+    await service.act({ workspaceId: WS, id: "A2", verb: "reply", note: "wait for Ola's review" });
+    expect(store.get(WS, "A1")?.status).toBe("open");
+    expect(store.get(WS, "A2")?.status).toBe("open");
+    await outbox.flush();
+    expect(courier.sent.map((message) => message.text)).toEqual([
+      '[asks] A1 (Add retries next?) reply from the human: "only for the webhook client". Update or resolve A1 accordingly.',
+      "[asks] A2 (Merge PR #30?) reply from the human: \"wait for Ola's review\". Update or resolve A2 accordingly.",
+    ]);
+  });
+
   it("orphans an open ask whose agent is gone, and stops notifying", async () => {
     await service.callTool(AGENT, "ask_create", { kind: "question", title: "Which region?" });
     courier.states.set(AGENT, "gone");

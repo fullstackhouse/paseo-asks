@@ -23,6 +23,10 @@ const PATTERNS: { re: RegExp; view: (m: RegExpMatchArray) => Omit<AsksMessage, "
     view: (m) => ({ event: "replied", note: m[2] }),
   },
   {
+    re: new RegExp(String.raw`^\((.*?)\) answered by the human: "([\s\S]*)"\. A\d+ is done; act on the answer without resolving it\.$`),
+    view: (m) => ({ event: "replied", note: m[2] }),
+  },
+  {
     re: new RegExp(String.raw`^\((.*?)\) resolved: ([\s\S]*?)\.${NOTE}$`),
     view: (m) => ({ event: `chose “${m[2]}”`, note: m[3] }),
   },

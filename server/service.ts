@@ -236,11 +236,17 @@ export class AsksService {
         break;
       case "reply":
         if (!note) throw new Error("A reply needs text");
-        next = await this.store.update(ask.workspaceId, ask.id, {});
-        message = `${head} reply from the human: "${note}". Update or resolve ${ask.id} accordingly.`;
+        if (answeredByReply(ask)) {
+          // For a decision or a question the reply is the answer, so the ask closes now instead of waiting for the agent.
+          next = await this.store.update(ask.workspaceId, ask.id, { status: "done", outcome: { note, by: "human", at } });
+          message = `${head} answered by the human: "${note}". ${ask.id} is done; act on the answer without resolving it.`;
+        } else {
+          next = await this.store.update(ask.workspaceId, ask.id, {});
+          message = `${head} reply from the human: "${note}". Update or resolve ${ask.id} accordingly.`;
+        }
         break;
     }
-    this.tellDiscussion(ask, input.verb, input.actionId);
+    this.tellDiscussion(ask, input.verb, input.actionId, note);
     if (ask.orphaned) return { ask: next, notified: false };
     this.notify(ask, message);
     return { ask: next, notified: true };
@@ -250,16 +256,18 @@ export class AsksService {
    * The human answered with a button, which may be in the explainer's workspace: the agent discussing the ask must
    * know, or it settles the ask a second time. No askId, so an explainer that is gone leaves the ask alone.
    */
-  private tellDiscussion(ask: Ask, verb: "action" | "done" | "drop" | "reply", actionId?: string): void {
+  private tellDiscussion(ask: Ask, verb: "action" | "done" | "drop" | "reply", actionId?: string, note?: string): void {
     const agentId = ask.discussionAgentId;
-    if (!agentId || agentId === ask.ownerAgentId || verb === "reply") return;
+    // A reply that leaves the ask open goes to the owner only; one that answers it settles the discussion too.
+    if (!agentId || agentId === ask.ownerAgentId || (verb === "reply" && !answeredByReply(ask))) return;
     const action = ask.actions.find((candidate) => candidate.id === actionId);
     const what = verb === "done" ? "marked it done" : verb === "drop" ? "dropped it" : `chose "${action?.label ?? actionId}"`;
+    const how = verb === "reply" ? `in its reply box: "${note}"` : `with its buttons: they ${what}`;
     const told = ask.orphaned ? "Nobody else was told: the agent that raised it is gone." : "The main agent has been told.";
     this.message(
       agentId,
       ask.discussionWorkspaceId ?? ask.workspaceId,
-      `[asks] The human answered ${ask.id} (${ask.title}) with its buttons: they ${what}. ${told} Do not resolve or update ${ask.id}. Reply in one line.`,
+      `[asks] The human answered ${ask.id} (${ask.title}) ${how}. ${told} Do not resolve or update ${ask.id}. Reply in one line.`,
     );
     void this.outbox.flush(agentId);
   }
@@ -423,4 +431,9 @@ function render(ask: Ask, notes: string[] = []): ToolResult {
   const actions = ask.actions.map((action) => `${action.id} ${action.kind} "${action.label}"`).join(", ");
   const paths = notes.length ? `\nfile paths: ${notes.join(" ")}` : "";
   return { text: `${summary(ask)}${actions ? `\nactions: ${actions}` : ""}${paths}`, ask: { workspaceId: ask.workspaceId, id: ask.id } };
+}
+
+/** Decisions and questions wait only on an answer, so a reply settles them. Other kinds hand work back, which the agent closes. */
+function answeredByReply(ask: Pick<Ask, "kind">): boolean {
+  return ask.kind === "decision" || ask.kind === "question";
 }

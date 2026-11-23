@@ -366,6 +366,20 @@ describe("Discuss", () => {
     expect(toOwner).toEqual(["[asks] A1 (Squash-only merges?) marked done by the human."]);
   });
 
+  it("tells the explainer when a reply answers the ask", async () => {
+    await decision();
+    await store.update(WS, "A1", { discussionAgentId: EXPLAINER, discussionWorkspaceId: EXPLAIN_WS });
+    await service.act({ workspaceId: WS, id: "A1", verb: "reply", note: "squash, keep release merges" });
+    await outbox.flush();
+    expect(store.get(WS, "A1")).toMatchObject({ status: "done", outcome: { note: "squash, keep release merges" } });
+    expect(toOwner).toEqual(
+      expect.arrayContaining([
+        '[asks] A1 (Squash-only merges?) answered by the human: "squash, keep release merges". A1 is done; act on the answer without resolving it.',
+        '[asks] The human answered A1 (Squash-only merges?) in its reply box: "squash, keep release merges". The main agent has been told. Do not resolve or update A1. Reply in one line.',
+      ]),
+    );
+  });
+
   it("tells the explainer of an orphaned ask that nobody else heard the answer", async () => {
     await decision();
     await store.update(WS, "A1", { discussionAgentId: EXPLAINER, discussionWorkspaceId: EXPLAIN_WS, orphaned: true });
