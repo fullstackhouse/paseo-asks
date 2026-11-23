@@ -245,6 +245,9 @@ function daemonEnv({ home, proxy }: { home: string; proxy: string }): NodeJS.Pro
   const env: NodeJS.ProcessEnv = {};
   for (const name of ["PATH", "TMPDIR", "LANG", "TERM", "USER", "SHELL"]) if (process.env[name]) env[name] = process.env[name];
   Object.assign(env, {
+    // Agents' commands run in this shell, and zsh and bash print different errors (e.g. an unmatched glob), which
+    // land in tool output: fixed, so a recording made on a zsh machine replays in CI.
+    SHELL: "/bin/bash",
     HOME: home,
     PATH: `${BIN}:${env.PATH ?? "/usr/bin:/bin"}`,
     ANTHROPIC_BASE_URL: proxy,
