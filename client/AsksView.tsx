@@ -727,7 +727,8 @@ function AskDetail({
           disabled={mutation.isPending}
           onPress={() => mutation.mutate({ verb: "drop" })}
         />
-        {!ask.orphaned && (
+        {/* An ask the human already answered has nothing left to settle: only its live discussion reopens. */}
+        {!ask.orphaned && (ask.status === "open" || ask.discussionAgentId) && (
           <Button
             styles={styles}
             label={

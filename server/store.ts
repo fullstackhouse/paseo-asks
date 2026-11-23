@@ -22,6 +22,8 @@ export class AskStore {
   private readonly dir: string;
   private readonly cache = new Map<string, WorkspaceFile>();
   private readonly locks = new Map<string, Promise<unknown>>();
+  /** Every workspace with a file. Read from disk once: this process is the only writer, and lists run on every poll. */
+  private known: Set<string> | null = null;
 
   constructor(root: string, private readonly now: () => Date = () => new Date()) {
     this.dir = join(root, "workspaces");
@@ -79,9 +81,12 @@ export class AskStore {
   }
 
   private workspaceIds(): string[] {
-    return readdirSync(this.dir)
-      .filter((name) => name.endsWith(".json"))
-      .map((name) => decodeURIComponent(name.slice(0, -".json".length)));
+    this.known ??= new Set(
+      readdirSync(this.dir)
+        .filter((name) => name.endsWith(".json"))
+        .map((name) => decodeURIComponent(name.slice(0, -".json".length))),
+    );
+    return [...this.known];
   }
 
   private path(workspaceId: string): string {
@@ -105,6 +110,7 @@ export class AskStore {
       writeFileSync(`${path}.tmp`, JSON.stringify(draft, null, 2));
       renameSync(`${path}.tmp`, path);
       this.cache.set(workspaceId, draft);
+      this.known?.add(workspaceId);
       return result;
     };
     const next = (this.locks.get(workspaceId) ?? Promise.resolve()).then(run, run);

@@ -102,6 +102,9 @@ export interface ToolResult {
 export const BACKGROUND_SKIP =
   "Skipped: this workspace runs in the background (an automated run hidden from the sidebar), so nobody reads asks here. Put what you have in your final reply. Asks work again once the human opens this chat.";
 
+/** How long an explainer's workspace stays after its ask is settled, so the human can finish reading it. */
+export const SETTLED_DISCUSSION_MS = 24 * 60 * 60 * 1000;
+
 export class AsksService {
   constructor(
     private readonly store: AskStore,
@@ -132,10 +135,12 @@ export class AsksService {
         }
         case "ask_update": {
           const { id, ...patch } = UpdateInput.parse(args);
+          this.checkStillWaiting(this.find(workspaceId, agentId, id), agentId);
+          const paths = await this.paths(this.find(workspaceId, agentId, id).workspaceId, patch.body);
+          patch.body = paths.body;
+          // Read again after the path check (git, seconds): a human click meanwhile must not be overwritten.
           const ask = this.find(workspaceId, agentId, id);
           this.checkStillWaiting(ask, agentId);
-          const paths = await this.paths(ask.workspaceId, patch.body);
-          patch.body = paths.body;
           checkActions(patch.actions ?? []);
           if (patch.title !== undefined || patch.actions) {
             checkNotBundled(patch.title ?? ask.title, (patch.actions ?? ask.actions).map((action) => action.label));
@@ -147,7 +152,10 @@ export class AsksService {
           if (patch.actions?.length && (patch.status ?? ask.status) === "in_progress" && !unseenAnswer) {
             patch.status = "open";
           }
-          const updated = await this.store.update(ask.workspaceId, id, { ...patch, lastCall: callKey("update", args) });
+          // Reopened by its owner: the old discussion was about what it asked then. Discuss starts a new one.
+          const reopened = !OPEN_STATUSES.includes(ask.status) && patch.status !== undefined && OPEN_STATUSES.includes(patch.status);
+          const unlink = reopened && ask.discussionAgentId ? { discussionAgentId: undefined, discussionWorkspaceId: undefined } : {};
+          const updated = await this.store.update(ask.workspaceId, id, { ...patch, ...unlink, lastCall: callKey("update", args) });
           if (agentId !== ask.ownerAgentId && !ask.orphaned && patch.status && patch.status !== ask.status) {
             this.notify(ask, `[asks] ${ask.id} (${ask.title}) marked ${patch.status.replace("_", " ")} in a side chat.`);
           }
@@ -247,10 +255,11 @@ export class AsksService {
     if (!agentId || agentId === ask.ownerAgentId || verb === "reply") return;
     const action = ask.actions.find((candidate) => candidate.id === actionId);
     const what = verb === "done" ? "marked it done" : verb === "drop" ? "dropped it" : `chose "${action?.label ?? actionId}"`;
+    const told = ask.orphaned ? "Nobody else was told: the agent that raised it is gone." : "The main agent has been told.";
     this.message(
       agentId,
       ask.discussionWorkspaceId ?? ask.workspaceId,
-      `[asks] The human answered ${ask.id} (${ask.title}) with its buttons: they ${what}. The main agent has been told; do not resolve or update ${ask.id}. Reply in one line.`,
+      `[asks] The human answered ${ask.id} (${ask.title}) with its buttons: they ${what}. ${told} Do not resolve or update ${ask.id}. Reply in one line.`,
     );
     void this.outbox.flush(agentId);
   }
@@ -368,6 +377,28 @@ export class AsksService {
         .filter((ask) => OPEN_STATUSES.includes(ask.status))
         .map((ask) => ask.id),
     );
+  }
+
+  /** The discussion agent is archived: its asks drop the link, so their cards stop pointing at it and Discuss starts afresh. */
+  async endDiscussion(agentId: string): Promise<Ask[]> {
+    return Promise.all(
+      this.discussing(agentId).map((ask) =>
+        this.store.update(ask.workspaceId, ask.id, { discussionAgentId: undefined, discussionWorkspaceId: undefined }, { touch: false }),
+      ),
+    );
+  }
+
+  /** Explainer workspaces whose ask was settled a day ago or more: nothing left to discuss there. */
+  settledDiscussions(now = new Date()): Ask[] {
+    return this.store
+      .list()
+      .filter(
+        (ask) =>
+          ask.discussionWorkspaceId &&
+          ask.discussionAgentId &&
+          !OPEN_STATUSES.includes(ask.status) &&
+          now.getTime() - Date.parse(ask.updatedAt) >= SETTLED_DISCUSSION_MS,
+      );
   }
 
   /** Asks this agent was opened to discuss, in any workspace. */

@@ -2,9 +2,9 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
-import { discuss, type DiscussDeps } from "../server/discuss";
+import { discuss, Discussions, type DiscussDeps } from "../server/discuss";
 import { Outbox, type Courier } from "../server/outbox";
-import { AsksService } from "../server/service";
+import { AsksService, SETTLED_DISCUSSION_MS } from "../server/service";
 import { AskStore } from "../server/store";
 import { discussionTitle, showsIn, waitingByWorkspace, workspaceAsks } from "../shared/asks";
 
@@ -18,12 +18,20 @@ interface Created {
   agents: { workspaceId: string; options: Record<string, any> }[];
   archived: string[];
   sent: { agentId: string; text: string }[];
+  workspaces?: number;
 }
 
 /** Just the PaseoApi surface `discuss` uses. */
 function fakePaseo(
   created: Created,
-  { workspaceFails = false, agentFails = false, alive = new Set<string>() } = {},
+  {
+    workspaceFails = false,
+    agentFails = false,
+    alive = new Set<string>(),
+    refreshFails = false,
+    readOnly = true,
+    workspaceReady = Promise.resolve(),
+  } = {},
 ): DiscussDeps["paseo"] {
   const owner = {
     id: OWNER,
@@ -31,12 +39,15 @@ function fakePaseo(
     model: "claude-opus-5-5",
     cwd: "/repos/app/.paseo/worktrees/feature",
     currentModeId: "bypassPermissions",
-    availableModes: [{ id: "default" }, { id: "plan" }, { id: "bypassPermissions" }],
+    availableModes: [{ id: "default" }, ...(readOnly ? [{ id: "plan" }] : []), { id: "bypassPermissions" }],
   };
   const agentHandle = (id: string) => ({
     id,
     archivedAt: null,
-    refresh: async () => (id === OWNER || alive.has(id) ? { agent: owner } : null),
+    refresh: async () => {
+      if (refreshFails && id !== OWNER) throw new Error("daemon unreachable");
+      return id === OWNER || alive.has(id) ? { agent: owner } : null;
+    },
     current: () => (id === OWNER ? owner : null),
     send: async (text: string) => void created.sent.push({ agentId: id, text }),
   });
@@ -56,7 +67,9 @@ function fakePaseo(
     workspaces: {
       ref: workspace,
       create: async (options: Record<string, unknown>) => {
+        await workspaceReady;
         if (workspaceFails) throw new Error("not a git repository");
+        created.workspaces = (created.workspaces ?? 0) + 1;
         created.workspace = options;
         return workspace(EXPLAIN_WS);
       },
@@ -204,7 +217,7 @@ describe("Discuss", () => {
     expect(toOwner).toEqual(
       expect.arrayContaining([
         "[asks] A1 (Squash-only merges?) resolved: squash-only.",
-        '[asks] The human answered A1 (Squash-only merges?) with its buttons: they chose "squash-only". The main agent has been told; do not resolve or update A1. Reply in one line.',
+        '[asks] The human answered A1 (Squash-only merges?) with its buttons: they chose "squash-only". The main agent has been told. Do not resolve or update A1. Reply in one line.',
       ]),
     );
 
@@ -225,7 +238,7 @@ describe("Discuss", () => {
     await store.update(WS, "A1", { discussionAgentId: EXPLAINER, discussionWorkspaceId: EXPLAIN_WS });
     await service.act({ workspaceId: WS, id: "A1", verb: "action", actionId: "a1" });
     await outbox.flush();
-    expect(toOwner).toContainEqual(expect.stringContaining('they chose "Merge". The main agent has been told; do not resolve or update A1.'));
+    expect(toOwner).toContainEqual(expect.stringContaining('they chose "Merge". The main agent has been told. Do not resolve or update A1.'));
     // The owner is merging: a settle from the explainer would end its PR updates.
     expect(await service.callTool(EXPLAINER, "ask_resolve", { id: "A1" })).toMatchObject({
       isError: true,
@@ -289,6 +302,118 @@ describe("Discuss", () => {
     await service.callTool(EXPLAINER, "ask_resolve", { id: "A1", actionId: "a2" });
     // Once settled, naming it no longer counts: the explainer is nudged like any agent.
     expect([...service.openAskIds(EXPLAINER, EXPLAIN_WS)]).toEqual([]);
+  });
+
+  it("starts one explainer for two quick presses, passing the second press's note to it", async () => {
+    const ask = await decision();
+    let ready!: () => void;
+    const paseo = fakePaseo(created, { workspaceReady: new Promise<void>((resolve) => (ready = resolve)) });
+    const discussions = new Discussions();
+    const first = discussions.start(deps(paseo), ask);
+    const second = discussions.start(deps(paseo), ask, "And the changelog?");
+    ready();
+    expect(await first).toEqual({ agentId: EXPLAINER, workspaceId: EXPLAIN_WS, created: true });
+    expect(await second).toEqual({ agentId: EXPLAINER, workspaceId: EXPLAIN_WS, created: false });
+    expect(created.workspaces).toBe(1);
+    expect(created.sent).toEqual([{ agentId: EXPLAINER, text: "And the changelog?" }]);
+  });
+
+  it("does not start a second explainer when the first can't be looked up", async () => {
+    await decision();
+    await store.update(WS, "A1", { discussionAgentId: EXPLAINER, discussionWorkspaceId: EXPLAIN_WS });
+    await expect(discuss(deps(fakePaseo(created, { refreshFails: true })), store.get(WS, "A1")!)).rejects.toThrow("daemon unreachable");
+    expect(created.workspaces).toBeUndefined();
+  });
+
+  it("logs the fallback in one line, and names the workspace error when the side chat can't open either", async () => {
+    const ask = await decision();
+    const logged: string[] = [];
+    const paseo = fakePaseo(created, { workspaceFails: true, readOnly: false });
+    await expect(discuss({ ...deps(paseo), log: (line) => logged.push(line) }, ask)).rejects.toThrow(
+      "Could not open a workspace for A1 (not a git repository), and claude offers no read-only mode",
+    );
+    expect(logged).toEqual([`[asks] ${WS}/A1 is discussed in a side chat: no workspace of its own (not a git repository)`]);
+  });
+
+  it("tells only the explainer, not the read-only side chat, to raise asks of its own", async () => {
+    const ask = await decision();
+    await discuss(deps(fakePaseo(created)), ask);
+    await discuss(deps(fakePaseo(created, { workspaceFails: true })), { ...ask, discussionAgentId: undefined });
+    const [explainer, sideChat] = created.agents.map((agent) => agent.options.prompt as string);
+    expect(explainer).toContain("call ask_create as usual");
+    expect(sideChat).not.toContain("ask_create");
+  });
+
+  it("drops the link when the explainer is archived", async () => {
+    await decision();
+    await store.update(WS, "A1", { discussionAgentId: EXPLAINER, discussionWorkspaceId: EXPLAIN_WS });
+    await service.endDiscussion(EXPLAINER);
+    expect(store.get(WS, "A1")!.discussionAgentId).toBeUndefined();
+    expect(store.get(WS, "A1")!.discussionWorkspaceId).toBeUndefined();
+    expect(store.list().filter((ask) => showsIn(ask, EXPLAIN_WS))).toEqual([]);
+  });
+
+  it("finds explainer workspaces whose ask was settled a day ago", async () => {
+    await decision();
+    await store.update(WS, "A1", { discussionAgentId: EXPLAINER, discussionWorkspaceId: EXPLAIN_WS });
+    const at = Date.parse(store.get(WS, "A1")!.updatedAt);
+    expect(service.settledDiscussions(new Date(at + SETTLED_DISCUSSION_MS))).toEqual([]);
+    await service.callTool(EXPLAINER, "ask_resolve", { id: "A1", actionId: "a2" });
+    const settled = Date.parse(store.get(WS, "A1")!.updatedAt);
+    expect(service.settledDiscussions(new Date(settled + SETTLED_DISCUSSION_MS - 1))).toEqual([]);
+    expect(service.settledDiscussions(new Date(settled + SETTLED_DISCUSSION_MS)).map((ask) => ask.id)).toEqual(["A1"]);
+  });
+
+  it("ends the old discussion when the owner reopens a settled ask, so later clicks don't reach it", async () => {
+    await decision();
+    await store.update(WS, "A1", { discussionAgentId: EXPLAINER, discussionWorkspaceId: EXPLAIN_WS });
+    await service.callTool(EXPLAINER, "ask_resolve", { id: "A1", actionId: "a2" });
+    await service.callTool(OWNER, "ask_update", { id: "A1", status: "open" });
+    expect(store.get(WS, "A1")!.discussionAgentId).toBeUndefined();
+    await outbox.flush();
+    toOwner.length = 0;
+    await service.act({ workspaceId: WS, id: "A1", verb: "done" });
+    await outbox.flush();
+    expect(toOwner).toEqual(["[asks] A1 (Squash-only merges?) marked done by the human."]);
+  });
+
+  it("tells the explainer of an orphaned ask that nobody else heard the answer", async () => {
+    await decision();
+    await store.update(WS, "A1", { discussionAgentId: EXPLAINER, discussionWorkspaceId: EXPLAIN_WS, orphaned: true });
+    await service.act({ workspaceId: WS, id: "A1", verb: "drop" });
+    await outbox.flush();
+    expect(toOwner).toEqual([
+      "[asks] The human answered A1 (Squash-only merges?) with its buttons: they dropped it. Nobody else was told: the agent that raised it is gone. Do not resolve or update A1. Reply in one line.",
+    ]);
+  });
+
+  it("keeps a click made during an explainer's update instead of overwriting it", async () => {
+    await decision();
+    let release!: () => void;
+    const pathCheck = new Promise<void>((resolve) => (release = resolve));
+    // The file-path check runs git and takes a while; the human clicks during it.
+    service = new AsksService(store, outbox, async (agentId) => workspaces[agentId] ?? null, undefined, async (_, body) => {
+      await pathCheck;
+      return { body, notes: [] };
+    });
+    await store.update(WS, "A1", { discussionAgentId: EXPLAINER, discussionWorkspaceId: EXPLAIN_WS });
+    const update = service.callTool(EXPLAINER, "ask_update", { id: "A1", body: "Rewritten.", status: "dropped" });
+    await service.act({ workspaceId: WS, id: "A1", verb: "action", actionId: "a2" });
+    release();
+    expect(await update).toMatchObject({ isError: true, text: expect.stringContaining("A1 no longer waits on the human (done: squash-only)") });
+    expect(store.get(WS, "A1")).toMatchObject({ status: "done", outcome: { by: "human" } });
+  });
+
+  it("quiets the explained ask in the explainer's summary when its own workspace is snoozed", async () => {
+    await decision();
+    await store.update(WS, "A1", { discussionAgentId: EXPLAINER, discussionWorkspaceId: EXPLAIN_WS });
+    expect(workspaceAsks(store.list(), new Set([WS])).get(EXPLAIN_WS)).toMatchObject({ count: 0, entries: [] });
+  });
+
+  it("lists a workspace created after the first list", async () => {
+    expect(store.list()).toEqual([]);
+    await decision();
+    expect(store.list().map((ask) => ask.id)).toEqual(["A1"]);
   });
 
   it("titles the workspace within 60 characters", () => {

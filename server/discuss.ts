@@ -13,8 +13,8 @@ export interface DiscussDeps {
   mcp: McpServerConfig;
   /** The owner's most recent reply, if the plugin saw one. */
   lastOutput(agentId: string): string | undefined;
-  /** Why the explainer's workspace could not be made, before falling back to a side chat. */
-  log?(message: string, error: unknown): void;
+  /** Why the explainer's workspace could not be made, before falling back to a side chat. One line, no stack: it is expected. */
+  log?(message: string): void;
 }
 
 export interface Discussion {
@@ -35,7 +35,8 @@ export async function discuss(deps: DiscussDeps, ask: Ask, note?: string): Promi
   const message = note?.trim() || undefined;
   if (ask.discussionAgentId) {
     const existing = paseo.agents.ref(ask.discussionAgentId);
-    const found = await existing.refresh().catch(() => null);
+    // A failed lookup is not a gone agent: starting a second explainer would strand the first.
+    const found = await existing.refresh();
     if (found && !existing.archivedAt) {
       if (message) await existing.send(message, { activeTurnBehavior: "steer" });
       return { agentId: existing.id, workspaceId: ask.discussionWorkspaceId ?? ask.workspaceId, created: false };
@@ -51,13 +52,15 @@ export async function discuss(deps: DiscussDeps, ask: Ask, note?: string): Promi
   const ownerOutput = deps.lastOutput(ask.ownerAgentId);
 
   let workspace: Awaited<ReturnType<PaseoApi["workspaces"]["create"]>> | null = null;
+  let noWorkspace = "";
   try {
     workspace = await paseo.workspaces.create({
       source: { kind: "worktree", cwd: snapshot.cwd, action: "branch-off", worktreeSlug: worktreeSlug(ask) },
       title: discussionTitle(ask),
     });
   } catch (error) {
-    deps.log?.(`[asks] no workspace for discussing ${ask.workspaceId}/${ask.id}; opening a side chat`, error);
+    noWorkspace = error instanceof Error ? error.message : String(error);
+    deps.log?.(`[asks] ${ask.workspaceId}/${ask.id} is discussed in a side chat: no workspace of its own (${noWorkspace})`);
   }
   if (workspace) {
     const handle = await workspace.agents
@@ -79,7 +82,11 @@ export async function discuss(deps: DiscussDeps, ask: Ask, note?: string): Promi
   }
 
   const mode = (snapshot.availableModes ?? []).find((candidate) => READ_ONLY_MODE.test(candidate.id));
-  if (!mode) throw new Error(`${snapshot.provider} offers no read-only mode, so a side chat could edit the worktree`);
+  if (!mode) {
+    throw new Error(
+      `Could not open a workspace for ${ask.id} (${noWorkspace}), and ${snapshot.provider} offers no read-only mode for a side chat, which could then edit the worktree`,
+    );
+  }
   const handle = await paseo.workspaces.ref(ask.workspaceId).agents.create({
     config: { ...agentConfig(deps, snapshot, model), modeId: mode.id },
     parent: ask.ownerAgentId,
@@ -128,13 +135,36 @@ function askBrief(ask: Ask, ownerOutput: string | undefined): string[] {
   ];
 }
 
-function settle(ask: Ask): string {
+/** In-flight discussions by ask: two presses while a workspace is being made (seconds) share one explainer. */
+export class Discussions {
+  private readonly starting = new Map<string, Promise<Discussion>>();
+
+  start(deps: DiscussDeps, ask: Ask, note?: string): Promise<Discussion> {
+    const key = `${ask.workspaceId}/${ask.id}`;
+    const pending = this.starting.get(key);
+    if (pending) {
+      const message = note?.trim();
+      return pending.then(async (discussion) => {
+        if (message) await deps.paseo.agents.ref(discussion.agentId).send(message, { activeTurnBehavior: "steer" });
+        return { ...discussion, created: false };
+      });
+    }
+    const started = discuss(deps, ask, note).finally(() => this.starting.delete(key));
+    this.starting.set(key, started);
+    return started;
+  }
+}
+
+function settle(ask: Ask, { ownAsks }: { ownAsks: boolean }): string {
   const choice = ask.actions.some((action) => action.kind === "resolve") ? ", the actionId they chose," : "";
   return [
     `The human sees ${ask.id} with its buttons in this chat's Asks too, and a click there answers it; never send them elsewhere to answer it. While you wait on their choice, name ${ask.id} in your reply.`,
     `When the human settles it with you, call ask_resolve with id "${ask.id}"${choice} and a note: the decision plus anything the main agent must know to act on it. That note is delivered to the main agent. If the human decides nothing should happen, use ask_update with status "dropped" and explain in your reply.`,
-    `For anything else you need from the human (a message to send for them, a follow-up), call ask_create as usual.`,
-  ].join(" ");
+    // A read-only side chat can't carry out work an ask of its own would hand it.
+    ownAsks ? `For anything else you need from the human (a message to send for them, a follow-up), call ask_create as usual.` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 function opening(message: string | undefined, brief: string): string {
@@ -146,7 +176,7 @@ export function explainerPrompt(ask: Ask, ownerCwd: string, ownerOutput: string 
   return [
     `You explain ask ${ask.id} to the human so they can decide it. Another agent (the main agent) raised it and owns that work; it changes its own checkout, ${ownerCwd}. You may read that checkout, never change it.`,
     `This workspace is a fresh worktree of the same repo, branched off its default branch, and it is yours: write notes, EXPLAIN.md or figures here when they help. Do not commit, push or open pull requests.`,
-    settle(ask),
+    settle(ask, { ownAsks: true }),
     "",
     ...askBrief(ask, ownerOutput),
     "",
@@ -164,7 +194,7 @@ export function seedPrompt(ask: Ask, ownerOutput: string | undefined, message?: 
   return [
     `You are a side chat the human opened to talk through ask ${ask.id} before deciding it.`,
     `Another agent (the main agent) raised it and is the only one who changes this worktree. Do not edit files or run anything with side effects. Reading files, git log/diff, and gh views are fine when they help answer a question.`,
-    settle(ask),
+    settle(ask, { ownAsks: false }),
     "",
     ...askBrief(ask, ownerOutput),
     "",
