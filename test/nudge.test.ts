@@ -23,6 +23,8 @@ const tool = (name: string) =>
 
 describe("shouldNudge", () => {
   const yes = async () => true;
+  const none = () => false;
+  const openA3 = (id: string) => id === "A3";
 
   it("nudges a turn that ends on a question with no ask", async () => {
     expect(
@@ -30,28 +32,38 @@ describe("shouldNudge", () => {
         user("try PR 11"),
         tool("Bash"),
         reply("Two ways forward.\n\nWhich one?"),
-      ]),
+      ], none),
     ).toBe(true);
   });
 
   it("does not nudge when the turn used an asks tool", async () => {
     expect(
-      await shouldNudge([user("go"), tool("mcp__asks__ask_create"), reply("Which one?")], yes),
+      await shouldNudge([user("go"), tool("mcp__asks__ask_create"), reply("Which one?")], none, yes),
     ).toBe(false);
   });
 
   it("does not nudge when the reply points to an existing ask", async () => {
     expect(
-      await shouldNudge([user("go"), reply("Still waiting on you, see A3. Which one?")], yes),
+      await shouldNudge([user("go"), reply("Still waiting on you, see A3. Which one?")], openA3, yes),
     ).toBe(false);
   });
 
+  it("nudges when the reply names only asks from elsewhere", async () => {
+    expect(
+      await shouldNudge(
+        [user("go"), reply("If A30 is truly unused, A29 is worth questioning too. Reply send it?")],
+        openA3,
+        yes,
+      ),
+    ).toBe(true);
+  });
+
   it("does not nudge a reply that only reports", async () => {
-    expect(await shouldNudge([user("go"), reply("Is it fixed? Yes.\n\nTests pass.")])).toBe(false);
+    expect(await shouldNudge([user("go"), reply("Is it fixed? Yes.\n\nTests pass.")], none)).toBe(false);
   });
 
   it("looks only at the latest turn", async () => {
-    expect(await shouldNudge([user("a"), reply("Which one?"), user("b"), reply("Done.")])).toBe(
+    expect(await shouldNudge([user("a"), reply("Which one?"), user("b"), reply("Done.")], none)).toBe(
       false,
     );
     expect(
@@ -61,19 +73,18 @@ describe("shouldNudge", () => {
         reply("ok"),
         user("b"),
         reply("Which one?"),
-      ]),
+      ], none),
     ).toBe(true);
   });
 
   it("never nudges the answer to a nudge", async () => {
-    expect(await shouldNudge([user(NUDGE), reply("Which one?")], yes)).toBe(false);
+    expect(await shouldNudge([user(NUDGE), reply("Which one?")], none, yes)).toBe(false);
   });
 
   it("joins streamed reply chunks", async () => {
-    expect(await shouldNudge([user("go"), reply("Which "), reply("one?")])).toBe(true);
+    expect(await shouldNudge([user("go"), reply("Which "), reply("one?")], none)).toBe(true);
     let seen = "";
-    await shouldNudge(
-      [user("go"), reply("Which "), reply("one?")],
+    await shouldNudge([user("go"), reply("Which "), reply("one?")], none,
       async (text) => ((seen = text), true),
     );
     expect(seen).toBe("Which one?");
@@ -81,15 +92,15 @@ describe("shouldNudge", () => {
 
   it("lets the classifier catch requests without a question mark", async () => {
     const turn = [user("go"), reply("Decide on the migration, then re-review.")];
-    expect(await shouldNudge(turn)).toBe(false);
-    expect(await shouldNudge(turn, yes)).toBe(true);
-    expect(await shouldNudge([user("go"), reply("Which one?")], async () => false)).toBe(false);
+    expect(await shouldNudge(turn, none)).toBe(false);
+    expect(await shouldNudge(turn, none, yes)).toBe(true);
+    expect(await shouldNudge([user("go"), reply("Which one?")], none, async () => false)).toBe(false);
   });
 
   it("falls back to the question mark check when the classifier fails", async () => {
     const fail = async () => Promise.reject(new Error("provider down"));
-    expect(await shouldNudge([user("go"), reply("Which one?")], fail)).toBe(true);
-    expect(await shouldNudge([user("go"), reply("Done.")], fail)).toBe(false);
+    expect(await shouldNudge([user("go"), reply("Which one?")], none, fail)).toBe(true);
+    expect(await shouldNudge([user("go"), reply("Done.")], none, fail)).toBe(false);
   });
 });
 
