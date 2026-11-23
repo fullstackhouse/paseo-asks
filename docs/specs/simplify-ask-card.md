@@ -65,13 +65,13 @@ Passes: PR line and preview chips each serve scenario 1 (is it safe to merge?) a
 ```
 PR #1265 open · checks ✓ · review required
 ● pr-1265.casteo.dev   ● docs-pr-1265.casteo.dev
-[ QA-approve + merge ]  [ Changes ]                      ⋯
-[ Reply to the agent…                                 ➤ ]
+[ QA-approve + merge ] [ Changes ] [ Reply to the agent…  ➤ ] ⋯
 ```
 
-- **Agent actions stay first.** Recommended one is primary, no `★` on live cards (the snapshot row at `:486` keeps it, since its chips have no primary style).
+- **Content first, answers last.** The body, PR line and chips come first; every way to answer sits in one answer bar at the bottom: agent actions, the reply field, ⋯. Same order in the chat (today it puts actions above the body). When the row is narrow, the reply field and ⋯ wrap below the actions.
+- **Recommended action is primary**, no `★` on live cards (the snapshot row at `:486` keeps it, since its chips have no primary style).
 - **One reply field**, single line, grows as you type. A send icon inside it appears once there is text; Enter sends on web. Removes the `Reply` button.
-- **One `⋯` menu** at the end of the agent-action row (or alone, for asks with no agent actions), holding:
+- **One `⋯` menu** at the end of the answer bar, holding:
   - `Mark done`
   - `Discuss in side chat` (`Open discussion` when one exists)
   - `Open chat` (hidden for the agent viewing it, as today)
