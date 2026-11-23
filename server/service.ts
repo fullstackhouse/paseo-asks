@@ -328,7 +328,16 @@ export class AsksService {
     }
   }
 
-  /** Asks this agent was opened to discuss, in any workspace. Such an agent talks to the human directly. */
+  /** Ids a reply may name to show its wait is recorded: the workspace's open asks, and the open ask the agent explains. */
+  openAskIds(agentId: string, workspaceId: string): Set<string> {
+    return new Set(
+      [...this.store.list(workspaceId), ...this.discussing(agentId)]
+        .filter((ask) => OPEN_STATUSES.includes(ask.status))
+        .map((ask) => ask.id),
+    );
+  }
+
+  /** Asks this agent was opened to discuss, in any workspace. */
   discussing(agentId: string): Ask[] {
     return this.store.list().filter((ask) => ask.discussionAgentId === agentId);
   }

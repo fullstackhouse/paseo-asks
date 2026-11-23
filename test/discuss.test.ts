@@ -235,12 +235,15 @@ describe("Discuss", () => {
     expect(workspaceAsks(asks, new Set([EXPLAIN_WS])).get(EXPLAIN_WS)).toMatchObject({ count: 0 });
   });
 
-  it("marks the explainer as a discussion, which the unrecorded-ask nudge skips, and only it", async () => {
+  it("counts the open ask an explainer explains as recorded for the nudge, for that explainer only", async () => {
     await decision();
     await store.update(WS, "A1", { discussionAgentId: EXPLAINER, discussionWorkspaceId: EXPLAIN_WS });
-    expect(service.discussing(EXPLAINER).map((ask) => ask.id)).toEqual(["A1"]);
-    expect(service.discussing(OWNER)).toEqual([]);
-    expect(service.discussing("bystander")).toEqual([]);
+    expect([...service.openAskIds(EXPLAINER, EXPLAIN_WS)]).toEqual(["A1"]);
+    expect([...service.openAskIds("bystander", EXPLAIN_WS)]).toEqual([]);
+    expect([...service.openAskIds(OWNER, WS)]).toEqual(["A1"]);
+    await service.callTool(EXPLAINER, "ask_resolve", { id: "A1", actionId: "a2" });
+    // Once settled, naming it no longer counts: the explainer is nudged like any agent.
+    expect([...service.openAskIds(EXPLAINER, EXPLAIN_WS)]).toEqual([]);
   });
 
   it("titles the workspace within 60 characters", () => {

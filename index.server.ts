@@ -134,17 +134,15 @@ export default function contribute(server: PluginServerContext) {
     void outbox.flush(agent.id);
     const timeline = await latestTurn(api.agents.ref(agent.id).timeline);
     lastOutputs.record(agent.id, timeline);
-    // Agents sometimes ask in chat and skip ask_create; one reminder per such turn. A discussion's questions are about
-    // the ask it discusses, whose buttons are in front of the human while it is open; after that it is nudged like any agent.
-    const discussing = service.discussing(agent.id).some((ask) => OPEN_STATUSES.includes(ask.status));
-    if (outcome.kind !== "completed" || !agent.workspaceId || discussing) return;
+    // Agents sometimes ask in chat and skip ask_create; one reminder per such turn.
+    if (outcome.kind !== "completed" || !agent.workspaceId) return;
     const workspaceId = agent.workspaceId;
     if (await isBackground(api, workspaceId)) return;
     void service
       .remindStuck(agent.id, workspaceId)
       .then(() => outbox.flush(agent.id))
       .catch(() => {});
-    const openIds = new Set(store.list(workspaceId).filter((ask) => OPEN_STATUSES.includes(ask.status)).map((ask) => ask.id));
+    const openIds = service.openAskIds(agent.id, workspaceId);
     void shouldNudge(timeline, (id) => openIds.has(id), classifierFor(agent.id))
       .then(async (nudge) => {
         // The classifier takes a few seconds. If the human has moved on, steer the reminder into the new

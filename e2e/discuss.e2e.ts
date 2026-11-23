@@ -47,7 +47,7 @@ describe("Discuss in a real Paseo daemon", () => {
     expect(sandbox.asks()[0]).toMatchObject({ status: "done", outcome: { by: "agent", label: "Postgres" } });
     const timeline = await sandbox.waitForTimeline(owner, /\[User\] \[asks\] A1 \(Keep carts in Redis or Postgres\?\) resolved in a side chat: Postgres/);
     expect(timeline).toMatch(/resolved in a side chat: Postgres/);
-    // While A1 was open its buttons were in front of the human, so the explainer was not nudged.
+    // It named A1 while waiting on the choice, so it was not nudged into a duplicate ask.
     expect(await sandbox.timeline(explainer.agentId)).not.toMatch(/\[User\] \[asks\] A check found/);
   });
 

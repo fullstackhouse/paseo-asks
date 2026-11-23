@@ -131,7 +131,7 @@ function askBrief(ask: Ask, ownerOutput: string | undefined): string[] {
 function settle(ask: Ask): string {
   const choice = ask.actions.some((action) => action.kind === "resolve") ? ", the actionId they chose," : "";
   return [
-    `The human sees ${ask.id} with its buttons in this chat's Asks too, and a click there answers it; never send them elsewhere to answer it.`,
+    `The human sees ${ask.id} with its buttons in this chat's Asks too, and a click there answers it; never send them elsewhere to answer it. While you wait on their choice, name ${ask.id} in your reply.`,
     `When the human settles it with you, call ask_resolve with id "${ask.id}"${choice} and a note: the decision plus anything the main agent must know to act on it. That note is delivered to the main agent. If the human decides nothing should happen, use ask_update with status "dropped" and explain in your reply.`,
     `For anything else you need from the human (a message to send for them, a follow-up), call ask_create as usual.`,
   ].join(" ");
