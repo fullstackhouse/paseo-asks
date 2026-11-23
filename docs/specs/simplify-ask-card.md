@@ -65,13 +65,14 @@ Passes: PR line and preview chips each serve scenario 1 (is it safe to merge?) a
 ```
 PR #1265 open · checks ✓ · review required
 ● pr-1265.casteo.dev   ● docs-pr-1265.casteo.dev
-[ QA-approve + merge ] [ Changes ] [ Reply to the agent…  ➤ ] ⋯
+[ QA-approve + merge ] [ Changes ]                          ⋯
+[ Reply to the agent…                                     ➤ ]
 ```
 
-- **Content first, answers last.** The body, PR line and chips come first; every way to answer sits in one answer bar at the bottom: agent actions, the reply field, ⋯. Same order in the chat (today it puts actions above the body). When the row is narrow, the reply field and ⋯ wrap below the actions.
+- **Content first, answers last.** The body, PR line and chips come first; every way to answer sits together at the bottom: the agent's actions with ⋯ at the row's end, then a full-width reply field (replies are often a sentence or more). Same order in the chat (today it puts actions above the body).
 - **Recommended action is primary**, no `★` on live cards (the snapshot row at `:486` keeps it, since its chips have no primary style).
-- **One reply field**, single line, grows as you type. A send icon inside it appears once there is text; Enter sends on web. Removes the `Reply` button.
-- **One `⋯` menu** at the end of the answer bar, holding:
+- **One reply field**, full width, starts at one line and grows to about 6 lines as you type. A send icon inside it appears once there is text; Enter sends on web. Removes the `Reply` button.
+- **One `⋯` menu** at the end of the action row (beside the reply field when there are no actions), holding:
   - `Mark done`
   - `Discuss in side chat` (`Open discussion` when one exists)
   - `Open chat` (hidden for the agent viewing it, as today)
@@ -101,9 +102,10 @@ Scenarios 3 and 4 gain a click; they are the rare ones, and Drop moves out of re
 ## Decisions (2026-11-23)
 
 1. *Mark done* lives in the ⋯ menu only (A2).
-2. Phone layout: ⋯ ends the answer bar, which wraps below the actions when narrow (atlas review). This replaces the header-row idea.
+2. Phone layout: ⋯ ends the last action row; the reply field spans the card below (atlas review). This replaces the header-row idea.
 3. Content first, answer bar at the bottom, on every surface including the chat (atlas review).
 4. The ⋯ menu comes from a new `Menu` export in the plugin SDK (`@getpaseo/plugin/client/ui`), backed by the host menu engine: popover on desktop, sheet on phones (A1). This needs a paseo (FSH) PR before the card PR.
+5. The reply field never shares a row with buttons: full width, grows with its text (A7 review).
 
 ## Next step
 
