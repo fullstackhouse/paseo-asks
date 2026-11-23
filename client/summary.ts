@@ -11,7 +11,7 @@ export interface WorkspaceSummaryState {
   needsYou?: boolean;
   key?: string;
   panelId?: string;
-  /** Things in this workspace that wait on the human, one Overview row each (the host shows up to 5). */
+  /** Things in this workspace that wait on the human, one Overview row each. */
   entries?: AskEntry[];
 }
 export interface WorkspaceSummaryRegistration {
