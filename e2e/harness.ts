@@ -89,7 +89,7 @@ export class Sandbox {
 
   /** Runs the paseo CLI against this sandbox's daemon. */
   async paseo(...args: string[]): Promise<string> {
-    const { stdout } = await exec(PASEO, [...args, "--home", this.paseoHome], { maxBuffer: 16 << 20 });
+    const { stdout } = await exec(PASEO, [...args, "--home", this.paseoHome], { maxBuffer: 16 << 20, env: cliEnv() });
     return stdout;
   }
 
@@ -230,6 +230,14 @@ function writeCodexConfig(home: string, proxy: string): void {
       "",
     ].join("\n"),
   );
+}
+
+/**
+ * The CLI as the human runs it. Run from inside a Paseo agent, the caller's PASEO_AGENT_ID would make `paseo send`
+ * wrap the message as one from that agent, which the model sees, so a recording made there misses in CI.
+ */
+function cliEnv(): NodeJS.ProcessEnv {
+  return Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("PASEO_")));
 }
 
 function daemonEnv({ home, proxy }: { home: string; proxy: string }): NodeJS.ProcessEnv {
