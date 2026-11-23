@@ -24,18 +24,19 @@ export function askCardStates({ ic, esc }) {
     const p = c.phone ? ' ak-phone' : ''
     const head = `<div class="ak-head"><span class="ak-kind">${ic(KIND[c.kind] || 'circle-help')}</span><span class="ak-id">${esc(c.id)}</span>
       <span class="ak-title">${esc(c.title)}${c.deleted ? ' <em>(since deleted)</em>' : ''}</span>
-      ${c.pr ? `<span class="ak-badge ak-badge-pr">${esc(c.pr)}</span>` : ''}
+      ${c.pr ? `<span class="ak-badge ak-badge-${c.pr[1]}">${esc(c.pr[0])}</span>` : ''}
       ${c.badge ? `<span class="ak-badge ak-badge-${c.badge[1]}">${esc(c.badge[0])}</span>` : ''}
       ${c.orphaned ? '<span class="ak-badge ak-badge-warn">orphaned</span>' : ''}
       <span class="ak-age">${esc(c.age || '')}</span></div>`
     if (c.collapsed) return `<div class="ak-card ak-collapsed${p}">${head}</div>`
     const outcome = c.outcome ? `<div class="ak-outcome">${c.outcome}</div>` : ''
     const notice = c.notice ? `<div class="ak-notice">${ic('warn')}<span>${esc(c.notice)}</span></div>` : ''
+    const inline = !(c.actions && c.actions.length)
     const moreBtn = c.more
-      ? `<span class="ak-more-wrap"><button type="button" class="ak-iconbtn${c.more.open ? ' is-open' : ''}" aria-label="More">${ic('more-horizontal')}</button>${c.more.popover || ''}</span>`
+      ? `<span class="ak-more-wrap${inline ? ' is-inline' : ''}"><button type="button" class="ak-iconbtn${c.more.open ? ' is-open' : ''}" aria-label="More">${ic('more-horizontal')}</button>${c.more.popover || ''}</span>`
       : ''
-    const actions = c.actions || c.more
-      ? `<div class="ak-actions">${(c.actions || []).map(([l, pri]) => `<button type="button" class="ak-btn${pri ? ' ak-btn-primary' : ''}">${esc(l)}</button>`).join('')}${moreBtn}</div>`
+    const actions = !inline
+      ? `<div class="ak-actions">${c.actions.map(([l, pri]) => `<button type="button" class="ak-btn${pri ? ' ak-btn-primary' : ''}">${esc(l)}</button>`).join('')}${moreBtn}</div>`
       : ''
     const body = c.body && !c.hideBody ? `<div class="ak-body${c.readOnly ? ' is-readonly' : ''}">${c.body}</div>` : ''
     const links = c.links ? `<div class="ak-links">${c.links.map((l) => `<span class="ak-link">${esc(l)}</span>`).join('')}</div>` : ''
@@ -43,9 +44,8 @@ export function askCardStates({ ic, esc }) {
     const chips = c.chips
       ? `<div class="ak-chips">${c.chips.map(([s, l]) => `<span class="ak-chip ak-chip-${s}"><b>${{ live: '●', deploying: '◌', failed: '✕' }[s]}</b>${esc(l)}</span>`).join('')}</div>`
       : ''
-    const reply = c.noReply
-      ? ''
-      : `<div class="ak-reply${c.reply ? ' has-text' : ''}"><span class="ak-reply-text">${c.reply ? esc(c.reply) : 'Reply to the agent…'}</span>${c.reply ? `<span class="ak-send">${ic('send')}</span>` : ''}</div>`
+    const replyField = `<div class="ak-reply${c.reply ? ' has-text' : ''}"><span class="ak-reply-text">${c.reply ? esc(c.reply) : 'Reply to the agent…'}</span>${c.reply ? `<span class="ak-send">${ic('send')}</span>` : ''}</div>`
+    const reply = c.noReply ? '' : inline ? `<div class="ak-replyrow">${replyField}${moreBtn}</div>` : replyField
     const inner = c.deleted ? '' : `${outcome}${notice}${actions}${body}${links}${prLine}${chips}${reply}`
     return `<div class="ak-card${p}">${head}${inner ? `<div class="ak-detail">${inner}</div>` : ''}</div>`
   }
@@ -75,7 +75,7 @@ export function askCardStates({ ic, esc }) {
   const PR_OK = [['PR #1265 open'], ['checks ✓', 'ok'], ['review required']]
   const CHIPS2 = [['live', 'pr-1265.example.dev'], ['live', 'docs-1265.example.dev']]
   const prAsk = {
-    kind: 'pr', id: 'A12', title: 'Ship the export fix', pr: 'PR #1265', age: '4m',
+    kind: 'pr', id: 'A12', title: 'Ship the export fix', pr: ['checks ✓', 'ok'], age: '4m',
     actions: [['QA-approve + merge', true], ['Request changes']], more: true, body: BODY_PR, prLine: PR_OK, chips: CHIPS2,
   }
   const decision = {
@@ -110,7 +110,7 @@ export function askCardStates({ ic, esc }) {
       { id: 's5', caption: 'Phone — long action labels wrap, ⋯ ends the last row', html: phone(card(phoneAsk)) },
       { id: 's6', caption: 'Orphaned — the raising agent is archived', html: desk(card({ ...prAsk, orphaned: true, notice: 'The agent that raised this is archived. Closing it here notifies nobody.' })),
         notes: ['Answering an orphaned ask shows the toast "A12 closed; its agent is gone, so nobody was told."'] },
-      { id: 's7', caption: 'Edge — checks failing and merge conflicts', html: desk(card({ ...prAsk, actions: [['Fix and re-run checks', true], ['Request changes']], prLine: [['PR #1265 open'], ['checks ✗', 'err'], ['has conflicts', 'err'], ['review required']] })),
+      { id: 's7', caption: 'Edge — checks failing and merge conflicts', html: desk(card({ ...prAsk, pr: ['checks ✗', 'err'], actions: [['Fix and re-run checks', true], ['Request changes']], prLine: [['PR #1265 open'], ['checks ✗', 'err'], ['has conflicts', 'err'], ['review required']] })),
         notes: ['The agent decides whether to keep its Merge when green action; the card only reports the PR state.'] },
       { id: 's8', caption: 'Edge — a preview deploying, another failed', html: desk(card({ ...prAsk, chips: [['live', 'pr-1265.example.dev'], ['deploying', 'docs-1265.example.dev'], ['failed', 'storybook-1265.example.dev']] })),
         notes: ['Deploying and failed chips open the deployment logs.'] },
@@ -126,7 +126,7 @@ export function askCardStates({ ic, esc }) {
       { id: 's3', caption: 'Discussion already open — Open discussion', html: desk(card({ ...prAsk, more: { open: true, popover: menu([DONE, ['messages-square', 'Open discussion'], OPEN_CHAT, '-', DROP]) } }), 'ak-tall') },
       { id: 's4', caption: 'Phone — bottom sheet', html: phone(`${card({ ...phoneAsk, more: { open: true } })}${sheet(FULL)}`, 'ak-sheet-frame') },
       { id: 's5', caption: 'On a handed-back ask (A3) — Mark done, Discuss, Open chat, Drop ask', html: desk(card({ ...handed, more: { open: true, popover: menu(FULL) } }), 'ak-tall') },
-      { id: 's6', caption: 'On a closed ask (A4) — Discuss and Open chat only', html: desk(card({ ...closedBase, badge: ['done', 'muted'], outcome: 'Done by the agent · PR merged · 1 h ago', prLine: [['PR #1265 merged']], chips: undefined, more: { open: true, popover: menu([DISCUSS, OPEN_CHAT]) } }), 'ak-tall') },
+      { id: 's6', caption: 'On a closed ask (A4) — Discuss and Open chat only', html: desk(card({ ...closedBase, pr: ['merged', 'muted'], badge: ['done', 'muted'], outcome: 'Done by the agent · PR merged · 1 h ago', prLine: [['PR #1265 merged']], chips: undefined, more: { open: true, popover: menu([DISCUSS, OPEN_CHAT]) } }), 'ak-tall') },
       { id: 's7', caption: 'Edge — orphaned ask: no Discuss, silent close', html: desk(`${card({ ...prAsk, orphaned: true, more: { open: true, popover: menu([DONE, OPEN_CHAT, '-', DROP]) } })}`, 'ak-tall'),
         notes: ['Mark done and Drop ask close it silently; the toast says "A12 closed; its agent is gone, so nobody was told."'] },
       { id: 's8', caption: 'Edge — provider has no read-only mode', html: desk(`${card({ ...prAsk })}${toast('Side chats need a provider with a read-only mode (Claude).')}`),
@@ -135,17 +135,17 @@ export function askCardStates({ ic, esc }) {
     A3: [
       { id: 's1', caption: 'Right after you chose a send action', html: desk(card(handed)),
         notes: ['No agent actions: the move is the agent\'s. Reply field and ⋯ stay.', 'Back to A1 when the agent gives new actions, its agent is archived, or after a day with the agent not running. In lists it sits under In progress.', 'If the agent\'s turn ends without moving it, the agent gets one reminder; the card does not change.'] },
-      { id: 's2', caption: 'PR checks still running, a chip deploying', html: desk(card({ ...handed, prLine: [['PR #1265 open'], ['checks running'], ['review required']], chips: [['live', 'pr-1265.example.dev'], ['deploying', 'docs-1265.example.dev']] })) },
+      { id: 's2', caption: 'PR checks still running, a chip deploying', html: desk(card({ ...handed, pr: ['checks …', 'muted'], prLine: [['PR #1265 open'], ['checks running'], ['review required']], chips: [['live', 'pr-1265.example.dev'], ['deploying', 'docs-1265.example.dev']] })) },
       { id: 's3', caption: 'After a reply — the note quoted in the outcome line', html: desk(card({ ...handed, outcome: 'You replied “Fix the docs preview first” · just now' })) },
       { id: 's4', caption: 'Phone', html: phone(card({ ...handed, phone: true })) },
     ],
     A4: [
-      { id: 's1', caption: 'Done by the agent — PR merged', html: desk(card({ ...closedBase, badge: ['done', 'muted'], outcome: 'Done by the agent · 1 h ago', prLine: [['PR #1265 merged']], chips: undefined })),
+      { id: 's1', caption: 'Done by the agent — PR merged', html: desk(card({ ...closedBase, pr: ['merged', 'muted'], badge: ['done', 'muted'], outcome: 'Done by the agent · 1 h ago', prLine: [['PR #1265 merged']], chips: undefined })),
         notes: ['A reply here reaches the agent, which may reopen the ask. ⋯ offers Discuss and Open chat only.'] },
-      { id: 's2', caption: 'Dropped by you, with a note', html: desk(card({ ...closedBase, badge: ['dropped', 'muted'], outcome: 'Dropped by you: superseded by #1270 · 3 h ago', prLine: [['PR #1265 closed']], chips: undefined })) },
+      { id: 's2', caption: 'Dropped by you, with a note', html: desk(card({ ...closedBase, pr: ['closed', 'muted'], badge: ['dropped', 'muted'], outcome: 'Dropped by you: superseded by #1270 · 3 h ago', prLine: [['PR #1265 closed']], chips: undefined })) },
       { id: 's3', caption: 'Resolved by a decision option', html: desk(card({ ...decision, actions: undefined, readOnly: true, badge: ['done', 'muted'], outcome: 'You chose <b>b: Cache per workspace</b> · yesterday' })) },
-      { id: 's4', caption: 'Phone — dropped', html: phone(card({ ...closedBase, phone: true, badge: ['dropped', 'muted'], outcome: 'Dropped by you: superseded by #1270 · 3 h ago', prLine: [['PR #1265 closed']], chips: undefined })) },
-      { id: 's5', caption: 'Collapsed row — muted badge', html: desk(card({ ...closedBase, badge: ['done', 'muted'], collapsed: true, age: '1h' })) },
+      { id: 's4', caption: 'Phone — dropped', html: phone(card({ ...closedBase, phone: true, pr: ['closed', 'muted'], badge: ['dropped', 'muted'], outcome: 'Dropped by you: superseded by #1270 · 3 h ago', prLine: [['PR #1265 closed']], chips: undefined })) },
+      { id: 's5', caption: 'Collapsed row — muted badge', html: desk(card({ ...closedBase, pr: ['merged', 'muted'], badge: ['done', 'muted'], collapsed: true, age: '1h' })) },
       { id: 's6', caption: 'Edge — the ask was deleted (chat card)', html: desk(card({ kind: 'pr', id: 'A12', title: 'Ship the export fix', deleted: true, age: '' })),
         notes: ['No body; the header says "(since deleted)".'] },
     ],

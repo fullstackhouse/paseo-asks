@@ -507,7 +507,8 @@
 .ak-title em { color: var(--muted-foreground); font-style: normal; }
 .ak-age { color: var(--muted-foreground); font-size: 12px; }
 .ak-badge { font-size: 11px; line-height: 1; padding: 3px 6px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted-foreground); white-space: nowrap; }
-.ak-badge-pr { background: var(--secondary); color: var(--foreground); }
+.ak-badge-ok { background: var(--status-success-bg); color: var(--status-success-text); border-color: var(--status-success-border); }
+.ak-badge-err { background: var(--status-error-bg); color: var(--status-error-text); border-color: var(--status-error-border); }
 .ak-badge-run { background: var(--status-info-bg); color: var(--status-info-text); border-color: var(--status-info-border); }
 .ak-badge-muted { background: transparent; color: var(--muted-foreground); }
 .ak-badge-warn { background: var(--status-warning-bg); color: var(--status-warning-text); border-color: var(--status-warning-border); }
@@ -560,3 +561,7 @@
 .ak-grab { display: block; width: 36px; height: 4px; border-radius: 2px; background: var(--border-disabled); margin: 4px auto 8px; }
 .ak-toast { display: flex; gap: 8px; align-items: center; margin-top: 12px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--status-error-border); background: var(--popover); color: var(--foreground); font-size: 13px; box-shadow: var(--shadow-md); }
 .ak-toast svg { color: var(--status-error-icon); }
+
+.ak-replyrow { display: flex; align-items: center; gap: 8px; }
+.ak-replyrow .ak-reply { flex: 1; min-width: 0; }
+.ak-more-wrap.is-inline .ak-menu { left: auto; right: 0; }
