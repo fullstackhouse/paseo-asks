@@ -628,6 +628,9 @@ describe("phase 2", () => {
       expect(visibleActions(store.get(WS, "A1")!)).toHaveLength(2);
     });
 
+    const REOFFER =
+      "Its Merge action is hidden while the PR is review required: ask_update A1 with what the human does now (reviewer choices, or a re-request once you have addressed the changes).";
+
     it("tells the owner to re-offer when a new required review hides its Merge button", async () => {
       decision = "APPROVED";
       await createWith([merge]);
@@ -636,10 +639,50 @@ describe("phase 2", () => {
       await watcher.refresh();
       next = pr({ reviewDecision: "REVIEW_REQUIRED" });
       await watcher.refresh();
+      await watcher.refresh();
       await outbox.flush();
-      expect(sent).toEqual([
-        "[asks] A1 (PR #30) PR #30 review: review required. Its Merge action is hidden while the PR needs a review: ask_update A1 with what the human does now (reviewer choices, or a re-request once you have addressed the changes).",
-      ]);
+      expect(sent).toEqual([`[asks] A1 (PR #30) PR #30 review: review required. ${REOFFER}`]);
+    });
+
+    it("tells the owner once when the first snapshot already hides Merge, subscribed or not", async () => {
+      // An ask from before the check, or one that got through a failed gh read.
+      await store.create({ workspaceId: WS, ownerAgentId: OWNER, kind: "pr", title: "PR #30", links: [{ label: "PR", url: PR_URL }], actions: [merge] });
+      const watcher = new PrWatcher(store, service, async () => pr({ reviewDecision: "REVIEW_REQUIRED" }));
+      await watcher.refresh();
+      await watcher.refresh();
+      await outbox.flush();
+      expect(sent).toEqual([`[asks] A1 (PR #30) PR #30: ${REOFFER}`]);
+    });
+
+    it("tells the owner again after it re-offers Merge and a review hides it again", async () => {
+      await store.create({ workspaceId: WS, ownerAgentId: OWNER, kind: "pr", title: "PR #30", links: [{ label: "PR", url: PR_URL }], actions: [merge] });
+      let next = pr({ reviewDecision: "REVIEW_REQUIRED" });
+      const watcher = new PrWatcher(store, service, async () => next);
+      await watcher.refresh();
+      decision = "APPROVED";
+      next = pr({ reviewDecision: "APPROVED" });
+      await watcher.refresh();
+      expect(store.get(WS, "A1")!.mergeHiddenNotice).toBeUndefined();
+      next = pr({ reviewDecision: "REVIEW_REQUIRED" });
+      await watcher.refresh();
+      await outbox.flush();
+      expect(sent.filter((text) => text.includes("Merge action is hidden"))).toHaveLength(2);
+    });
+
+    it("forgets the notice when the owner offers new actions", async () => {
+      await store.create({ workspaceId: WS, ownerAgentId: OWNER, kind: "pr", title: "PR #30", links: [{ label: "PR", url: PR_URL }], actions: [merge] });
+      await new PrWatcher(store, service, async () => pr({ reviewDecision: "REVIEW_REQUIRED" })).refresh();
+      expect(store.get(WS, "A1")!.mergeHiddenNotice).toBe("REVIEW_REQUIRED");
+      await service.callTool(OWNER, "ask_update", { id: "A1", actions: [{ label: "Request review from alice", kind: "send", prompt: "Request review on PR #30 from alice" }] });
+      expect(store.get(WS, "A1")!.mergeHiddenNotice).toBeUndefined();
+    });
+
+    it("leaves held requested changes to the Address ask", async () => {
+      await store.create({ workspaceId: WS, ownerAgentId: OWNER, kind: "pr", title: "PR #30", links: [{ label: "PR", url: PR_URL }], actions: [merge] });
+      const watcher = new PrWatcher(store, service, async () => pr({ reviewDecision: "CHANGES_REQUESTED" }), async () => false);
+      await watcher.refresh();
+      await outbox.flush();
+      expect(sent).toEqual([]);
     });
 
     it("recognises merge actions by label or prompt", () => {
@@ -650,6 +693,13 @@ describe("phase 2", () => {
       expect(isMergeAction({ kind: "send", label: "Request review from alice", prompt: "then merge" })).toBe(false);
       expect(isMergeAction({ kind: "send", label: "Fix merge conflicts", prompt: "Resolve the merge conflict on PR #30" })).toBe(false);
       expect(isMergeAction({ kind: "send", label: "Start once #12 is merged" })).toBe(false);
+      expect(isMergeAction({ kind: "send", label: "QA, then merge when green" })).toBe(true);
+      expect(isMergeAction({ kind: "send", label: "Merge both when green" })).toBe(true);
+      expect(isMergeAction({ kind: "send", label: "Rebase", prompt: "Rebase and merge PR #30" })).toBe(true);
+      expect(isMergeAction({ kind: "send", label: "Land it", prompt: "Run gh pr merge 30 --squash" })).toBe(true);
+      expect(isMergeAction({ kind: "send", label: "Start phase 2 (after merge #12)" })).toBe(false);
+      expect(isMergeAction({ kind: "send", label: "Start the migration", prompt: "Wait for PR #12 to merge, then start the migration" })).toBe(false);
+      expect(isMergeAction({ kind: "send", label: "Close it", prompt: "Close PR #30, don't merge it" })).toBe(false);
     });
   });
 });

@@ -172,7 +172,9 @@ export class AsksService {
           // Reopened by its owner: the old discussion was about what it asked then. Discuss starts a new one.
           const reopened = !OPEN_STATUSES.includes(ask.status) && patch.status !== undefined && OPEN_STATUSES.includes(patch.status);
           const unlink = reopened && ask.discussionAgentId ? { discussionAgentId: undefined, discussionWorkspaceId: undefined } : {};
-          const updated = await this.store.update(ask.workspaceId, id, { ...patch, ...unlink, lastCall: callKey("update", args) });
+          // New actions are a new offer: if a review hides them too, the owner hears about it again.
+          const reoffered = patch.actions ? { mergeHiddenNotice: undefined } : {};
+          const updated = await this.store.update(ask.workspaceId, id, { ...patch, ...unlink, ...reoffered, lastCall: callKey("update", args) });
           if (agentId !== ask.ownerAgentId && !ask.orphaned && patch.status && patch.status !== ask.status) {
             this.notify(ask, `[asks] ${ask.id} (${ask.title}) marked ${patch.status.replace("_", " ")} in a side chat.`);
           }
