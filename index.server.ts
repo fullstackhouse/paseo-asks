@@ -10,7 +10,15 @@ import { LastOutputs } from "./server/last-output";
 import { HumanMessages } from "./server/human-messages";
 import { listen } from "./server/listener";
 import { findAskCall } from "./server/locate";
-import { CLASSIFIER_PROMPT, CLASSIFIER_PROMPTS, FEWER_CLASSIFIER_PROMPT, NUDGE, paseoClassifier, shouldNudge } from "./server/nudge";
+import {
+  CLASSIFIER_PROMPT,
+  CLASSIFIER_PROMPTS,
+  FEWER_CLASSIFIER_PROMPT,
+  NUDGE,
+  paseoClassifier,
+  shouldNudge,
+  waitsOnOwnWork,
+} from "./server/nudge";
 import { isWorking, Outbox, type Courier } from "./server/outbox";
 import { checkFilePaths, diskPathEnv } from "./server/file-paths";
 import { dataDir } from "./server/paths";
@@ -161,7 +169,8 @@ export default function contribute(server: PluginServerContext) {
       .then(() => outbox.flush(agent.id))
       .catch(() => {});
     const openIds = service.openAskIds(agent.id, workspaceId);
-    void shouldNudge(timeline, (id) => openIds.has(id), classifierFor(agent.id), human)
+    void waitsOnOwnWork(api.agents.ref(agent.id))
+      .then((waiting) => !waiting && shouldNudge(timeline, (id) => openIds.has(id), classifierFor(agent.id), human))
       .then(async (nudge) => {
         // The classifier takes a few seconds. If the human has moved on, steer the reminder into the new
         // turn; only an agent that can't take a steer is left alone.
