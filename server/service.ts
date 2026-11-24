@@ -135,7 +135,8 @@ export class AsksService {
           const { id, ...patch } = UpdateInput.parse(args);
           this.checkStillWaiting(this.find(workspaceId, agentId, id), agentId);
           const paths = await this.paths(this.find(workspaceId, agentId, id).workspaceId, patch.body);
-          patch.body = paths.body;
+          // Only when given: an explicit `body: undefined` in the patch would erase the stored body.
+          if (patch.body !== undefined) patch.body = paths.body;
           // Read again after the path check (git, seconds): a human click meanwhile must not be overwritten.
           const ask = this.find(workspaceId, agentId, id);
           this.checkStillWaiting(ask, agentId);
