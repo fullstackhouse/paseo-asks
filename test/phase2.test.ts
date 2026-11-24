@@ -10,7 +10,7 @@ import { describePrChange, summarizeChecks } from "../server/github";
 import { latestReply } from "../server/last-output";
 import { Outbox, type Courier } from "../server/outbox";
 import { AsksService, instructions } from "../server/service";
-import { agentInstructions, ASK_FREQUENCIES, INSTRUCTIONS_LIMIT } from "../shared/instructions";
+import { ASK_FREQUENCIES, INSTRUCTIONS_LIMIT } from "../shared/instructions";
 import { AskStore } from "../server/store";
 import { PrWatcher } from "../server/watcher";
 

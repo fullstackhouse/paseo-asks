@@ -16,7 +16,7 @@ import { dataDir } from "./server/paths";
 import { isAsksPermission } from "./server/permissions";
 import { ghPrReviewOf } from "./server/review-buttons";
 import { AsksService, TOOLS } from "./server/service";
-import { agentInstructions } from "./shared/instructions";
+import { instructions } from "./shared/instructions";
 import { AskStore } from "./server/store";
 import { attentionForOpenAsks } from "./server/schedule-attention";
 import { PrWatcher } from "./server/watcher";
@@ -263,7 +263,7 @@ export default function contribute(server: PluginServerContext) {
   const listening = listen(dir, {
     // Read when an agent's MCP session starts, so a changed setting reaches agents started or resumed after it.
     "/instructions": async () => ({
-      instructions: agentInstructions({ ...(await agentOptions()), actOnReviewChanges: await actOnReviewChanges() }),
+      instructions: instructions({ ...(await agentOptions()), actOnReviewChanges: await actOnReviewChanges() }),
     }),
     "/tools": async () => ({ tools: TOOLS }),
     "/call": async ({ agentId, cwd, name, arguments: args }) => {

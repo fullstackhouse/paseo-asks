@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { agentInstructions, instructions } from "../shared/instructions";
+import { instructions } from "../shared/instructions";
 import { agentSettings } from "../shared/settings";
 
 describe("agent instructions", () => {
@@ -20,14 +20,8 @@ describe("agent instructions", () => {
     expect(others(fewer)).toEqual(others(instructions()));
   });
 
-  it("uses custom instructions in place of the built-in ones, ignoring blank ones", () => {
-    expect(agentInstructions({ customInstructions: "  Ask only about merges.\n" })).toBe("Ask only about merges.");
-    expect(agentInstructions({ customInstructions: " \n ", frequency: "fewer" })).toBe(instructions({ frequency: "fewer" }));
-    expect(agentInstructions({})).toBe(instructions());
-  });
-
-  it("defaults a missing settings document to the built-in rules", () => {
-    expect(agentSettings.schema.parse({})).toEqual({ frequency: "default", customInstructions: "" });
+  it("defaults a missing settings document to Default", () => {
+    expect(agentSettings.schema.parse({})).toEqual({ frequency: "default" });
   });
 });
 

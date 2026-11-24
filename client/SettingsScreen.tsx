@@ -4,7 +4,7 @@ import { SettingsCard, SettingsSection, SettingsSwitch } from "@getpaseo/plugin/
 import { displaySettings, reviewSettings } from "../shared/settings";
 import { AgentRulesSettings } from "./AgentRulesSettings";
 
-export function SettingsScreen({ theme }: PluginSurfaceProps) {
+export function SettingsScreen(_props: PluginSurfaceProps) {
   const settings = useSettings(displaySettings);
   const reviews = useSettings(reviewSettings);
   return (
@@ -37,7 +37,7 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
           />
         </SettingsCard>
       </SettingsSection>
-      <AgentRulesSettings theme={theme} />
+      <AgentRulesSettings />
     </>
   );
 }

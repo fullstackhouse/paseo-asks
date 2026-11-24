@@ -21,9 +21,5 @@ export const agentSettings = defineSettings({
   id: "agents",
   scope: "host",
   version: 1,
-  schema: z.object({
-    frequency: z.enum(ASK_FREQUENCIES).default("default"),
-    // Replaces the built-in rules when non-blank.
-    customInstructions: z.string().default(""),
-  }),
+  schema: z.object({ frequency: z.enum(ASK_FREQUENCIES).default("default") }),
 });
