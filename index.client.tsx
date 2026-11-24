@@ -237,7 +237,7 @@ export default function contribute(client: PluginClientContext) {
     Component: WorkspacePanel,
   });
   client.addScreen({ id: "asks", title: "Asks", Component: GlobalScreen });
-  client.addSettingsScreen({ id: "asks", title: "Asks", icon: "MessageCircleQuestionMark", Component: SettingsScreen });
+  client.addSettingsScreen({ id: "asks", title: "Settings", icon: "Settings", Component: SettingsScreen });
   client.addSidebarHeaderItem({ id: "asks", title: "Asks", Component: SidebarItem });
   client.addCommandCenterItem({
     id: "open-asks",
