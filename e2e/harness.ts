@@ -186,6 +186,19 @@ export class Sandbox {
     await this.wait(agentId);
   }
 
+  /**
+   * Waits until the model proxy has seen no request for `quietMs`. A turn-end hook can start a request (the nudge
+   * classifier) after every agent is idle; stopping before it lands leaves it out of a recording, and replay misses it.
+   */
+  async quiet(quietMs = 15_000): Promise<void> {
+    const seen = () => this.proxy.answered.length + this.proxy.misses.length;
+    let before = -1;
+    while (before !== seen()) {
+      before = seen();
+      await new Promise((resolve) => setTimeout(resolve, quietMs));
+    }
+  }
+
   /** How many times the nudge classifier (a child agent prompted with CLASSIFIER_PROMPT) has had its answer. */
   classifierCalls(): number {
     const opening = CLASSIFIER_PROMPT.slice(0, 60);

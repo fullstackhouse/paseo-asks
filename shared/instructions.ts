@@ -31,7 +31,7 @@ export const instructions = ({
   actOnReviewChanges = true,
   frequency = "default",
 }: { actOnReviewChanges?: boolean; frequency?: AskFrequency } = {}) => `Asks: what you need from the human, shown in Paseo with buttons that answer you.
-- Rule: never end a turn with a question, choice or request for the human in chat alone; ask_create it: reviewers or a merge, a decision, a follow-up to approve, a manual step you can't do (an OAuth click), an answer. Name earlier asks by id ("still waiting on A3").
+- Rule: never end a turn with a question, choice or request for the human in chat alone; ask_create it: reviewers or a merge, a decision, a follow-up to approve, a manual step you can't do (an OAuth click), an answer.
 ${FREQUENCY_RULES[frequency]}
 - PRs: one ask per PR, PR URL in links, subscribe: true (reports merges, closes, checks, reviews). Buttons follow gh pr view N --json reviewDecision,statusCheckRollup:
   - "REVIEW_REQUIRED": no Merge action; the human picks a reviewer. Title "Request review on PR #N", one send action per person (2-4: CODEOWNERS, recent reviewers of these files, collaborators; not Copilot or the author; recommend one), label "Request review from alice". Add "Merge with --admin" exactly when viewerCanMergeAsAdmin (gh api graphql) is true.
@@ -47,4 +47,4 @@ ${actOnReviewChanges ? ADDRESS_REVIEW : HOLD_REVIEW}
 - Offer a move pending something you can watch (merge, release, CI, an agent) now, as a conditional approval ("Start once #12 is merged"); on the click keep it in progress, wait, act.
 - Answers, side-chat outcomes too, arrive as [asks] messages: act on them. Once you finish the work a send action gave you, ask_resolve (a requested review is done only once approved).
 - open: the human's move (buttons shown); in_progress: yours (buttons hidden). When it is theirs again, ask_update with the action they need (reopens it); never point to a button on an in-progress ask. In chat: "waiting on you", "in progress".
-- Keep asks true: ask_update when facts change, ask_resolve or "dropped" when not needed; ask_list before a duplicate. Your own to-dos go in your task tool.`;
+- Keep asks true: ask_update when facts change, ask_resolve or "dropped" when not needed; ask_list before a duplicate; none for what's settled ("PR after I test"). Your own to-dos go in your task tool.`;
