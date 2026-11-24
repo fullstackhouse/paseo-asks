@@ -10,6 +10,7 @@ import { describePrChange, summarizeChecks } from "../server/github";
 import { latestReply } from "../server/last-output";
 import { Outbox, type Courier } from "../server/outbox";
 import { AsksService, instructions } from "../server/service";
+import { ASK_FREQUENCIES, INSTRUCTIONS_LIMIT } from "../shared/instructions";
 import { AskStore } from "../server/store";
 import { PrWatcher } from "../server/watcher";
 
@@ -398,7 +399,7 @@ describe("phase 2", () => {
     const held = instructions({ actOnReviewChanges: false });
     expect(told).toContain('"CHANGES_REQUESTED": no Merge action. Address the comments');
     expect(held).not.toContain("Address the comments");
-    expect(held).toContain("its button sends you the work, so don't start or offer it yourself");
+    expect(held).toContain("Paseo raises an ask whose button sends it to you; don't start or offer it");
     expect(held.replace(/\n  - "CHANGES_REQUESTED".*\n/, "\n")).toBe(told.replace(/\n  - "CHANGES_REQUESTED".*\n/, "\n"));
   });
 
@@ -420,9 +421,13 @@ describe("phase 2", () => {
 
   // Claude Code cuts MCP server instructions at 4096 characters and appends "… [truncated]". An agent that lost the
   // REVIEW_REQUIRED rule to that cut offered Merge on a PR still waiting for its review.
-  it("fits the instructions in the 4096 characters Claude Code keeps, with the no-Merge review rules in them", () => {
-    for (const rules of [instructions(), instructions({ actOnReviewChanges: false })]) {
-      expect(rules.length).toBeLessThanOrEqual(4096);
+  it("fits every frequency and review variant in the 4096 characters Claude Code keeps, with the no-Merge review rules in them", () => {
+    const variants = ASK_FREQUENCIES.flatMap((frequency) => [
+      instructions({ frequency }),
+      instructions({ frequency, actOnReviewChanges: false }),
+    ]);
+    for (const rules of variants) {
+      expect(rules.length).toBeLessThanOrEqual(INSTRUCTIONS_LIMIT);
       expect(rules).toContain('"REVIEW_REQUIRED": no Merge action; the human picks a reviewer.');
       expect(rules).toContain('"CHANGES_REQUESTED": no Merge action.');
     }

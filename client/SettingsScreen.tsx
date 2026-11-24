@@ -2,6 +2,7 @@ import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { useSettings } from "@getpaseo/plugin/client";
 import { SettingsCard, SettingsSection, SettingsSwitch } from "@getpaseo/plugin/client/ui";
 import { displaySettings, reviewSettings } from "../shared/settings";
+import { AgentRulesSettings } from "./AgentRulesSettings";
 
 export function SettingsScreen(_props: PluginSurfaceProps) {
   const settings = useSettings(displaySettings);
@@ -36,6 +37,7 @@ export function SettingsScreen(_props: PluginSurfaceProps) {
           />
         </SettingsCard>
       </SettingsSection>
+      <AgentRulesSettings />
     </>
   );
 }

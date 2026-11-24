@@ -1,5 +1,6 @@
 import { defineSettings } from "@getpaseo/plugin";
 import { z } from "zod";
+import { ASK_FREQUENCIES } from "./instructions";
 
 export const displaySettings = defineSettings({
   id: "display",
@@ -14,4 +15,11 @@ export const reviewSettings = defineSettings({
   version: 1,
   // Off: "changes requested" on a subscribed PR raises an ask instead of telling the agent.
   schema: z.object({ actOnReviewChanges: z.boolean().default(true) }),
+});
+
+export const agentSettings = defineSettings({
+  id: "agents",
+  scope: "host",
+  version: 1,
+  schema: z.object({ frequency: z.enum(ASK_FREQUENCIES).default("default") }),
 });
