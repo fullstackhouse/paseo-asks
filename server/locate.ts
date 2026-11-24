@@ -9,8 +9,8 @@ const PAGE_SIZE = 200;
 const MAX_PAGES = 25;
 
 /**
- * Where the agent's ask_create call for `askId` sits in its timeline, newest first, or null when it is not there
- * (another agent raised it, or the call is older than the pages read). `seq` is the projected entry's `seqStart`,
+ * Where the agent's latest ask_create or ask_update call for `askId` sits in its timeline, or null when it is not
+ * there (another agent raised it, or the call is older than the pages read). `seq` is the projected entry's `seqStart`,
  * which the host's `navigation.openAgent({ timelinePosition })` scrolls to.
  */
 export async function findAskCall(timeline: TimelineSource, askId: string): Promise<TimelinePosition | null> {
@@ -20,7 +20,7 @@ export async function findAskCall(timeline: TimelineSource, askId: string): Prom
       const { item, seqStart } = page.entries[index]!;
       if (item.type !== "tool_call") continue;
       const card = askCardFor(item);
-      if (card?.verb === "create" && card.askId === askId) return { epoch: page.epoch, seq: seqStart };
+      if (card?.askId === askId && card.verb !== "resolve") return { epoch: page.epoch, seq: seqStart };
     }
     if (read >= MAX_PAGES || !page.hasOlder || !page.startCursor) return null;
     page = await timeline.refetch({
