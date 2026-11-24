@@ -223,7 +223,7 @@ export const discussAsk = defineRpc({
 export const TimelinePositionSchema = z.object({ epoch: z.string(), seq: z.number().int().nonnegative() });
 export type TimelinePosition = z.infer<typeof TimelinePositionSchema>;
 
-/** Where an ask was raised in its owner's chat, so "Show in chat" scrolls there. No position: open the chat at its end. */
+/** Where an ask was last created or updated in its owner's chat, so "Show in chat" scrolls there. No position: open the chat at its end. */
 export const locateAsk = defineRpc({
   name: "asks.locate",
   input: z.object({ workspaceId: z.string(), id: z.string() }),
