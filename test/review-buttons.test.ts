@@ -18,6 +18,7 @@ const review = (overrides: Partial<PrReview> = {}): PrReview => ({
   reviewDecision: "REVIEW_REQUIRED",
   viewerCanMergeAsAdmin: false,
   author: "maker",
+  reviewRequests: 0,
   ...overrides,
 });
 
@@ -35,6 +36,7 @@ describe("review buttons", () => {
     expect(isMergeAction(send("Start the migration", "Wait for PR #12 to merge, then start the migration"))).toBe(false);
     expect(isMergeAction(send("Fix merge conflicts"))).toBe(false);
     expect(isMergeAction(send("Request review from alice", "then merge"))).toBe(false);
+    expect(isMergeAction(send("Merge (skip review)"))).toBe(true);
     expect(isAdminMerge(admin)).toBe(true);
     expect(isAdminMerge(send("Merge (squash)"))).toBe(false);
     expect(reviewerOf(alice)).toBe("alice");
@@ -55,6 +57,15 @@ describe("review buttons", () => {
     );
     expect(reviewButtonsProblem(review(), [alice, send("Request Copilot review")])).toContain("asks Copilot");
     expect(reviewButtonsProblem(review(), [send("Request review from maker")])).toContain("maker wrote the PR");
+    expect(reviewButtonsProblem(review(), [send("Merge (skip review)"), alice, bob])).toContain("still needs a review");
+  });
+
+  it("lets an ask wait for the approval once a review is requested", () => {
+    const requested = review({ reviewRequests: 1 });
+    const waiting = send("Merge (squash) once approved", "Merge PR #30 with squash once alice approves");
+    expect(reviewButtonsProblem(requested, [waiting])).toBeNull();
+    expect(reviewButtonsProblem(requested, [send("Merge (squash)")])).toContain("must wait for the requested review's approval");
+    expect(reviewButtonsProblem(review(), [waiting])).toContain("still needs a review");
   });
 
   it("leaves PRs that need no first review alone", () => {
@@ -70,7 +81,7 @@ describe("review buttons", () => {
     const read = ghPrReviewOf(async (args) => {
       calls.push(args);
       return JSON.stringify({
-        data: { repository: { pullRequest: { number: 30, state: "OPEN", isDraft: false, reviewDecision: "REVIEW_REQUIRED", viewerCanMergeAsAdmin: true, author: { login: "maker" } } } },
+        data: { repository: { pullRequest: { number: 30, state: "OPEN", isDraft: false, reviewDecision: "REVIEW_REQUIRED", viewerCanMergeAsAdmin: true, author: { login: "maker" }, reviewRequests: { totalCount: 0 } } } },
       });
     });
     expect(await read(`${URL}/files`)).toEqual(review({ viewerCanMergeAsAdmin: true }));
@@ -124,8 +135,10 @@ describe("ask_create and ask_update on a PR that needs a review", () => {
     expect((await create([send("Merge (squash)")])).isError).toBeUndefined();
   });
 
-  it("does not read the PR for a follow-up that only waits on it", async () => {
+  it("does not read the PR for a follow-up that only waits on it, or a review ask about something else", async () => {
     expect((await create([send("Start once #30 is merged")], "followup")).isError).toBeUndefined();
+    const qa = [{ kind: "resolve", label: "Looks right" }, { kind: "resolve", label: "Needs changes" }];
+    expect((await create(qa, "review")).isError).toBeUndefined();
     expect(reads).toBe(0);
   });
 
