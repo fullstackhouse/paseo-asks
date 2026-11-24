@@ -36,3 +36,12 @@ declare module "@getpaseo/client" {
     };
   }
 }
+
+// COMPAT(providerSubagents): FSH hosts from fullstackhouse/paseo#101 supply these on agent handles; the npm client has
+// no type for them. Optional: older hosts lack them.
+declare module "@getpaseo/client" {
+  interface PaseoAgentHandle {
+    readonly providerSubagents?: { list(): Promise<{ status: string }[]> };
+    readonly backgroundWork?: { list(): Promise<{ kind: string }[]> };
+  }
+}

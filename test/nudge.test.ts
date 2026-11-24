@@ -3,7 +3,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 import { describe, expect, it } from "vitest";
-import { classifierPrompt, endsWithQuestion, NUDGE, parseAnswer, REFRESH, shouldNudge } from "../server/nudge";
+import { classifierPrompt, endsWithQuestion, NUDGE, parseAnswer, REFRESH, shouldNudge, waitsOnOwnWork } from "../server/nudge";
 import { clip, HumanMessages, humanText } from "../server/human-messages";
 import { stuckReminder } from "../shared/prompts";
 import { Outbox, type AgentState, type Courier } from "../server/outbox";
@@ -115,6 +115,33 @@ describe("shouldNudge", () => {
     const fail = async () => Promise.reject(new Error("provider down"));
     expect(await shouldNudge([user("go"), reply("Which one?")], none, fail)).toBe(true);
     expect(await shouldNudge([user("go"), reply("Done.")], none, fail)).toBe(false);
+  });
+});
+
+describe("waitsOnOwnWork", () => {
+  const list = <T,>(items: T[]) => ({ list: async () => items });
+
+  it("waits while a subagent the agent started is still running", async () => {
+    expect(await waitsOnOwnWork({ providerSubagents: list([{ status: "running" }]), backgroundWork: list([]) })).toBe(true);
+  });
+
+  it("waits while a monitor the agent started is still watching", async () => {
+    expect(await waitsOnOwnWork({ providerSubagents: list([]), backgroundWork: list([{ kind: "monitor" }]) })).toBe(true);
+  });
+
+  it("does not wait on finished subagents or a background shell, which may never exit", async () => {
+    expect(
+      await waitsOnOwnWork({
+        providerSubagents: list([{ status: "completed" }, { status: "failed" }]),
+        backgroundWork: list([{ kind: "shell" }]),
+      }),
+    ).toBe(false);
+  });
+
+  it("does not wait on hosts without these handles or when a read fails", async () => {
+    expect(await waitsOnOwnWork({})).toBe(false);
+    const broken = { list: async () => Promise.reject(new Error("unsupported")) };
+    expect(await waitsOnOwnWork({ providerSubagents: broken, backgroundWork: broken })).toBe(false);
   });
 });
 
