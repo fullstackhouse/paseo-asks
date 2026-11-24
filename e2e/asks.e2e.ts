@@ -75,6 +75,21 @@ describe("asks in a real Paseo daemon", () => {
     );
   });
 
+  it("does not nudge a reply that restates what the human decided a turn earlier", async () => {
+    let before = sandbox.classifierCalls();
+    const agent = await sandbox.run(
+      'I will test this branch myself before anyone opens a pull request for it, so do not open one. Reply with exactly "Understood." and nothing else, without using any tools.',
+    );
+    await sandbox.waitForClassifier(agent, before);
+
+    before = sandbox.classifierCalls();
+    await sandbox.send(agent, "Where do things stand with the pull request? Answer in one or two sentences, without using any tools.");
+    await sandbox.waitForClassifier(agent, before);
+
+    expect(await sandbox.timeline(agent)).not.toMatch(NUDGED);
+    expect(sandbox.asks().filter((ask) => ask.ownerAgentId === agent)).toEqual([]);
+  });
+
   it("does not nudge a plain report", async () => {
     const before = sandbox.classifierCalls();
     const agent = await sandbox.run('Write a file notes.txt containing "hello". Then reply with exactly "Created notes.txt." and nothing else.');

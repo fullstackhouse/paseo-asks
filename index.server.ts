@@ -7,6 +7,7 @@ import { Discussions } from "./server/discuss";
 import { Gh, ghExec } from "./server/gh";
 import { findGh, ghFetcher } from "./server/github";
 import { LastOutputs } from "./server/last-output";
+import { HumanMessages } from "./server/human-messages";
 import { listen } from "./server/listener";
 import { findAskCall } from "./server/locate";
 import { CLASSIFIER_PROMPT, NUDGE, paseoClassifier, shouldNudge } from "./server/nudge";
@@ -101,6 +102,7 @@ export default function contribute(server: PluginServerContext) {
     },
   );
   const lastOutputs = new LastOutputs(dir);
+  const humanMessages = new HumanMessages(dir);
   const ghPath = findGh();
   if (!ghPath) console.error("[asks] gh not found; PR asks will show no live status");
   // Until a hook or RPC hands over a daemon session (e.g. right after a reload), every workspace is polled.
@@ -135,6 +137,7 @@ export default function contribute(server: PluginServerContext) {
     void outbox.flush(agent.id);
     const timeline = await latestTurn(api.agents.ref(agent.id).timeline);
     lastOutputs.record(agent.id, timeline);
+    const human = humanMessages.record(agent.id, timeline);
     // Agents sometimes ask in chat and skip ask_create; one reminder per such turn. A read-only side chat (a
     // discussion in the ask's own workspace) talks to the human directly and could not carry out an ask of its own.
     const sideChat = service.discussing(agent.id).some((ask) => !ask.discussionWorkspaceId);
@@ -146,7 +149,7 @@ export default function contribute(server: PluginServerContext) {
       .then(() => outbox.flush(agent.id))
       .catch(() => {});
     const openIds = service.openAskIds(agent.id, workspaceId);
-    void shouldNudge(timeline, (id) => openIds.has(id), classifierFor(agent.id))
+    void shouldNudge(timeline, (id) => openIds.has(id), classifierFor(agent.id), human)
       .then(async (nudge) => {
         // The classifier takes a few seconds. If the human has moved on, steer the reminder into the new
         // turn; only an agent that can't take a steer is left alone.
