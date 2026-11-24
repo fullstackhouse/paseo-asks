@@ -9,35 +9,32 @@ import type { Outbox } from "./outbox";
 import type { AskStore, NewAsk } from "./store";
 import type { PathCheck } from "./file-paths";
 
-const ADDRESS_REVIEW = `  - "CHANGES_REQUESTED": address the comments, or report what you will not change, and push. Then ask_update the same ask with a send action to re-request the review, not a Merge action.`;
-const HOLD_REVIEW = `  - "CHANGES_REQUESTED": the human decides when the review is worked. Do not start on it yourself: Paseo raises an "Address review comments on PR #N" ask, and its button sends you the work. Do not give your own asks an action that starts the review; that ask carries it. When its prompt arrives, address the comments, or report what you will not change, push, and ask_update the PR ask with a send action to re-request the review, not a Merge action. Comments on an approved PR raise no such ask: list them in the PR ask's body and add an "Address review comments" send action next to Merge.`;
+const ADDRESS_REVIEW = `  - "CHANGES_REQUESTED": no Merge action. Address the comments (or report what you won't change), push, then ask_update with a send action that re-requests the review.`;
+const HOLD_REVIEW = `  - "CHANGES_REQUESTED": no Merge action. Paseo raises an "Address review comments on PR #N" ask; its button sends you the work, so don't start or offer it yourself. An approved PR's comments raise none: list them in the body, add "Address review comments" next to Merge.`;
 
-/** The agent's standing rules. With review changes held, an agent that sees CHANGES_REQUESTED itself must wait for the human too. */
-export const instructions = ({ actOnReviewChanges = true } = {}) => `Asks are the human's list of what you need from them, shown in Paseo outside this chat, with buttons that answer you.
-- Rule: never end a turn with a question, a choice or a request for the human in chat alone. Record it with ask_create.
-- Whenever you need the human — reviewers or a merge for a PR, a decision, approval of a follow-up, a manual step you cannot do (an OAuth click, a vendor console), or an answer — call ask_create. Do not leave it only in the chat. When a reply mentions an ask from an earlier turn, name it by id ("still waiting on A3").
-- Never ask about what is settled. When the human has decided something or said what they will do ("no PR until I've tested it"), act on it and wait for them; "Open the PR once you've tested it" is not an ask, the human will tell you.
-- A step inside work the human already asked for (a push or rebase before the PR they asked for) is part of that work, not an ask of its own. If your permission check blocks it and nothing needs it yet, say so in your reply and leave it until then. Work you recommend or defer is new work: it still gets a followup ask.
-- Follow-ups count even when nothing blocks you: work you recommend or defer ("worth doing next time", "out of scope here") gets a followup ask with a send action whose prompt starts that work, or it is lost when this chat is archived. Instructions against offering more work in your reply do not apply: the ask replaces the offer. Skip it only if you would advise against doing the work at all, or the human already said when they want it.
-- Create or update your asks before your final reply, then end the turn with that reply: your summary and explanation, naming the ask by id where it helps ("A3 has the options"). The ask and its buttons appear in the chat where you call it. A collapsed turn shows only its last message, so the turn must end on your answer, not on the ask or a line pointing to it.
-- One item per ask. title: the question or the move, one line. body (markdown): what is at stake, the facts, the options, your recommendation.
-- Write for someone who hasn't seen the work: open the body with a one-line plain summary and a concrete example (no fixed lead-in phrase), and keep file paths and internal codes (ticket or spec ids) out of titles; PR numbers are fine. When the decision is about structure or flow, add a mermaid diagram.
-- Several open questions (a spec's open questions, a list of decisions) are several asks: create one per question, each with its own options, so the human answers them one by one. Never bundle them into one ask with "Accept all" or "answer in chat"; put the shared context in each body in a line or two.
-- Decisions: one "resolve" action per option (2-4), mark one recommended. PRs and follow-ups: "send" actions whose prompt is the exact instruction you want back ("Merge PR #30 with squash"); put the PR URL in links. Set subscribe: true on a PR ask to be told when it is merged or closed, its checks pass or fail, or its review decision changes.
-- Action labels: a short verb and its object ("Merge (squash)", "Request review from alice"). Leave out the PR number and the ask id: the card shows them. Mark the one you recommend with recommended: true, not with a star in the label.
-- Clicking an action is the human acting, not you. Anything you were told to leave to the human (merge, deploy, delete, publish, spend) belongs in an ask as a send action, not left out: "the human merges" means they click it.
-- Never make the human wait to click. When the move depends on something you can watch (a merge, a release, CI, another agent), offer it now as a conditional approval ("Start once #12 is merged and released", not "Start (#12 merged and released)"); on the click, keep the ask in progress, wait yourself, then act.
-- PRs: one subscribed ask per PR, shaped by gh pr view --json reviewDecision,statusCheckRollup. While checks are pending, offer each Merge action below as "… when green" with a prompt saying so ("Merge PR #30 with squash once checks pass"); on that click, keep the ask in progress and merge when your subscription reports the checks passing. While checks fail, offer no Merge action: fix them and push.
-  - Before any Merge action, read every review body and comment from people, approvals included; skip bot status comments (CI summaries, preview-deploy notices). Use gh pr view N --json reviews,comments for review bodies and top-level comments, and gh api --paginate repos/OWNER/REPO/pulls/N/comments for inline ones. Resolved threads don't count (reviewThreads { isResolved } through gh api graphql tells which). An approval often carries suggestions, questions or "fix before merging": handle them like requested changes (see "CHANGES_REQUESTED"), except that afterwards you offer Merge, naming what changed in the ask body, not a re-review, unless the reviewer asked to look again. Quote any you leave unaddressed in the ask body, with why.
-  - Empty or "APPROVED", checks passing or pending, every comment read: the PR is ready. A "Merge" send action, and no review ask.
-  - "REVIEW_REQUIRED": the human's move is choosing who reviews it. Title it "Request review on PR #N", with one send action per candidate reviewer (2-4, from CODEOWNERS, recent reviewers of the touched files, or collaborators; recommend one), each prompt naming who ("Request review on PR #30 from alice"). If the human can merge past the review (gh api graphql -f query='{repository(owner:"OWNER",name:"REPO"){pullRequest(number:N){viewerCanMergeAsAdmin}}}' is true), add a send action "Merge with --admin" next to them.
+/**
+ * The agent's standing rules. With review changes held, an agent that sees CHANGES_REQUESTED itself must wait for the
+ * human too. Claude Code cuts server instructions at 4096 characters (test/phase2.test.ts keeps both variants under
+ * it), so the PR rules that decide which buttons to show come right after the core rule.
+ */
+export const instructions = ({ actOnReviewChanges = true } = {}) => `Asks: what you need from the human, shown in Paseo with buttons that answer you.
+- Rule: never end a turn with a question, choice or request for the human in chat alone; ask_create it: reviewers or a merge, a decision, a follow-up to approve, a manual step you can't do (an OAuth click), an answer.
+- Follow-ups count even when nothing blocks you: work you recommend or defer ("worth doing next time") gets a followup ask whose send prompt starts it, or it is lost with this chat. Instructions against offering more work don't apply: the ask replaces the offer. Skip only work you'd advise against.
+- PRs: one ask per PR, PR URL in links, subscribe: true (reports merges, closes, checks, reviews). Buttons follow gh pr view N --json reviewDecision,statusCheckRollup:
+  - "REVIEW_REQUIRED": no Merge action; the human picks a reviewer. Title "Request review on PR #N", one send action per candidate (2-4: CODEOWNERS, recent reviewers of these files, collaborators; recommend one), prompt naming who ("Request review on PR #30 from alice"). If viewerCanMergeAsAdmin (gh api graphql) is true, add "Merge with --admin".
 ${actOnReviewChanges ? ADDRESS_REVIEW : HOLD_REVIEW}
-  - Request or re-request a review only when the human clicks. Doing it does not finish the ask: keep it in progress, not resolved, so its subscription tells you about the review. Once the review is approved and checks pass, read the review and its comments as above, then ask_update the same ask to a "Merge" send action.
-- The human may talk an ask through in a side chat; its outcome reaches you as an [asks] message like any other answer.
-- Answers arrive as messages starting with [asks]. Act on them. After finishing work a send action gave you, call ask_resolve (a requested PR review is not finished until it is approved; see PRs).
-- Status says whose move it is. open: the human's; the ask shows its buttons and counts as waiting on them. in_progress: yours, after the human acted; buttons are hidden. When the next move is the human's again (a merge, a review, a label, an answer), ask_update it with the action they need, which sets it back to open; never point them to a button on an in-progress ask. In chat, use these names: "waiting on you" for open, "in progress" for in_progress.
-- Keep asks true: ask_update when facts change, ask_resolve or status "dropped" when the human is no longer needed. Check ask_list before creating a duplicate.
-- Your own to-do list stays in your task tool. Asks are only for things whose next move is the human's.`;
+  - Empty or "APPROVED", every comment read: a "Merge" send action, no review ask. Checks failing: no Merge; fix and push. Pending: "… when green", prompt saying so ("Merge PR #30 with squash once checks pass"); on the click keep it in progress, merge when checks pass.
+  - Before any Merge action, read every human review and comment, approvals included (not bot status ones): gh pr view N --json reviews,comments; inline: gh api --paginate repos/OWNER/REPO/pulls/N/comments. Resolved threads (reviewThreads { isResolved }, gh api graphql) don't count. Treat an approval's suggestions, questions or "fix before merging" as requested changes, then offer Merge (not a re-review unless asked), naming what changed. Quote any you leave unaddressed, with why.
+  - (Re-)request a review only on the human's click; keep the ask in progress, not resolved, so you hear the review. Approved, checks passing: read it as above, ask_update to "Merge".
+- Asks first; end the turn on your reply, a summary naming asks by id ("A3 has the options"): a collapsed turn shows only its last message.
+- One item per ask. title: the question or move, one line, no file paths or ticket/spec ids (PR numbers fine). body (markdown), for a newcomer to the work: a one-line plain summary (no stock opener) and a concrete example, then stakes, facts, options, your pick; mermaid for structure or flow.
+- Several questions are several asks, each with its options, never one with "Accept all" or "answer in chat"; repeat shared context briefly.
+- Decisions: a "resolve" action per option (2-4). PRs, follow-ups: "send" actions, prompt: the exact instruction back ("Merge PR #30 with squash"). Labels: verb + object ("Merge (squash)"), no PR number or ask id. One recommended: true, no stars.
+- A click is the human acting: what you must leave to them (merge, deploy, delete, publish, spend) is a send action.
+- Offer a move pending something you can watch (merge, release, CI, an agent) now, as a conditional approval ("Start once #12 is merged"); on the click keep it in progress, wait, act.
+- Answers, side-chat outcomes too, arrive as [asks] messages: act on them. Once you finish the work a send action gave you, ask_resolve (a requested review is done only once approved).
+- open: the human's move (buttons shown); in_progress: yours (buttons hidden). When it is theirs again, ask_update with the action they need (reopens it); never point to a button on an in-progress ask. In chat: "waiting on you", "in progress".
+- Keep asks true: ask_update when facts change, ask_resolve or "dropped" when not needed; ask_list before a duplicate; none for what the human settled ("PR after I test"). Your own to-dos go in your task tool.`;
 
 const ActionInput = z.object({
   label: z.string().min(1).max(60),
@@ -354,7 +351,14 @@ export class AsksService {
       title,
       body: `A reviewer requested changes on PR #${pr.number}. The agent has not been told: it starts on them when you press **Address review comments**.`,
       links: [{ label: `PR #${pr.number}`, url: pr.url }],
-      actions: [{ label: "Address review comments", kind: "send", prompt: `Address the review comments on PR #${pr.number} (${pr.url}) and push` }],
+      actions: [
+        {
+          label: "Address review comments",
+          kind: "send",
+          // The held-review rule in the instructions leaves the follow-through to this prompt, to fit Claude Code's cut.
+          prompt: `Address the review comments on PR #${pr.number} (${pr.url}), or report what you won't change, and push; then ask_update ${prAsk.id} with a send action that re-requests the review, not a Merge action`,
+        },
+      ],
     });
   }
 

@@ -40,8 +40,22 @@ function source(pages: object[][]) {
 }
 
 describe("findAskCall", () => {
-  it("finds the create call, not a later update of the same ask", async () => {
-    const timeline = source([[text(1), create("A3", 2), update("A3", 5), text(6)]]);
+  it("finds the latest update, not the create of the same ask", async () => {
+    const timeline = source([[text(1), create("A3", 2), update("A3", 5), update("A4", 6), text(7)]]);
+    expect(await findAskCall(timeline, "A3")).toEqual({ epoch: "e1", seq: 5 });
+  });
+
+  it("skips a later resolve", async () => {
+    const resolve = {
+      seqStart: 8,
+      item: {
+        type: "tool_call",
+        name: "mcp__asks__ask_resolve",
+        status: "completed",
+        detail: { type: "unknown", input: { id: "A3" }, output: "A3 [done] decision: T" },
+      },
+    };
+    const timeline = source([[create("A3", 2), resolve]]);
     expect(await findAskCall(timeline, "A3")).toEqual({ epoch: "e1", seq: 2 });
   });
 
