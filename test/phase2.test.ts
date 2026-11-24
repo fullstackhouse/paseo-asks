@@ -404,7 +404,8 @@ describe("phase 2", () => {
   it("tells agents not to ask about what the human settled, or about steps another step needs", () => {
     for (const rules of [instructions(), instructions({ actOnReviewChanges: false })]) {
       expect(rules).toContain("Never ask about what is settled.");
-      expect(rules).toContain("A step that only another step needs");
+      expect(rules).toContain("A step inside work the human already asked for");
+      expect(rules).toContain("Work you recommend or defer is new work: it still gets a followup ask.");
     }
   });
 
