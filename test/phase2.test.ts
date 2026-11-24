@@ -398,7 +398,7 @@ describe("phase 2", () => {
     const held = instructions({ actOnReviewChanges: false });
     expect(told).toContain('"CHANGES_REQUESTED": no Merge action. Address the comments');
     expect(held).not.toContain("Address the comments");
-    expect(held).toContain("Don't start or offer it yourself");
+    expect(held).toContain("its button sends you the work, so don't start or offer it yourself");
     expect(held.replace(/\n  - "CHANGES_REQUESTED".*\n/, "\n")).toBe(told.replace(/\n  - "CHANGES_REQUESTED".*\n/, "\n"));
   });
 
