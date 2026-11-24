@@ -52,6 +52,17 @@ export function summaryState(asks: WorkspaceAsks | undefined): WorkspaceSummaryS
   };
 }
 
+/**
+ * The Overview row for asks the agent is handling, or null when there are none. In-progress asks have no
+ * buttons, so they stay out of Your move; without `needsYou` or `entries` the host lists the row with the
+ * workspace's other facts, and pressing it opens the Asks panel, which shows them.
+ */
+export function inProgressState(asks: WorkspaceAsks | undefined): WorkspaceSummaryState | null {
+  const inProgress = asks?.inProgress ?? 0;
+  if (inProgress === 0) return null;
+  return { label: `${inProgress} in progress`, needsYou: false, panelId: "asks" };
+}
+
 /** Tells the host what waits in each workspace, so entering one can open the Asks panel and Overview can list the asks. */
 export function createWorkspaceSummaries(
   client: PluginClientContext,
@@ -59,6 +70,7 @@ export function createWorkspaceSummaries(
 ) {
   const host = client as PluginClientContext & SummaryHost;
   const items = new Map<string, WorkspaceSummaryRegistration>();
+  const inProgressItems = new Map<string, WorkspaceSummaryRegistration>();
   return {
     set(workspaceId: string, asks: WorkspaceAsks | undefined) {
       if (!host.addWorkspaceSummaryItem) return;
@@ -66,13 +78,22 @@ export function createWorkspaceSummaries(
       const item = items.get(workspaceId);
       if (item) item.update(state);
       else items.set(workspaceId, host.addWorkspaceSummaryItem({ id: "asks", workspaceId, title: "Asks", EntryComponent, ...state }));
+
+      const progress = inProgressState(asks);
+      const progressItem = inProgressItems.get(workspaceId);
+      if (!progress) {
+        progressItem?.remove();
+        inProgressItems.delete(workspaceId);
+      } else if (progressItem) progressItem.update(progress);
+      else inProgressItems.set(workspaceId, host.addWorkspaceSummaryItem({ id: "asks-in-progress", workspaceId, title: "Asks", ...progress }));
     },
     workspaceIds(): string[] {
       return [...items.keys()];
     },
     clear() {
-      for (const item of items.values()) item.remove();
+      for (const item of [...items.values(), ...inProgressItems.values()]) item.remove();
       items.clear();
+      inProgressItems.clear();
     },
   };
 }

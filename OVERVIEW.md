@@ -9,6 +9,7 @@ A scheduled run whose agent leaves asks waiting on you is marked **Needs you** o
 ## Where you see asks
 
 - **Asks** panel in each workspace.
+- The workspace's **Overview**: asks waiting on you under Your move, with their buttons, and an **Asks · N in progress** row while agents handle asks. Pressing that row opens the Asks panel.
 - **Asks** screen in the sidebar, with every workspace's asks and a count of what is waiting. Snoozed workspaces stay out of the count.
 - Inline in the agent's chat: each ask appears where the agent created, updated or resolved it. The latest of those is kept up to date, with open asks expanded and their buttons ready; earlier ones show the ask as it was then. Agents create the ask at the end of their reply, so the buttons sit right below the explanation, with the ask's full text under them.
 - **Asks** pill in an agent's composer, showing a question-bubble icon and its open count, hidden when there are none. Pressing it lists that agent's asks and offers **Refresh asks**, which tells the agent to bring them up to date.

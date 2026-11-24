@@ -140,6 +140,8 @@ export interface AskEntry {
 /** A workspace's asks as the host summary shows them: what waits on you, oldest first, as the Asks panel orders them. */
 export interface WorkspaceAsks {
   count: number;
+  /** Asks the agent is handling (`in_progress`): no buttons, but Overview still points to them. */
+  inProgress: number;
   newestId?: string;
   entries: AskEntry[];
 }
@@ -176,7 +178,8 @@ export function workspaceAsks(
   for (const ask of [...asks].sort(oldestFirst)) {
     for (const workspaceId of workspacesOf(ask)) {
       let workspace = result.get(workspaceId);
-      if (!workspace) result.set(workspaceId, (workspace = { count: 0, entries: [] }));
+      if (!workspace) result.set(workspaceId, (workspace = { count: 0, inProgress: 0, entries: [] }));
+      if (ask.status === "in_progress") workspace.inProgress++;
       // Snoozing the ask's own workspace quiets it in the explainer's too, as the sidebar count does.
       if (!awaitsYou(ask) || snoozed.has(workspaceId) || snoozed.has(ask.workspaceId)) continue;
       workspace.count++;

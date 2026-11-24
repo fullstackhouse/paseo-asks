@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { askDetail, workspaceAsks, type Ask } from "../shared/asks";
-import { createWorkspaceSummaries, summaryState } from "../client/summary";
+import { createWorkspaceSummaries, inProgressState, summaryState } from "../client/summary";
 
 const ask = (
   id: string,
@@ -58,20 +58,21 @@ describe("workspaceAsks", () => {
     expect(Object.fromEntries(result)).toEqual({
       w1: {
         count: 2,
+        inProgress: 1,
         newestId: "A3",
         entries: [
           { id: "A1", title: "Title A1", detail: "Question" },
           { id: "A3", title: "Title A3", detail: "Action" },
         ],
       },
-      w2: { count: 0, entries: [] },
-      w3: { count: 0, entries: [] },
+      w2: { count: 0, inProgress: 0, entries: [] },
+      w3: { count: 0, inProgress: 1, entries: [] },
     });
   });
 
   it("treats a snoozed workspace's asks as not waiting, like waitingCount", () => {
     const result = workspaceAsks([ask("A1", "w1", "open", "2026-11-11T10:00:00Z")], new Set(["w1"]));
-    expect(result.get("w1")).toEqual({ count: 0, entries: [] });
+    expect(result.get("w1")).toEqual({ count: 0, inProgress: 0, entries: [] });
   });
 });
 
@@ -89,13 +90,26 @@ describe("summaryState", () => {
 
   it("carries the count, newest id and entries", () => {
     const entries = [{ id: "A4", title: "Pick a name", detail: "Decision · 2 options" }];
-    expect(summaryState({ count: 1, newestId: "A4", entries })).toMatchObject({
+    expect(summaryState({ count: 1, inProgress: 0, newestId: "A4", entries })).toMatchObject({
       label: "1 waiting on you",
       count: 1,
       needsYou: true,
       key: "A4",
       entries,
     });
+  });
+});
+
+describe("inProgressState", () => {
+  it("is absent when the agent handles nothing", () => {
+    expect(inProgressState(undefined)).toBeNull();
+    expect(inProgressState({ count: 1, inProgress: 0, entries: [] })).toBeNull();
+  });
+
+  it("is a fact that opens the Asks panel, never a move: no needsYou, no entries", () => {
+    const state = inProgressState({ count: 0, inProgress: 5, entries: [] });
+    expect(state).toEqual({ label: "5 in progress", needsYou: false, panelId: "asks" });
+    expect(state).not.toHaveProperty("entries");
   });
 });
 
@@ -113,5 +127,31 @@ describe("createWorkspaceSummaries", () => {
     summaries.set("w1", undefined);
     expect(added).toHaveLength(1);
     expect(added[0]).toMatchObject({ id: "asks", workspaceId: "w1", EntryComponent, count: 0 });
+  });
+
+  it("adds an in-progress row while the agent handles asks, and removes it when they're gone", () => {
+    const added: Array<Record<string, unknown>> = [];
+    const removed: string[] = [];
+    const updates: Array<[string, unknown]> = [];
+    const client = {
+      addWorkspaceSummaryItem: (contribution: Record<string, unknown>) => {
+        added.push(contribution);
+        const id = contribution.id as string;
+        return { update: (patch: unknown) => updates.push([id, patch]), remove: () => removed.push(id) };
+      },
+    };
+    const summaries = createWorkspaceSummaries(client as never, () => null);
+    summaries.set("w1", { count: 0, inProgress: 2, entries: [] });
+    expect(added.map((item) => item.id)).toEqual(["asks", "asks-in-progress"]);
+    expect(added[1]).toMatchObject({ workspaceId: "w1", title: "Asks", label: "2 in progress", panelId: "asks" });
+    expect(added[1]).not.toHaveProperty("EntryComponent");
+
+    summaries.set("w1", { count: 0, inProgress: 3, entries: [] });
+    expect(updates).toContainEqual(["asks-in-progress", { label: "3 in progress", needsYou: false, panelId: "asks" }]);
+
+    summaries.set("w1", { count: 1, inProgress: 0, entries: [] });
+    expect(removed).toEqual(["asks-in-progress"]);
+    summaries.clear();
+    expect(removed).toEqual(["asks-in-progress", "asks"]);
   });
 });
