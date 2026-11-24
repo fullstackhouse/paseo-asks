@@ -2,7 +2,7 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { useAgent, useRpc, useSettings } from "@getpaseo/plugin/client";
 import { Icon, ScrollView, TextInput, useToast } from "@getpaseo/plugin/client/react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useContext, useMemo, useState, type ReactNode } from "react";
+import { useContext, useMemo, useRef, useState, type ReactNode } from "react";
 import { Platform, Pressable, Text, View } from "react-native";
 import { asksChanged } from "./changes";
 import { useDraft } from "./drafts";
@@ -26,6 +26,7 @@ import type { AskCard as AskCardData } from "../shared/timeline";
 import { Markdown } from "@getpaseo/plugin/client/ui";
 import { OpenPrContext } from "./inbox";
 import { openLink } from "./open-link";
+import { useRevealInScroll } from "./reveal";
 import { askQueue, type QueueFilter } from "./queue";
 import { useSnoozedWorkspaceIds } from "./snoozed";
 
@@ -175,8 +176,9 @@ function QueueRow(props: {
 }) {
   const { ask, workspaceName, snoozed, styles, theme, expanded } = props;
   const [hovered, setHovered] = useState(false);
+  const onAnswered = useFoldInPlace(props.onAnswered);
   return (
-    <View style={styles.queueItem}>
+    <View ref={onAnswered.ref} style={styles.queueItem}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${ask.title}, ${workspaceName}`}
@@ -216,7 +218,7 @@ function QueueRow(props: {
       </Pressable>
       {expanded && (
         <View style={styles.queueDetail}>
-          <AskDetail {...props} />
+          <AskDetail {...props} onAnswered={onAnswered.fold} />
         </View>
       )}
     </View>
@@ -554,6 +556,23 @@ export function WorkspaceAskEntry(props: {
   );
 }
 
+/**
+ * Folds an answered card and scrolls back to it: folding a long card leaves the sheet's scroll offset past
+ * it, below the next ask. The card still sits in its slot when the scroll lands; the refetch then moves it to
+ * In progress and the next waiting ask takes that slot.
+ */
+function useFoldInPlace(fold?: () => void) {
+  const ref = useRef<View>(null);
+  const reveal = useRevealInScroll();
+  return {
+    ref,
+    fold: () => {
+      fold?.();
+      reveal(ref.current);
+    },
+  };
+}
+
 function AskRow(props: {
   ask: Ask;
   styles: Styles;
@@ -567,8 +586,9 @@ function AskRow(props: {
   foldBody?: boolean;
 }) {
   const { ask, styles, theme, expanded } = props;
+  const onAnswered = useFoldInPlace(props.onAnswered);
   return (
-    <View style={[styles.card, expanded && styles.cardExpanded]}>
+    <View ref={onAnswered.ref} style={[styles.card, expanded && styles.cardExpanded]}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${ask.id}: ${ask.title}`}
@@ -584,7 +604,7 @@ function AskRow(props: {
         {ask.orphaned && <Text style={styles.orphaned}>orphaned</Text>}
         <Text style={styles.age}>{age(ask.updatedAt)}</Text>
       </Pressable>
-      {expanded && <AskDetail {...props} />}
+      {expanded && <AskDetail {...props} onAnswered={onAnswered.fold} />}
     </View>
   );
 }
