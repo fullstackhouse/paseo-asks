@@ -9,7 +9,7 @@ import type { Outbox } from "./outbox";
 import type { AskStore, NewAsk } from "./store";
 import type { PathCheck } from "./file-paths";
 
-const ADDRESS_REVIEW = `  - "CHANGES_REQUESTED": no Merge action. Address the comments (or report what you won't change), push, then ask_update to re-request the review.`;
+const ADDRESS_REVIEW = `  - "CHANGES_REQUESTED": no Merge action. Address the comments (or report what you won't change), push, then ask_update with a send action that re-requests the review.`;
 const HOLD_REVIEW = `  - "CHANGES_REQUESTED": no Merge action. Paseo raises an "Address review comments on PR #N" ask; its button sends you the work, so don't start or offer it yourself. An approved PR's comments raise none: list them in the body, add "Address review comments" next to Merge.`;
 
 /**
