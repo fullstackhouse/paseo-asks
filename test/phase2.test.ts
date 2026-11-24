@@ -401,6 +401,13 @@ describe("phase 2", () => {
     expect(held.replace(/\n  - "CHANGES_REQUESTED".*\n/, "\n")).toBe(told.replace(/\n  - "CHANGES_REQUESTED".*\n/, "\n"));
   });
 
+  it("tells agents not to ask about what the human settled, or about steps another step needs", () => {
+    for (const rules of [instructions(), instructions({ actOnReviewChanges: false })]) {
+      expect(rules).toContain("Never ask about what is settled.");
+      expect(rules).toContain("A step that only another step needs");
+    }
+  });
+
   it("tells agents to read every review and comment before a Merge action, approvals included", () => {
     for (const rules of [instructions(), instructions({ actOnReviewChanges: false })]) {
       expect(rules).toContain("Before any Merge action, read every review body and comment from people, approvals included");

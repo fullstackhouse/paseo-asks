@@ -90,6 +90,16 @@ describe("shouldNudge", () => {
     expect(seen).toBe("Which one?");
   });
 
+  it("hands the classifier the human's message that opened the turn", async () => {
+    let seen: [string, string] | undefined;
+    await shouldNudge(
+      [user("earlier"), reply("ok"), user("no PR until I've tested it"), tool("Bash"), reply("The PR opens once you've tested it.")],
+      none,
+      async (text, request) => ((seen = [text, request]), false),
+    );
+    expect(seen).toEqual(["The PR opens once you've tested it.", "no PR until I've tested it"]);
+  });
+
   it("lets the classifier catch requests without a question mark", async () => {
     const turn = [user("go"), reply("Decide on the migration, then re-review.")];
     expect(await shouldNudge(turn, none)).toBe(false);
