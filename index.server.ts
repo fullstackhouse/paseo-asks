@@ -14,6 +14,7 @@ import { isWorking, Outbox, type Courier } from "./server/outbox";
 import { checkFilePaths, diskPathEnv } from "./server/file-paths";
 import { dataDir } from "./server/paths";
 import { isAsksPermission } from "./server/permissions";
+import { ghPrReviewOf } from "./server/review-buttons";
 import { AsksService, instructions, TOOLS } from "./server/service";
 import { AskStore } from "./server/store";
 import { attentionForOpenAsks } from "./server/schedule-attention";
@@ -88,6 +89,10 @@ export default function contribute(server: PluginServerContext) {
       await store.update(workspaceId, ask.id, reason === "gone" ? { orphaned: true, status: "open" } : { status: "open" });
     }
   });
+  const ghPath = findGh();
+  if (!ghPath) console.error("[asks] gh not found; PR asks will show no live status");
+  // One Gh for every call, so a spent rate limit pauses them all.
+  const gh = ghPath ? new Gh(ghExec(ghPath)) : null;
   const service = new AsksService(
     store,
     outbox,
@@ -99,14 +104,13 @@ export default function contribute(server: PluginServerContext) {
       const workspace = paseo ? await paseo.workspaces.ref(workspaceId).refresh() : null;
       return workspace?.workspaceDirectory ? checkFilePaths(body, workspace.workspaceDirectory, diskPathEnv) : { body, notes: [] };
     },
+    gh ? ghPrReviewOf((args) => gh.run(args)) : null,
   );
   const lastOutputs = new LastOutputs(dir);
-  const ghPath = findGh();
-  if (!ghPath) console.error("[asks] gh not found; PR asks will show no live status");
   // Until a hook or RPC hands over a daemon session (e.g. right after a reload), every workspace is polled.
   const liveWorkspaces = async () => (paseo ? new Set((await activeWorkspaces(paseo)).keys()) : null);
-  const watcher = ghPath
-    ? new PrWatcher(store, service, ghFetcher(new Gh(ghExec(ghPath))), actOnReviewChanges, liveWorkspaces)
+  const watcher = gh
+    ? new PrWatcher(store, service, ghFetcher(gh), actOnReviewChanges, liveWorkspaces)
     : null;
   // Short-lived classifier agents the plugin starts itself; its hooks leave them alone.
   const helpers = new Set<string>();
