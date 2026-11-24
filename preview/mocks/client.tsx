@@ -13,6 +13,8 @@ export function useRpc(contract: Contract) {
     const ask = asks.find(
       (candidate) => candidate.workspaceId === input.workspaceId && candidate.id === input.id,
     )!;
+    // Like the server: an answer moves the ask off "waiting on you".
+    if (contract.name === "asks.act" && ask.status === "open") ask.status = "in_progress";
     return { ask, notified: true };
   };
 }

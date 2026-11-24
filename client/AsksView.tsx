@@ -150,6 +150,7 @@ function MainAsks({ theme, compact, openAgent }: ViewProps) {
                   theme={theme}
                   expanded={expanded === key}
                   onToggle={() => setExpanded(expanded === key ? null : key)}
+                  onAnswered={() => setExpanded(null)}
                   openAgent={openAgent}
                 />
               );
@@ -169,6 +170,7 @@ function QueueRow(props: {
   theme: PluginTheme;
   expanded: boolean;
   onToggle(): void;
+  onAnswered?(): void;
   openAgent?: OpenAgent;
 }) {
   const { ask, workspaceName, snoozed, styles, theme, expanded } = props;
@@ -261,6 +263,7 @@ function WorkspaceAsks({ theme, compact, workspaceId, openAgent }: ViewProps) {
                   theme={theme}
                   expanded={expanded === key}
                   onToggle={() => setExpanded(expanded === key ? null : key)}
+                  onAnswered={() => setExpanded(null)}
                   openAgent={openAgent}
                 />
               );
@@ -348,6 +351,7 @@ export function AgentAsks(props: {
               const key = `${ask.workspaceId}/${ask.id}`;
               setExpanded(expanded === key ? null : key);
             }}
+            onAnswered={() => setExpanded(null)}
             openAgent={openAgent}
             viewingAgentId={agentId}
           />
@@ -426,6 +430,7 @@ export function AskCard(
           theme={theme}
           expanded={expanded}
           onToggle={() => setToggled(!expanded)}
+          onAnswered={() => setToggled(false)}
           openAgent={openAgent}
           viewingAgentId={agentId}
           foldBody={settings.status === "ready" && settings.values.foldChatBodies}
@@ -543,6 +548,7 @@ export function WorkspaceAskEntry(props: {
       theme={theme}
       expanded={expanded}
       onToggle={() => setExpanded?.(!expanded)}
+      onAnswered={() => setExpanded?.(false)}
       openAgent={openAgent}
     />
   );
@@ -554,6 +560,7 @@ function AskRow(props: {
   theme: PluginTheme;
   expanded: boolean;
   onToggle(): void;
+  onAnswered?(): void;
   openAgent?: OpenAgent;
   /** The agent whose chat this is shown in, so "Show in chat" does not point at itself. */
   viewingAgentId?: string;
@@ -589,6 +596,7 @@ function AskDetail({
   openAgent,
   viewingAgentId,
   foldBody = false,
+  onAnswered,
 }: {
   ask: Ask;
   styles: Styles;
@@ -597,6 +605,8 @@ function AskDetail({
   viewingAgentId?: string;
   /** Keep the body behind a "Details" link. */
   foldBody?: boolean;
+  /** Called once an answer lands, so the list can fold the card and you move on to the next ask. */
+  onAnswered?(): void;
 }) {
   const act = useRpc(actOnAsk);
   const openPr = useContext(OpenPrContext);
@@ -617,6 +627,7 @@ function AskDetail({
         toast.show(`${ask.id} closed; its agent is gone, so nobody was told.`, {
           variant: "warning",
         });
+      onAnswered?.();
       void queryClient.invalidateQueries({ queryKey: ["asks"] });
       asksChanged();
     },
