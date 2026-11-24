@@ -1,6 +1,6 @@
 import type { PaseoApi } from "@getpaseo/client";
 import { latestTurn, type PluginServerContext } from "@getpaseo/plugin/server";
-import { actOnAsk, discussAsk, listAsks, OPEN_STATUSES, oldestFirst, refreshAsks, showsIn } from "./shared/asks";
+import { actOnAsk, discussAsk, listAsks, locateAsk, OPEN_STATUSES, oldestFirst, refreshAsks, showsIn } from "./shared/asks";
 import { AgentDirectory, pickCaller } from "./server/agents";
 import { installBridge } from "./server/bridge";
 import { Discussions } from "./server/discuss";
@@ -8,6 +8,7 @@ import { Gh, ghExec } from "./server/gh";
 import { findGh, ghFetcher } from "./server/github";
 import { LastOutputs } from "./server/last-output";
 import { listen } from "./server/listener";
+import { findAskCall } from "./server/locate";
 import { CLASSIFIER_PROMPT, NUDGE, paseoClassifier, shouldNudge } from "./server/nudge";
 import { isWorking, Outbox, type Courier } from "./server/outbox";
 import { checkFilePaths, diskPathEnv } from "./server/file-paths";
@@ -238,6 +239,13 @@ export default function contribute(server: PluginServerContext) {
   server.handle(discussAsk, ({ workspaceId, id, note }, { paseo: api }) => {
     capture(api);
     return startDiscussion(api, workspaceId, id, note);
+  });
+  server.handle(locateAsk, async ({ workspaceId, id }, { paseo: api }) => {
+    capture(api);
+    const ask = store.get(workspaceId, id);
+    if (!ask) throw new Error(`No ask ${id} in this workspace`);
+    const position = await findAskCall(api.agents.ref(ask.ownerAgentId).timeline, ask.id).catch(() => null);
+    return position ? { agentId: ask.ownerAgentId, position } : { agentId: ask.ownerAgentId };
   });
 
   const listening = listen(dir, {

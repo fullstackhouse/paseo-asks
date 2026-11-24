@@ -2,16 +2,18 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { useAgent, useRpc, useSettings } from "@getpaseo/plugin/client";
 import { Icon, ScrollView, TextInput, useToast } from "@getpaseo/plugin/client/react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useContext, useMemo, useState, type ReactNode } from "react";
+import { useContext, useMemo, useRef, useState, type ReactNode } from "react";
 import { Platform, Pressable, Text, View } from "react-native";
 import { asksChanged } from "./changes";
 import { useDraft } from "./drafts";
 import { MoreMenu, type MenuEntry } from "./menu";
+import type { OpenAgent } from "./navigation";
 import {
   actOnAsk,
   discussAsk,
   discussionTitle,
   listAsks,
+  locateAsk,
   prPreviewOf,
   refreshAsks,
   type Action,
@@ -24,6 +26,7 @@ import type { AskCard as AskCardData } from "../shared/timeline";
 import { Markdown } from "@getpaseo/plugin/client/ui";
 import { OpenPrContext } from "./inbox";
 import { openLink } from "./open-link";
+import { useRevealInScroll } from "./reveal";
 import { askQueue, type QueueFilter } from "./queue";
 import { useSnoozedWorkspaceIds } from "./snoozed";
 
@@ -45,7 +48,7 @@ interface ViewProps {
   compact: boolean;
   /** Absent on the global screen: every workspace on this host. */
   workspaceId?: string;
-  openAgent?: (agentId: string) => void;
+  openAgent?: OpenAgent;
 }
 
 export function useAsks(workspaceId?: string, includeClosed = false) {
@@ -148,6 +151,7 @@ function MainAsks({ theme, compact, openAgent }: ViewProps) {
                   theme={theme}
                   expanded={expanded === key}
                   onToggle={() => setExpanded(expanded === key ? null : key)}
+                  onAnswered={() => setExpanded(null)}
                   openAgent={openAgent}
                 />
               );
@@ -167,12 +171,14 @@ function QueueRow(props: {
   theme: PluginTheme;
   expanded: boolean;
   onToggle(): void;
-  openAgent?: (agentId: string) => void;
+  onAnswered?(): void;
+  openAgent?: OpenAgent;
 }) {
   const { ask, workspaceName, snoozed, styles, theme, expanded } = props;
   const [hovered, setHovered] = useState(false);
+  const onAnswered = useFoldInPlace(props.onAnswered);
   return (
-    <View style={styles.queueItem}>
+    <View ref={onAnswered.ref} style={styles.queueItem}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${ask.title}, ${workspaceName}`}
@@ -212,7 +218,7 @@ function QueueRow(props: {
       </Pressable>
       {expanded && (
         <View style={styles.queueDetail}>
-          <AskDetail {...props} />
+          <AskDetail {...props} onAnswered={onAnswered.fold} />
         </View>
       )}
     </View>
@@ -259,6 +265,7 @@ function WorkspaceAsks({ theme, compact, workspaceId, openAgent }: ViewProps) {
                   theme={theme}
                   expanded={expanded === key}
                   onToggle={() => setExpanded(expanded === key ? null : key)}
+                  onAnswered={() => setExpanded(null)}
                   openAgent={openAgent}
                 />
               );
@@ -304,7 +311,7 @@ export function AgentAsks(props: {
   compact: boolean;
   workspaceId: string;
   agentId: string;
-  openAgent?: (agentId: string) => void;
+  openAgent?: OpenAgent;
 }) {
   const { theme, compact, workspaceId, agentId, openAgent } = props;
   const styles = useMemo(() => makeStyles(theme, compact), [theme, compact]);
@@ -346,6 +353,7 @@ export function AgentAsks(props: {
               const key = `${ask.workspaceId}/${ask.id}`;
               setExpanded(expanded === key ? null : key);
             }}
+            onAnswered={() => setExpanded(null)}
             openAgent={openAgent}
             viewingAgentId={agentId}
           />
@@ -380,7 +388,7 @@ export function AskCard(
     theme: PluginTheme;
     compact: boolean;
     agentId: string;
-    openAgent?: (agentId: string) => void;
+    openAgent?: OpenAgent;
   } & AskCardData,
 ) {
   const { theme, compact, agentId, askId, verb, call, openAgent } = props;
@@ -424,6 +432,7 @@ export function AskCard(
           theme={theme}
           expanded={expanded}
           onToggle={() => setToggled(!expanded)}
+          onAnswered={() => setToggled(false)}
           openAgent={openAgent}
           viewingAgentId={agentId}
           foldBody={settings.status === "ready" && settings.values.foldChatBodies}
@@ -521,7 +530,7 @@ export function WorkspaceAskEntry(props: {
   /** Host-owned open state, when the host keeps one entry open at a time. */
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
-  openAgent?: (agentId: string) => void;
+  openAgent?: OpenAgent;
 }) {
   const { theme, compact, workspaceId, askId, defaultExpanded, onExpandedChange, openAgent } = props;
   const styles = useMemo(() => makeStyles(theme, compact), [theme, compact]);
@@ -541,9 +550,27 @@ export function WorkspaceAskEntry(props: {
       theme={theme}
       expanded={expanded}
       onToggle={() => setExpanded?.(!expanded)}
+      onAnswered={() => setExpanded?.(false)}
       openAgent={openAgent}
     />
   );
+}
+
+/**
+ * Folds an answered card and scrolls back to it: folding a long card leaves the sheet's scroll offset past
+ * it, below the next ask. The card still sits in its slot when the scroll lands; the refetch then moves it to
+ * In progress and the next waiting ask takes that slot.
+ */
+function useFoldInPlace(fold?: () => void) {
+  const ref = useRef<View>(null);
+  const reveal = useRevealInScroll();
+  return {
+    ref,
+    fold: () => {
+      fold?.();
+      reveal(ref.current);
+    },
+  };
 }
 
 function AskRow(props: {
@@ -552,14 +579,16 @@ function AskRow(props: {
   theme: PluginTheme;
   expanded: boolean;
   onToggle(): void;
-  openAgent?: (agentId: string) => void;
-  /** The agent whose chat this is shown in, so "Open chat" does not point at itself. */
+  onAnswered?(): void;
+  openAgent?: OpenAgent;
+  /** The agent whose chat this is shown in, so "Show in chat" does not point at itself. */
   viewingAgentId?: string;
   foldBody?: boolean;
 }) {
   const { ask, styles, theme, expanded } = props;
+  const onAnswered = useFoldInPlace(props.onAnswered);
   return (
-    <View style={[styles.card, expanded && styles.cardExpanded]}>
+    <View ref={onAnswered.ref} style={[styles.card, expanded && styles.cardExpanded]}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${ask.id}: ${ask.title}`}
@@ -575,7 +604,7 @@ function AskRow(props: {
         {ask.orphaned && <Text style={styles.orphaned}>orphaned</Text>}
         <Text style={styles.age}>{age(ask.updatedAt)}</Text>
       </Pressable>
-      {expanded && <AskDetail {...props} />}
+      {expanded && <AskDetail {...props} onAnswered={onAnswered.fold} />}
     </View>
   );
 }
@@ -587,14 +616,17 @@ function AskDetail({
   openAgent,
   viewingAgentId,
   foldBody = false,
+  onAnswered,
 }: {
   ask: Ask;
   styles: Styles;
   theme: PluginTheme;
-  openAgent?: (agentId: string) => void;
+  openAgent?: OpenAgent;
   viewingAgentId?: string;
   /** Keep the body behind a "Details" link. */
   foldBody?: boolean;
+  /** Called once an answer lands, so the list can fold the card and you move on to the next ask. */
+  onAnswered?(): void;
 }) {
   const act = useRpc(actOnAsk);
   const openPr = useContext(OpenPrContext);
@@ -615,6 +647,7 @@ function AskDetail({
         toast.show(`${ask.id} closed; its agent is gone, so nobody was told.`, {
           variant: "warning",
         });
+      onAnswered?.();
       void queryClient.invalidateQueries({ queryKey: ["asks"] });
       asksChanged();
     },
@@ -631,6 +664,13 @@ function AskDetail({
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : String(error)),
   });
+  const locate = useRpc(locateAsk);
+  // The chat opens scrolled to where the agent raised the ask; at its end when that can't be found.
+  const showInChat = (open: OpenAgent) =>
+    void locate({ workspaceId: ask.workspaceId, id: ask.id }).then(
+      ({ agentId, position }) => open(agentId, position),
+      () => open(ask.ownerAgentId),
+    );
   const busy = mutation.isPending || discussion.isPending;
   const press = (action: Action) => {
     if (action.kind === "open" && action.url) return openLink(action.url);
@@ -657,7 +697,7 @@ function AskDetail({
           },
         ]),
     ...(openAgent && ask.ownerAgentId !== viewingAgentId
-      ? [{ id: "chat", label: "Open chat", icon: "MessageSquare", onSelect: () => openAgent(ask.ownerAgentId) }]
+      ? [{ id: "chat", label: "Show in chat", icon: "MessageSquare", onSelect: () => showInChat(openAgent) }]
       : []),
     ...(closed
       ? []
