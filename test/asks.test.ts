@@ -234,11 +234,11 @@ describe("asks", () => {
   });
 
   it("an update that leaves out the body keeps it", async () => {
-    await service.callTool(AGENT, "ask_create", { ...decision, body: "Simply put: pick one." });
+    await service.callTool(AGENT, "ask_create", { ...decision, body: "Pick one." });
     await service.callTool(AGENT, "ask_update", { id: "A1", status: "in_progress" });
     await service.callTool(AGENT, "ask_update", { id: "A1", actions: [{ label: "Merge", kind: "send" }] });
     await service.callTool(AGENT, "ask_resolve", { id: "A1", note: "Done" });
-    expect(store.get(WS, "A1")!.body).toBe("Simply put: pick one.");
+    expect(store.get(WS, "A1")!.body).toBe("Pick one.");
   });
 
   it("new options on an in-progress ask hand it back to the human", async () => {
