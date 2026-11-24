@@ -88,13 +88,3 @@ export function watchedAsks(asks: readonly Ask[]): Ask[] {
     return !(ask.pr?.state === "MERGED" && ask.pr.url === url);
   });
 }
-
-export type ReviewOf = (url: string) => Promise<Pick<PrState, "number" | "state" | "reviewDecision">>;
-
-/** The PR's live review decision, for deciding whether an ask may offer Merge. One cheap call, no deployments. */
-export function ghReviewOf(gh: Gh): ReviewOf {
-  return async (url) => {
-    const pr = JSON.parse(await gh.run(["pr", "view", url, "--json", "number,state,reviewDecision"]));
-    return { number: pr.number, state: pr.state, reviewDecision: pr.reviewDecision || null };
-  };
-}

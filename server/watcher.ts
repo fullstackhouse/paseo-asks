@@ -1,4 +1,4 @@
-import { mergeBlockedBy, OPEN_STATUSES, prUrlOf, visibleActions, type Ask, type PrState } from "../shared/asks";
+import { OPEN_STATUSES, prUrlOf, type Ask, type PrState } from "../shared/asks";
 import { RateLimited } from "./gh";
 import { changesNewlyRequested, describePrChange, watchedAsks, type FetchPr } from "./github";
 import type { AsksService } from "./service";
@@ -66,23 +66,10 @@ export class PrWatcher {
       const change = previous ? describePrChange(previous, pr, { review: !holdReview }) : null;
       const current = this.store.get(ask.workspaceId, ask.id);
       if (!current) continue;
-      // The card hides a Merge action this snapshot rules out, so the owner must re-offer: told once per decision, even
-      // unsubscribed, since the plugin took the button away. Covers asks that got through a failed gh read and asks
-      // from before the check. Held changes are the Address ask's business, so the agent is not told about those.
-      const blocked = mergeBlockedBy(pr);
-      const hides = blocked !== null && visibleActions({ ...current, pr }).length < current.actions.length;
+      await this.store.update(ask.workspaceId, ask.id, { pr }, { touch: false });
       // The human may have closed the ask while gh was running.
-      const live = !current.orphaned && OPEN_STATUSES.includes(current.status);
-      const tell = hides && live && !holdReview && current.mergeHiddenNotice !== blocked;
-      const notice = tell ? blocked : hides ? current.mergeHiddenNotice : undefined;
-      await this.store.update(ask.workspaceId, ask.id, { pr, mergeHiddenNotice: notice }, { touch: false });
-      if (!live) continue;
-      const reoffer = tell
-        ? `Its Merge action is hidden while the PR is ${blocked.toLowerCase().replace(/_/g, " ")}: ask_update ${current.id} with what the human does now (reviewer choices, or a re-request once you have addressed the changes).`
-        : "";
-      if (current.subscribe && change) this.service.notify(current, `[asks] ${current.id} (${current.title}) ${change}.${reoffer ? ` ${reoffer}` : ""}`);
-      else if (reoffer) this.service.notify(current, `[asks] ${current.id} (${current.title}) PR #${pr.number}: ${reoffer}`);
-      if (!current.subscribe) continue;
+      if (!current.subscribe || current.orphaned || !OPEN_STATUSES.includes(current.status)) continue;
+      if (change) this.service.notify(current, `[asks] ${current.id} (${current.title}) ${change}.`);
       if (holdReview) await this.service.raiseReview(current, pr, { newRound: previous !== undefined && changesNewlyRequested(previous, pr) });
     }
   }

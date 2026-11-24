@@ -69,8 +69,6 @@ export const AskSchema = z.object({
   pr: PrStateSchema.optional(),
   /** When the owner was last reminded that this ask sat in progress at the end of its turn. */
   remindedAt: z.string().optional(),
-  /** The review decision the owner was told hides this ask's Merge action; cleared once it no longer does. */
-  mergeHiddenNotice: z.string().optional(),
   /** The agent the human talks this ask through with; it may resolve or update the ask from its own workspace. */
   discussionAgentId: z.string().optional(),
   /** The explainer's own workspace. Unset for a side chat in the ask's workspace (the fallback, and asks from before). */
@@ -251,36 +249,4 @@ export function prPreviewOf(url: string): string | undefined {
 
 export function prUrlOf(ask: Pick<Ask, "links">): string | undefined {
   return ask.links.map((link) => prLinkOf(link.url)).find(Boolean);
-}
-
-/** Review decisions that leave a PR unmergeable until someone reviews it again. */
-export const REVIEW_BLOCKS_MERGE = ["REVIEW_REQUIRED", "CHANGES_REQUESTED"] as const;
-
-/**
- * "Merge" as the verb a clause starts with ("Merge (squash)", "QA, then merge when green", "Rebase and merge"), or
- * `gh pr merge`. Not a word in passing: "Wait for #12 to merge, then start", "Start phase 2 (after merge #12)",
- * "Close it, don't merge it", "Fix merge conflicts".
- */
-const MERGE_VERB = /(?:^|[\n.,;:!?(]\s*|\b(?:then|and)\s+)(?:squash[- ]?)?merge\b(?![- ]conflicts?\b)|\bgh pr merge\b/i;
-
-/**
- * A send action that merges the PR: its label or prompt tells the agent to merge. Not a review request that merges
- * afterwards, and not "Merge with --admin", which is how the human merges past a required review on purpose.
- */
-export function isMergeAction(action: Pick<Action, "kind" | "label" | "prompt">): boolean {
-  if (action.kind !== "send") return false;
-  const text = `${action.label}\n${action.prompt ?? ""}`;
-  return MERGE_VERB.test(text) && !/--admin\b/.test(text) && !/\breview\b/i.test(action.label);
-}
-
-/** The review decision that rules out a Merge button on this open PR, or null when there is none. */
-export function mergeBlockedBy(pr: Pick<PrState, "state" | "reviewDecision"> | undefined): string | null {
-  if (pr?.state !== "OPEN" || !pr.reviewDecision) return null;
-  return (REVIEW_BLOCKS_MERGE as readonly string[]).includes(pr.reviewDecision) ? pr.reviewDecision : null;
-}
-
-/** The actions to show: no Merge button while the PR's snapshot says it still needs a review. */
-export function visibleActions(ask: Pick<Ask, "actions" | "pr" | "links">): Action[] {
-  const pr = ask.pr && ask.pr.url === prUrlOf(ask) ? ask.pr : undefined;
-  return mergeBlockedBy(pr) ? ask.actions.filter((action) => !isMergeAction(action)) : ask.actions;
 }

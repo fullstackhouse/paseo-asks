@@ -5,7 +5,7 @@ import { AgentDirectory, pickCaller } from "./server/agents";
 import { installBridge } from "./server/bridge";
 import { Discussions } from "./server/discuss";
 import { Gh, ghExec } from "./server/gh";
-import { findGh, ghFetcher, ghReviewOf } from "./server/github";
+import { findGh, ghFetcher } from "./server/github";
 import { LastOutputs } from "./server/last-output";
 import { listen } from "./server/listener";
 import { CLASSIFIER_PROMPT, NUDGE, paseoClassifier, shouldNudge } from "./server/nudge";
@@ -87,9 +87,6 @@ export default function contribute(server: PluginServerContext) {
       await store.update(workspaceId, ask.id, reason === "gone" ? { orphaned: true, status: "open" } : { status: "open" });
     }
   });
-  const ghPath = findGh();
-  if (!ghPath) console.error("[asks] gh not found; PR asks will show no live status");
-  const gh = ghPath ? new Gh(ghExec(ghPath)) : null;
   const service = new AsksService(
     store,
     outbox,
@@ -101,14 +98,14 @@ export default function contribute(server: PluginServerContext) {
       const workspace = paseo ? await paseo.workspaces.ref(workspaceId).refresh() : null;
       return workspace?.workspaceDirectory ? checkFilePaths(body, workspace.workspaceDirectory, diskPathEnv) : { body, notes: [] };
     },
-    gh ? ghReviewOf(gh) : null,
-    actOnReviewChanges,
   );
   const lastOutputs = new LastOutputs(dir);
+  const ghPath = findGh();
+  if (!ghPath) console.error("[asks] gh not found; PR asks will show no live status");
   // Until a hook or RPC hands over a daemon session (e.g. right after a reload), every workspace is polled.
   const liveWorkspaces = async () => (paseo ? new Set((await activeWorkspaces(paseo)).keys()) : null);
-  const watcher = gh
-    ? new PrWatcher(store, service, ghFetcher(gh), actOnReviewChanges, liveWorkspaces)
+  const watcher = ghPath
+    ? new PrWatcher(store, service, ghFetcher(new Gh(ghExec(ghPath))), actOnReviewChanges, liveWorkspaces)
     : null;
   // Short-lived classifier agents the plugin starts itself; its hooks leave them alone.
   const helpers = new Set<string>();

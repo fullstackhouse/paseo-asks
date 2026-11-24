@@ -1,17 +1,5 @@
 import { z } from "zod";
-import {
-  ACTION_KINDS,
-  ASK_KINDS,
-  ASK_STATUSES,
-  OPEN_STATUSES,
-  isMergeAction,
-  mergeBlockedBy,
-  prUrlOf,
-  visibleActions,
-  type Action,
-  type Ask,
-  type PrState,
-} from "../shared/asks";
+import { ACTION_KINDS, ASK_KINDS, ASK_STATUSES, OPEN_STATUSES, prUrlOf, type Ask, type PrState } from "../shared/asks";
 import { REFRESH } from "./nudge";
 import { stuckReminder } from "../shared/prompts";
 import { isStale, needsReminder } from "./stuck";
@@ -20,7 +8,6 @@ import { callKey } from "../shared/timeline";
 import type { Outbox } from "./outbox";
 import type { AskStore, NewAsk } from "./store";
 import type { PathCheck } from "./file-paths";
-import type { ReviewOf } from "./github";
 
 const ADDRESS_REVIEW = `  - "CHANGES_REQUESTED": no Merge action. Address the comments (or report what you won't change), push, then ask_update to re-request the review.`;
 const HOLD_REVIEW = `  - "CHANGES_REQUESTED": no Merge action. The human decides when it is worked: Paseo raises an "Address review comments on PR #N" ask whose button sends you the work. Don't start or offer it yourself. An approved PR's comments raise none: list them in the body, add "Address review comments" next to Merge.`;
@@ -128,10 +115,6 @@ export class AsksService {
     private readonly isBackground: (workspaceId: string) => Promise<boolean> = async () => false,
     /** Makes file paths in a body open from the workspace; see file-paths.ts. */
     private readonly checkPaths: (workspaceId: string, body: string) => Promise<PathCheck> = async (_, body) => ({ body, notes: [] }),
-    /** The linked PR's live review decision, which rules a Merge action in or out; null when gh is missing. */
-    private readonly reviewOf: ReviewOf | null = null,
-    /** False when the human holds requested changes as an "Address review comments" ask. */
-    private readonly actOnReviewChanges: () => Promise<boolean> = async () => true,
   ) {}
 
   async callTool(agentId: string | null, name: string, args: unknown): Promise<ToolResult> {
@@ -143,19 +126,16 @@ export class AsksService {
       switch (name) {
         case "ask_create": {
           const input = CreateInput.parse(args);
-          await this.checkMergeAllowed(input.actions, input.links);
           const paths = await this.paths(workspaceId, input.body);
           const lastCall = callKey("create", args);
           return render(await this.create(workspaceId, agentId, { ...input, body: paths.body }, lastCall), paths.notes);
         }
         case "ask_update": {
           const { id, ...patch } = UpdateInput.parse(args);
-          const before = this.find(workspaceId, agentId, id);
-          this.checkStillWaiting(before, agentId);
-          if (patch.actions || patch.links) await this.checkMergeAllowed(patch.actions ?? before.actions, patch.links ?? before.links);
+          this.checkStillWaiting(this.find(workspaceId, agentId, id), agentId);
           const paths = await this.paths(this.find(workspaceId, agentId, id).workspaceId, patch.body);
           patch.body = paths.body;
-          // Read again after the merge and path checks (gh and git, seconds): a human click meanwhile must not be overwritten.
+          // Read again after the path check (git, seconds): a human click meanwhile must not be overwritten.
           const ask = this.find(workspaceId, agentId, id);
           this.checkStillWaiting(ask, agentId);
           checkActions(patch.actions ?? []);
@@ -172,9 +152,7 @@ export class AsksService {
           // Reopened by its owner: the old discussion was about what it asked then. Discuss starts a new one.
           const reopened = !OPEN_STATUSES.includes(ask.status) && patch.status !== undefined && OPEN_STATUSES.includes(patch.status);
           const unlink = reopened && ask.discussionAgentId ? { discussionAgentId: undefined, discussionWorkspaceId: undefined } : {};
-          // New actions are a new offer: if a review hides them too, the owner hears about it again.
-          const reoffered = patch.actions ? { mergeHiddenNotice: undefined } : {};
-          const updated = await this.store.update(ask.workspaceId, id, { ...patch, ...unlink, ...reoffered, lastCall: callKey("update", args) });
+          const updated = await this.store.update(ask.workspaceId, id, { ...patch, ...unlink, lastCall: callKey("update", args) });
           if (agentId !== ask.ownerAgentId && !ask.orphaned && patch.status && patch.status !== ask.status) {
             this.notify(ask, `[asks] ${ask.id} (${ask.title}) marked ${patch.status.replace("_", " ")} in a side chat.`);
           }
@@ -233,10 +211,6 @@ export class AsksService {
         const action = ask.actions.find((candidate) => candidate.id === input.actionId);
         if (!action) throw new Error(`Ask ${ask.id} has no action ${input.actionId}`);
         if (action.kind === "open") throw new Error("Open actions run on the client");
-        // The card hides it; a stale client or a script must not merge past a required review either.
-        if (!visibleActions(ask).includes(action)) {
-          throw new Error(`PR #${ask.pr?.number} still needs a review, so "${action.label}" is not offered until it is approved`);
-        }
         if (action.kind === "send") {
           // The card shows what you chose while the agent works on it.
           const outcome = { actionId: action.id, label: action.label, note, by: "human" as const, at };
@@ -397,28 +371,6 @@ export class AsksService {
     return this.store.create(ask);
   }
 
-  /**
-   * A PR that still needs a review gets no Merge action: the human's move then is the review. Refused rather than
-   * dropped, so the agent offers the right buttons instead of leaving the ask without any. Read live, since the ask's
-   * snapshot may be minutes old or missing. When gh fails the ask goes through: the card still hides the button once
-   * the watcher sees the decision.
-   */
-  private async checkMergeAllowed(actions: Pick<Action, "kind" | "label" | "prompt">[], links: Ask["links"]): Promise<void> {
-    const merge = actions.find(isMergeAction);
-    const url = merge ? prUrlOf({ links }) : undefined;
-    const reviewOf = this.reviewOf;
-    if (!merge || !url || !reviewOf) return;
-    let pr: Awaited<ReturnType<ReviewOf>>;
-    try {
-      pr = await reviewOf(url);
-    } catch (error) {
-      console.error(`[asks] could not read the review decision of ${url}`, error instanceof Error ? error.message : error);
-      return;
-    }
-    const blocked = mergeBlockedBy(pr);
-    if (blocked) throw new Error(mergeRefusal(pr.number, blocked, merge.label, await this.actOnReviewChanges()));
-  }
-
   /** A failed check never blocks the ask: the body goes through as written. */
   private async paths(workspaceId: string, body: string | undefined): Promise<{ body: string | undefined; notes: string[] }> {
     if (!body) return { body, notes: [] };
@@ -473,19 +425,6 @@ function checkActions(actions: z.output<typeof ActionInput>[]): void {
     if (action.kind === "open" && !action.url) throw new Error(`Action "${action.label}" is "open" but has no url`);
   }
   if (actions.filter((action) => action.recommended).length > 1) throw new Error("Recommend at most one action");
-}
-
-/** What to offer instead of a Merge action on a PR that still needs a review. */
-export function mergeRefusal(number: number, decision: string, label: string, actOnReviewChanges: boolean): string {
-  const head = `PR #${number} is ${decision} on GitHub, so this ask cannot offer "${label}". Nothing was saved.`;
-  const later = `Offer Merge once the review is approved.`;
-  if (decision === "REVIEW_REQUIRED") {
-    return `${head} The human's move is choosing who reviews it: title the ask "Request review on PR #${number}" and give it one send action per candidate reviewer (2-4: CODEOWNERS, recent reviewers of these files, collaborators; recommend one), each prompt naming who ("Request review on PR #${number} from alice"). Add "Merge with --admin" only if viewerCanMergeAsAdmin is true. ${later}`;
-  }
-  const work = actOnReviewChanges
-    ? `Address the comments, or report what you will not change, and push. Then offer a send action that re-requests the review.`
-    : `The human decides when the review is worked: wait for the "Address review comments on PR #${number}" ask. Once its prompt arrives and you have pushed, offer a send action that re-requests the review.`;
-  return `${head} ${work} ${later}`;
 }
 
 function summary(ask: Ask): string {
