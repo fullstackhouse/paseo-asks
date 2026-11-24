@@ -22,6 +22,8 @@ Asks is a [Paseo](https://paseo.sh) plugin. It lifts what your agents need from 
 
 PR asks show live status from `gh`: open, merged or closed, checks, review decision and conflicts, plus the head commit's preview deployments (GitHub Deployments with an environment URL, e.g. Vercel) as chips that open the preview when ready, or the logs while deploying or failed. An agent that subscribed to a PR ask is told when it merges, closes, its checks pass or fail, a preview becomes ready, or its review decision changes. While checks run, a PR ask can already carry a *Merge … when green* button: the agent merges once they pass, and fixes them first if they fail. To decide yourself when an agent works a review, turn off **Settings → Plugins → Asks → Tell agents about requested changes**: a reviewer requesting changes then raises an *Address review comments on PR #N* ask instead, and the agent starts only when you press its button. Agents are also told to leave requested changes to that ask; agents started or resumed before you change the setting keep the rules they started with.
 
+To tune how often agents ask, set **Settings → Plugins → Asks → How often agents ask**: *Fewer* has agents decide reversible choices themselves and mention optional work in their reply instead of raising a follow-up ask; *More* has them ask about small choices too. To try your own rules, **Custom instructions** replaces the built-in ones (**Fill** starts from them, **Reset** goes back); Claude Code keeps only the first 4096 characters. Both apply to agents started after you change them.
+
 ## Where asks show up
 
 - an **Asks** panel in each workspace, in the main area or the explorer (its **+** menu, or ⌘K: "Open asks for this workspace");

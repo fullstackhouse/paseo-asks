@@ -9,18 +9,19 @@ import { findGh, ghFetcher } from "./server/github";
 import { LastOutputs } from "./server/last-output";
 import { listen } from "./server/listener";
 import { findAskCall } from "./server/locate";
-import { CLASSIFIER_PROMPT, NUDGE, paseoClassifier, shouldNudge } from "./server/nudge";
+import { CLASSIFIER_PROMPT, CLASSIFIER_PROMPTS, FEWER_CLASSIFIER_PROMPT, NUDGE, paseoClassifier, shouldNudge } from "./server/nudge";
 import { isWorking, Outbox, type Courier } from "./server/outbox";
 import { checkFilePaths, diskPathEnv } from "./server/file-paths";
 import { dataDir } from "./server/paths";
 import { isAsksPermission } from "./server/permissions";
 import { ghPrReviewOf } from "./server/review-buttons";
-import { AsksService, instructions, TOOLS } from "./server/service";
+import { AsksService, TOOLS } from "./server/service";
+import { agentInstructions } from "./shared/instructions";
 import { AskStore } from "./server/store";
 import { attentionForOpenAsks } from "./server/schedule-attention";
 import { PrWatcher } from "./server/watcher";
 import { activeWorkspaces, isBackground } from "./server/workspaces";
-import { displaySettings, reviewSettings } from "./shared/settings";
+import { agentSettings, displaySettings, reviewSettings } from "./shared/settings";
 
 const FLUSH_EVERY_MS = 20_000;
 const PR_EVERY_MS = 120_000;
@@ -32,6 +33,11 @@ export default function contribute(server: PluginServerContext) {
   const actOnReviewChanges = async () => {
     const state = await reviews.read();
     return state.status !== "ready" || state.values.actOnReviewChanges;
+  };
+  const agentRules = server.registerSettings(agentSettings);
+  const agentOptions = async () => {
+    const state = await agentRules.read();
+    return state.status === "ready" ? state.values : agentSettings.schema.parse({});
   };
   const dir = dataDir();
   const mcp = installBridge(dir);
@@ -114,11 +120,13 @@ export default function contribute(server: PluginServerContext) {
     : null;
   // Short-lived classifier agents the plugin starts itself; its hooks leave them alone.
   const helpers = new Set<string>();
-  const classifierFor = paseoClassifier(requirePaseo, helpers);
+  const classifierFor = paseoClassifier(requirePaseo, helpers, async () =>
+    (await agentOptions()).frequency === "fewer" ? FEWER_CLASSIFIER_PROMPT : CLASSIFIER_PROMPT,
+  );
 
   server.before("agent.create", ({ request }, { paseo: api }) => {
     capture(api);
-    if (request.config.systemPrompt === CLASSIFIER_PROMPT) return request;
+    if (request.config.systemPrompt && CLASSIFIER_PROMPTS.has(request.config.systemPrompt)) return request;
     return {
       ...request,
       config: { ...request.config, mcpServers: { ...request.config.mcpServers, asks: mcp } },
@@ -255,7 +263,7 @@ export default function contribute(server: PluginServerContext) {
   const listening = listen(dir, {
     // Read when an agent's MCP session starts, so a changed setting reaches agents started or resumed after it.
     "/instructions": async () => ({
-      instructions: instructions({ actOnReviewChanges: await actOnReviewChanges() }),
+      instructions: agentInstructions({ ...(await agentOptions()), actOnReviewChanges: await actOnReviewChanges() }),
     }),
     "/tools": async () => ({ tools: TOOLS }),
     "/call": async ({ agentId, cwd, name, arguments: args }) => {
