@@ -4,6 +4,7 @@ import { REFRESH } from "./nudge";
 import { stuckReminder } from "../shared/prompts";
 import { isStale, needsReminder } from "./stuck";
 import { checkNotBundled } from "./bundle";
+import { isPrMove, reviewButtonsProblem, reviewButtonsRefusal, type PrReviewOf } from "./review-buttons";
 import { callKey } from "../shared/timeline";
 import type { Outbox } from "./outbox";
 import type { AskStore, NewAsk } from "./store";
@@ -21,7 +22,7 @@ export const instructions = ({ actOnReviewChanges = true } = {}) => `Asks: what 
 - Rule: never end a turn with a question, choice or request for the human in chat alone; ask_create it: reviewers or a merge, a decision, a follow-up to approve, a manual step you can't do (an OAuth click), an answer.
 - Follow-ups count even when nothing blocks you: work you recommend or defer ("worth doing next time") gets a followup ask whose send prompt starts it, or it is lost with this chat. Instructions against offering more work don't apply: the ask replaces the offer. Skip only work you'd advise against.
 - PRs: one ask per PR, PR URL in links, subscribe: true (reports merges, closes, checks, reviews). Buttons follow gh pr view N --json reviewDecision,statusCheckRollup:
-  - "REVIEW_REQUIRED": no Merge action; the human picks a reviewer. Title "Request review on PR #N", one send action per candidate (2-4: CODEOWNERS, recent reviewers of these files, collaborators; recommend one), prompt naming who ("Request review on PR #30 from alice"). If viewerCanMergeAsAdmin (gh api graphql) is true, add "Merge with --admin".
+  - "REVIEW_REQUIRED": no Merge action; the human picks a reviewer. Title "Request review on PR #N", one send action per person (2-4: CODEOWNERS, recent reviewers of these files, collaborators; not Copilot or the author; recommend one), label "Request review from alice". Add "Merge with --admin" exactly when viewerCanMergeAsAdmin (gh api graphql) is true.
 ${actOnReviewChanges ? ADDRESS_REVIEW : HOLD_REVIEW}
   - Empty or "APPROVED", every comment read: a "Merge" send action, no review ask. Checks failing: no Merge; fix and push. Pending: "… when green", prompt saying so ("Merge PR #30 with squash once checks pass"); on the click keep it in progress, merge when checks pass.
   - Before any Merge action, read every human review and comment, approvals included (not bot status ones): gh pr view N --json reviews,comments; inline: gh api --paginate repos/OWNER/REPO/pulls/N/comments. Resolved threads (reviewThreads { isResolved }, gh api graphql) don't count. Treat an approval's suggestions, questions or "fix before merging" as requested changes, then offer Merge (not a re-review unless asked), naming what changed. Quote any you leave unaddressed, with why.
@@ -34,7 +35,7 @@ ${actOnReviewChanges ? ADDRESS_REVIEW : HOLD_REVIEW}
 - Offer a move pending something you can watch (merge, release, CI, an agent) now, as a conditional approval ("Start once #12 is merged"); on the click keep it in progress, wait, act.
 - Answers, side-chat outcomes too, arrive as [asks] messages: act on them. Once you finish the work a send action gave you, ask_resolve (a requested review is done only once approved).
 - open: the human's move (buttons shown); in_progress: yours (buttons hidden). When it is theirs again, ask_update with the action they need (reopens it); never point to a button on an in-progress ask. In chat: "waiting on you", "in progress".
-- Keep asks true: ask_update when facts change, ask_resolve or "dropped" when not needed; ask_list before a duplicate; none for what the human settled ("PR after I test"). Your own to-dos go in your task tool.`;
+- Keep asks true: ask_update when facts change, ask_resolve or "dropped" when not needed; ask_list before a duplicate; none for what's settled ("PR after I test"). Your own to-dos go in your task tool.`;
 
 const ActionInput = z.object({
   label: z.string().min(1).max(60),
@@ -115,6 +116,8 @@ export class AsksService {
     private readonly isBackground: (workspaceId: string) => Promise<boolean> = async () => false,
     /** Makes file paths in a body open from the workspace; see file-paths.ts. */
     private readonly checkPaths: (workspaceId: string, body: string) => Promise<PathCheck> = async (_, body) => ({ body, notes: [] }),
+    /** Live review state of a linked PR; null leaves review buttons unchecked (no gh). */
+    private readonly prReview: PrReviewOf | null = null,
   ) {}
 
   async callTool(agentId: string | null, name: string, args: unknown): Promise<ToolResult> {
@@ -126,13 +129,20 @@ export class AsksService {
       switch (name) {
         case "ask_create": {
           const input = CreateInput.parse(args);
+          await this.checkReviewButtons(input, input.actions);
           const paths = await this.paths(workspaceId, input.body);
           const lastCall = callKey("create", args);
           return render(await this.create(workspaceId, agentId, { ...input, body: paths.body }, lastCall), paths.notes);
         }
         case "ask_update": {
           const { id, ...patch } = UpdateInput.parse(args);
-          this.checkStillWaiting(this.find(workspaceId, agentId, id), agentId);
+          const before = this.find(workspaceId, agentId, id);
+          this.checkStillWaiting(before, agentId);
+          // Only a new offer is checked: a status or body change leaves the buttons the human already has.
+          const closing = patch.status === "done" || patch.status === "dropped";
+          if ((patch.actions || patch.links) && !closing) {
+            await this.checkReviewButtons({ kind: before.kind, links: patch.links ?? before.links }, patch.actions ?? before.actions);
+          }
           const paths = await this.paths(this.find(workspaceId, agentId, id).workspaceId, patch.body);
           // Only when given: an explicit `body: undefined` in the patch would erase the stored body.
           if (patch.body !== undefined) patch.body = paths.body;
@@ -370,6 +380,26 @@ export class AsksService {
     }
     const ask: NewAsk = { ...input, workspaceId, ownerAgentId: agentId, lastCall };
     return this.store.create(ask);
+  }
+
+  /**
+   * An ask on a PR that waits for its first review offers reviewers by name, plus "Merge with --admin" exactly when the
+   * human can merge past the review. The rule used to live only in the instructions, and agents skipped it: they offered
+   * Merge or a Copilot review. Read live, since the watcher's snapshot may be minutes old or missing. When gh fails the
+   * ask goes through.
+   */
+  private async checkReviewButtons(ask: Pick<Ask, "kind" | "links">, actions: readonly z.output<typeof ActionInput>[]): Promise<void> {
+    const url = prUrlOf(ask);
+    if (!this.prReview || !url || !isPrMove(ask, actions)) return;
+    let pr: Awaited<ReturnType<PrReviewOf>>;
+    try {
+      pr = await this.prReview(url);
+    } catch (error) {
+      console.error(`[asks] could not read the review state of ${url}`, error instanceof Error ? error.message : error);
+      return;
+    }
+    const problem = reviewButtonsProblem(pr, actions);
+    if (problem) throw new Error(reviewButtonsRefusal(pr, problem));
   }
 
   /** A failed check never blocks the ask: the body goes through as written. */

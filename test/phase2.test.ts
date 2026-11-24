@@ -404,7 +404,7 @@ describe("phase 2", () => {
 
   it("tells agents not to ask about what the human settled", () => {
     for (const rules of [instructions(), instructions({ actOnReviewChanges: false })]) {
-      expect(rules).toContain('none for what the human settled ("PR after I test")');
+      expect(rules).toContain(`none for what's settled ("PR after I test")`);
     }
   });
 
