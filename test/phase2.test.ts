@@ -337,7 +337,9 @@ describe("phase 2", () => {
 
     await service.act({ workspaceId: WS, id: raised[0]!.id, verb: "action", actionId: raised[0]!.actions[0]!.id });
     await outbox.flush();
-    expect(sent.at(-1)).toContain("Address the review comments on PR #30 (https://github.com/o/r/pull/30) and push");
+    expect(sent.at(-1)).toContain(
+      "Address the review comments on PR #30 (https://github.com/o/r/pull/30), or report what you won't change, and push; then ask_update A1 with a send action that re-requests the review, not a Merge action",
+    );
   });
 
   it("raises a fresh review ask when the open one belongs to a gone owner", async () => {
@@ -394,22 +396,30 @@ describe("phase 2", () => {
   it("tells agents to leave requested changes to the human only while reviews are held", () => {
     const told = instructions();
     const held = instructions({ actOnReviewChanges: false });
-    expect(told).toContain('"CHANGES_REQUESTED": address the comments, or report what you will not change, and push.');
-    expect(held).not.toContain('"CHANGES_REQUESTED": address the comments');
-    expect(held).toContain("Do not start on it yourself");
-    expect(held).toContain("Do not give your own asks an action that starts the review");
+    expect(told).toContain('"CHANGES_REQUESTED": no Merge action. Address the comments');
+    expect(held).not.toContain("Address the comments");
+    expect(held).toContain("its button sends you the work, so don't start or offer it yourself");
     expect(held.replace(/\n  - "CHANGES_REQUESTED".*\n/, "\n")).toBe(told.replace(/\n  - "CHANGES_REQUESTED".*\n/, "\n"));
   });
 
   it("tells agents to read every review and comment before a Merge action, approvals included", () => {
     for (const rules of [instructions(), instructions({ actOnReviewChanges: false })]) {
-      expect(rules).toContain("Before any Merge action, read every review body and comment from people, approvals included");
+      expect(rules).toContain("Before any Merge action, read every human review and comment, approvals included (not bot status ones)");
       expect(rules).toContain("gh api --paginate repos/OWNER/REPO/pulls/N/comments");
-      expect(rules).toContain("skip bot status comments");
-      expect(rules).toContain("Resolved threads don't count");
-      expect(rules).toContain("afterwards you offer Merge, naming what changed in the ask body, not a re-review");
+      expect(rules).toContain("Resolved threads (reviewThreads { isResolved }, gh api graphql) don't count");
+      expect(rules).toContain("then offer Merge (not a re-review unless asked), naming what changed");
     }
-    expect(instructions({ actOnReviewChanges: false })).toContain("Comments on an approved PR raise no such ask");
+    expect(instructions({ actOnReviewChanges: false })).toContain("An approved PR's comments raise none");
+  });
+
+  // Claude Code cuts MCP server instructions at 4096 characters and appends "… [truncated]". An agent that lost the
+  // REVIEW_REQUIRED rule to that cut offered Merge on a PR still waiting for its review.
+  it("fits the instructions in the 4096 characters Claude Code keeps, with the no-Merge review rules in them", () => {
+    for (const rules of [instructions(), instructions({ actOnReviewChanges: false })]) {
+      expect(rules.length).toBeLessThanOrEqual(4096);
+      expect(rules).toContain('"REVIEW_REQUIRED": no Merge action; the human picks a reviewer.');
+      expect(rules).toContain('"CHANGES_REQUESTED": no Merge action.');
+    }
   });
 
   it("raises a review ask when the setting is turned off after changes were requested", async () => {
