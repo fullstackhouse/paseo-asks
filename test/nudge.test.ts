@@ -3,7 +3,9 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 import { describe, expect, it } from "vitest";
-import { endsWithQuestion, NUDGE, parseAnswer, REFRESH, shouldNudge } from "../server/nudge";
+import { classifierPrompt, endsWithQuestion, NUDGE, parseAnswer, REFRESH, shouldNudge } from "../server/nudge";
+import { clip, HumanMessages, humanText } from "../server/human-messages";
+import { stuckReminder } from "../shared/prompts";
 import { Outbox, type AgentState, type Courier } from "../server/outbox";
 import { AsksService } from "../server/service";
 import { pickCaller } from "../server/agents";
@@ -90,6 +92,18 @@ describe("shouldNudge", () => {
     expect(seen).toBe("Which one?");
   });
 
+  it("hands the classifier the human's latest messages", async () => {
+    let seen: [string, readonly string[]] | undefined;
+    const human = ["no PR until I've tested it", "push the branch"];
+    await shouldNudge(
+      [user("push the branch"), tool("Bash"), reply("Pushed. The PR opens once you've tested it.")],
+      none,
+      async (text, said) => ((seen = [text, said]), false),
+      human,
+    );
+    expect(seen).toEqual(["Pushed. The PR opens once you've tested it.", human]);
+  });
+
   it("lets the classifier catch requests without a question mark", async () => {
     const turn = [user("go"), reply("Decide on the migration, then re-review.")];
     expect(await shouldNudge(turn, none)).toBe(false);
@@ -101,6 +115,49 @@ describe("shouldNudge", () => {
     const fail = async () => Promise.reject(new Error("provider down"));
     expect(await shouldNudge([user("go"), reply("Which one?")], none, fail)).toBe(true);
     expect(await shouldNudge([user("go"), reply("Done.")], none, fail)).toBe(false);
+  });
+});
+
+describe("HumanMessages", () => {
+  it("keeps each agent's latest three human messages across turns, on disk", () => {
+    const dir = mkdtempSync(join(tmpdir(), "asks-"));
+    const messages = new HumanMessages(dir);
+    messages.record("a", [user("no PR until I've tested it"), reply("Understood.")]);
+    messages.record("b", [user("other agent")]);
+    messages.record("a", [user("fix the flaky test"), reply("Fixed."), user("and push it"), reply("Pushed.")]);
+    expect(messages.record("a", [user(NUDGE), reply("no ask")])).toEqual(["no PR until I've tested it", "fix the flaky test", "and push it"]);
+    expect(messages.record("a", [user("rebase it")])).toEqual(["fix the flaky test", "and push it", "rebase it"]);
+    expect(new HumanMessages(dir).get("a")).toEqual(["fix the flaky test", "and push it", "rebase it"]);
+    expect(new HumanMessages(dir).get("b")).toEqual(["other agent"]);
+  });
+
+  it("keeps what the human did with an ask, and drops the plugin's reminders, PR updates and other agents", () => {
+    expect(humanText('[asks] A2 (Open the PR?) reply from the human: "not until I test it". Update or resolve A2 accordingly.')).toEqual([
+      "A2 (Open the PR?): replied: not until I test it",
+    ]);
+    expect(humanText("[asks] A1 (Keep carts in Redis or Postgres?) resolved: Postgres.")).toEqual([
+      "A1 (Keep carts in Redis or Postgres?): chose “Postgres”",
+    ]);
+    expect(humanText("[asks] A3 (Merge PR #30) PR #30 checks passing.")).toEqual([]);
+    expect(humanText(NUDGE)).toEqual([]);
+    expect(humanText(REFRESH)).toEqual([]);
+    expect(humanText(stuckReminder([{ id: "A3", title: "Merge PR #30" }]))).toEqual([]);
+    expect(humanText('<paseo-system version="1" kind="agent-message">\nhello\n</paseo-system>')).toEqual([]);
+  });
+
+  it("keeps the head and the tail of a long message, where the instruction usually sits", () => {
+    const pasted = `${"log line\n".repeat(1_000)}So: don't open the PR yet.`;
+    const kept = clip(pasted);
+    expect(kept.length).toBeLessThan(4_100);
+    expect(kept.startsWith("log line")).toBe(true);
+    expect(kept.endsWith("So: don't open the PR yet.")).toBe(true);
+    expect(clip("short")).toBe("short");
+  });
+
+  it("puts each message in its own human tags before the reply", () => {
+    const prompt = classifierPrompt("Done.", ["one", "two"]);
+    expect(prompt).toContain("<human>\none\n</human>\n\n<human>\ntwo\n</human>\n\n<reply>\nDone.\n</reply>");
+    expect(prompt).toContain('</reply>\n\nAnswer only with {"waitsOnHuman": true or false, "alreadySettled": true or false}.');
   });
 });
 
@@ -116,6 +173,13 @@ describe("parseAnswer", () => {
     expect(parseAnswer("waitsOnHuman should be false: it only reports.")).toBe(false);
     expect(parseAnswer("waitsOnHuman is unclear; true and false both fit.")).toBe(null);
     expect(parseAnswer("I think yes.")).toBe(null);
+  });
+
+  it("does not nudge what the human already settled", () => {
+    expect(parseAnswer('{"waitsOnHuman": true, "alreadySettled": true}')).toBe(false);
+    expect(parseAnswer('{"waitsOnHuman": true, "alreadySettled": false}')).toBe(true);
+    expect(parseAnswer('{"waitsOnHuman": false, "alreadySettled": false}')).toBe(false);
+    expect(parseAnswer("waitsOnHuman is true and alreadySettled is **true**.")).toBe(false);
   });
 });
 

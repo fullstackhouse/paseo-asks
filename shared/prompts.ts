@@ -4,7 +4,7 @@ export const NUDGE =
 
 /** Sent when the human presses Refresh on an agent's asks. */
 export const REFRESH =
-  "[asks] The human wants your asks up to date. Run ask_list with scope mine. Create an ask for anything you are waiting on them for, and any follow-up you recommended or deferred, that has none, and ask_update or ask_resolve the ones that are out of date. Then reply in one line.";
+  "[asks] The human wants your asks up to date. Run ask_list with scope mine. Create an ask for anything you are waiting on them for, and any follow-up you recommended or deferred, that has none, and ask_update or ask_resolve the ones that are out of date. Leave out what the human already decided or said they will do themselves. Then reply in one line.";
 
 const STUCK_HEAD = "[asks] Your turn ended with ";
 const STUCK_TAIL =

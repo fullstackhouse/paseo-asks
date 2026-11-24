@@ -402,6 +402,12 @@ describe("phase 2", () => {
     expect(held.replace(/\n  - "CHANGES_REQUESTED".*\n/, "\n")).toBe(told.replace(/\n  - "CHANGES_REQUESTED".*\n/, "\n"));
   });
 
+  it("tells agents not to ask about what the human settled", () => {
+    for (const rules of [instructions(), instructions({ actOnReviewChanges: false })]) {
+      expect(rules).toContain(`none for what's settled ("PR after I test")`);
+    }
+  });
+
   it("tells agents to read every review and comment before a Merge action, approvals included", () => {
     for (const rules of [instructions(), instructions({ actOnReviewChanges: false })]) {
       expect(rules).toContain("Before any Merge action, read every human review and comment, approvals included (not bot status ones)");
