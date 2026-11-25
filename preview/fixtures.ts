@@ -122,6 +122,7 @@ export const asks: Ask[] = [
     ownerAgentId: "main",
     kind: "pr",
     status: "in_progress",
+    lastCall: "latest",
     title: "PR #30 drop the legacy coupon code: merging",
     links: [
       { label: "PR #30", url: "https://github.com/acme/shop-api/pull/30" },

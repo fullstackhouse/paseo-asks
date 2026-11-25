@@ -397,7 +397,8 @@ export function AskCard(
       : undefined) ??
     asks.data?.asks.find((candidate) => candidate.workspaceId === workspaceId && candidate.id === askId);
   // Asks from before lastCall existed have none: every card on them stays live, as they always were.
-  const live = ask && (!ask.lastCall || ask.lastCall === call);
+  // Closed asks need nothing more from the human, so their latest card reads as history too.
+  const live = ask && (!ask.lastCall || ask.lastCall === call) && (ask.status === "open" || ask.status === "in_progress");
   const [toggled, setToggled] = useState<boolean | null>(null);
   const expanded = toggled ?? (live ? ask.status === "open" : false);
   const settings = useSettings(displaySettings);
@@ -418,7 +419,7 @@ export function AskCard(
           foldBody={settings.status === "ready" && settings.values.foldChatBodies}
         />
       ) : loaded ? (
-        <SnapshotRow
+        <EventRow
           {...props}
           current={ask}
           deleted={asks.isSuccess && !ask}
@@ -433,15 +434,30 @@ export function AskCard(
   );
 }
 
-/** What the update set, for the folded row: "options, status → in progress". */
+/** What the update set: "options, status → in progress". */
 function changeSummary(card: AskCardData): string {
   return card.changed
     .map((field) => (field === "status" && card.snapshot.status ? `status → ${card.snapshot.status.replace("_", " ")}` : field))
     .join(", ");
 }
 
-/** An ask as one past agent call left it; an update shows only what it set. */
-function SnapshotRow(
+/** What one agent call did to the ask: "Asked", "Updated options, status → in progress", "Marked done · chose “Merge”". */
+function eventSummary(card: AskCardData): string {
+  const { verb, snapshot } = card;
+  if (verb === "create") return "Asked";
+  if (verb === "update") {
+    const changes = changeSummary(card);
+    return changes ? `Updated ${changes}` : "Updated";
+  }
+  const closed = snapshot.status === "dropped" ? "Dropped" : snapshot.status === "done" ? "Marked done" : "Resolved";
+  return snapshot.choice ? `${closed} · chose “${snapshot.choice}”` : closed;
+}
+
+/**
+ * One past agent call on an ask, as history: what the call did, then the ask's title. Expanded, it shows what the call
+ * set (a create's body and options, an update's new values, a resolve's note), read-only.
+ */
+function EventRow(
   props: AskCardData & {
     theme: PluginTheme;
     current: Ask | undefined;
@@ -452,38 +468,32 @@ function SnapshotRow(
     onToggle(): void;
   },
 ) {
-  const { askId, verb, snapshot, current, deleted, styles, theme, expanded } = props;
+  const { askId, snapshot, current, deleted, styles, theme, expanded } = props;
   const kind = snapshot.kind ?? current?.kind;
   const title = snapshot.title ?? current?.title ?? askId;
-  const changes = changeSummary(props);
-  const detail =
-    verb === "update"
-      ? changes && `Changed ${changes}`
-      : verb === "resolve"
-        ? [snapshot.choice && `Chose “${snapshot.choice}”`, snapshot.note].filter(Boolean).join(": ")
-        : "";
+  const event = eventSummary(props);
+  const hasDetail = Boolean(snapshot.note || snapshot.body?.trim() || snapshot.actions?.length || snapshot.links?.length);
   return (
     <View style={[styles.card, expanded && styles.cardExpanded]}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`${askId}: ${title}, ${deleted ? "since deleted" : "earlier version"}`}
+        accessibilityLabel={`${askId}: ${event}: ${title}${deleted ? ", since deleted" : ""}`}
+        accessibilityState={{ expanded }}
+        disabled={!hasDetail}
         onPress={props.onToggle}
         style={styles.row}
       >
         {kind && <Icon name={KIND_ICONS[kind]} size={16} color={theme.colors.foregroundMuted} />}
         <Text style={styles.id}>{askId}</Text>
-        <Text style={[styles.title, styles.muted]} numberOfLines={expanded ? undefined : 1}>
-          {title}
+        <Text style={styles.title} numberOfLines={expanded ? undefined : 1}>
+          {event}
+          <Text style={styles.muted}> — {title}</Text>
         </Text>
-        {deleted ? (
-          <Text style={[styles.badge, styles.muted]}>deleted</Text>
-        ) : (
-          snapshot.status && <Text style={[styles.badge, styles.muted]}>{snapshot.status.replace("_", " ")}</Text>
-        )}
+        {deleted && <Text style={[styles.badge, styles.muted]}>deleted</Text>}
       </Pressable>
-      {expanded && (
+      {expanded && hasDetail && (
         <View style={styles.detail}>
-          {detail ? <Text style={styles.muted}>{detail}</Text> : null}
+          {snapshot.note ? <Text style={styles.muted}>{snapshot.note}</Text> : null}
           {snapshot.body?.trim() ? <Markdown>{snapshot.body}</Markdown> : null}
           {snapshot.actions?.length ? (
             <View style={styles.chips}>
