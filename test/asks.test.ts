@@ -365,4 +365,91 @@ describe("asks", () => {
       (await service.callTool(AGENT, "ask_list", { status: "all" })).text.split("\n"),
     ).toHaveLength(3);
   });
+  describe("waitingOn", () => {
+    const followup = { kind: "followup", title: "Release with the cache fix" };
+
+    it("records what an ask in progress waits on, keeps it across updates, and stamps when it was taken", async () => {
+      await service.callTool(AGENT, "ask_create", followup);
+      const taken = await service.callTool(AGENT, "ask_update", { id: "A1", status: "in_progress", waitingOn: "next release" });
+      // The tool result is parsed by chat cards and hashed by the e2e cassettes: waitingOn stays out of it.
+      expect(taken.text).toBe("A1 [in_progress] followup: Release with the cache fix");
+      const ask = store.get(WS, "A1")!;
+      expect(ask).toMatchObject({ status: "in_progress", waitingOn: "next release" });
+      expect(ask.takenAt).toBe(ask.updatedAt);
+      await service.callTool(AGENT, "ask_update", { id: "A1", body: "Cut 4.12" });
+      expect(store.get(WS, "A1")).toMatchObject({ waitingOn: "next release", takenAt: ask.takenAt });
+      await service.callTool(AGENT, "ask_update", { id: "A1", waitingOn: "  " });
+      expect(store.get(WS, "A1")!.waitingOn).toBeUndefined();
+    });
+
+    it("clears it whenever the ask leaves in progress", async () => {
+      const leave = async (how: () => Promise<unknown>) => {
+        await service.callTool(AGENT, "ask_update", { id: "A1", status: "in_progress", waitingOn: "CI on #12" });
+        await how();
+        const ask = store.get(WS, "A1")!;
+        expect(ask.status).not.toBe("in_progress");
+        expect(ask.waitingOn).toBeUndefined();
+        expect(ask.takenAt).toBeUndefined();
+      };
+      await service.callTool(AGENT, "ask_create", followup);
+      await leave(() => service.callTool(AGENT, "ask_update", { id: "A1", actions: [{ label: "Cut it", kind: "send" }] }));
+      await leave(() => service.act({ workspaceId: WS, id: "A1", verb: "reopen" }));
+      await leave(() => service.releaseOwner(AGENT));
+      await leave(() => service.callTool(AGENT, "ask_resolve", { id: "A1" }));
+    });
+
+    it("drops a waitingOn given to an ask that is not in progress", async () => {
+      await service.callTool(AGENT, "ask_create", followup);
+      await service.callTool(AGENT, "ask_update", { id: "A1", waitingOn: "next release" });
+      expect(store.get(WS, "A1")!.waitingOn).toBeUndefined();
+    });
+  });
+
+  describe("taking an ask back and reminding its agent", () => {
+    const merge = {
+      kind: "pr",
+      title: "PR #30 ready",
+      actions: [{ label: "Merge", kind: "send", prompt: "Merge PR #30 with squash" }],
+    };
+    const inProgress = async () => {
+      await service.callTool(AGENT, "ask_create", merge);
+      await service.act({ workspaceId: WS, id: "A1", verb: "action", actionId: "a1" });
+      await outbox.flush();
+      courier.sent = [];
+    };
+
+    it("reopen hands an ask in progress back to the human with its buttons, and tells the owner", async () => {
+      await inProgress();
+      const { ask, notified } = await service.act({ workspaceId: WS, id: "A1", verb: "reopen" });
+      expect(ask).toMatchObject({ status: "open", actions: [{ id: "a1", label: "Merge", kind: "send" }] });
+      expect(notified).toBe(true);
+      await outbox.flush();
+      expect(courier.sent.map((sent) => sent.text)).toEqual(["[asks] A1 (PR #30 ready): the human took it back; leave it to them."]);
+    });
+
+    it("remind tells the owner and records remindedAt without counting as a change", async () => {
+      await inProgress();
+      const before = store.get(WS, "A1")!;
+      const { ask, notified } = await service.act({ workspaceId: WS, id: "A1", verb: "remind" });
+      expect(notified).toBe(true);
+      expect(ask.status).toBe("in_progress");
+      expect(ask.updatedAt).toBe(before.updatedAt);
+      expect(ask.remindedAt! >= ask.updatedAt).toBe(true);
+      await outbox.flush();
+      expect(courier.sent.map((sent) => sent.text)).toEqual([
+        "[asks] A1 (PR #30 ready) shows nothing moving: update it or hand it back.",
+      ]);
+    });
+
+    it("refuses both on an ask that is not in progress, and remind on one whose agent is gone", async () => {
+      await service.callTool(AGENT, "ask_create", merge);
+      await expect(service.act({ workspaceId: WS, id: "A1", verb: "reopen" })).rejects.toThrow(/not in progress/);
+      await expect(service.act({ workspaceId: WS, id: "A1", verb: "remind" })).rejects.toThrow(/not in progress/);
+      await service.callTool(AGENT, "ask_update", { id: "A1", status: "in_progress" });
+      await store.update(WS, "A1", { orphaned: true });
+      await expect(service.act({ workspaceId: WS, id: "A1", verb: "remind" })).rejects.toThrow(/agent is gone/);
+      // Taking it back still works: nobody is told.
+      expect(await service.act({ workspaceId: WS, id: "A1", verb: "reopen" })).toMatchObject({ ask: { status: "open" }, notified: false });
+    });
+  });
 });

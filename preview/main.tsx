@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
 import { Text, View } from "react-native";
-import { AskCard, AsksView } from "../client/AsksView";
+import { AskCard, AsksView, WorkspaceAskEntry } from "../client/AsksView";
 import { OpenPrContext } from "../client/inbox";
 
 const theme = {
@@ -88,6 +88,13 @@ createRoot(document.getElementById("root")!).render(
           snapshot={{ kind: "pr", status: "in_progress", title: "PR #30 drop the legacy coupon code: merging" }} />
         <AskCard theme={theme} compact={false} agentId="main" askId="A9" verb="resolve" call="c3" changed={[]}
           snapshot={{ kind: "decision", status: "done", title: "Store carts in Postgres or Redis?", choice: "Postgres", note: "Keeps carts across evictions and lets us report on abandoned carts." }} />
+      </View>
+    </Frame>
+    <Frame id="overview-in-progress" title="Overview · In progress (expanded entries)" width={480} height={900}>
+      <View style={{ padding: 16, gap: 8, backgroundColor: theme.colors.surface0, flex: 1 }}>
+        <WorkspaceAskEntry theme={theme} compact={false} workspaceId="api" askId="A10" defaultExpanded={false} expanded nothingMoving openAgent={() => {}} />
+        <WorkspaceAskEntry theme={theme} compact={false} workspaceId="api" askId="A2" defaultExpanded={false} expanded openAgent={() => {}} />
+        <WorkspaceAskEntry theme={theme} compact={false} workspaceId="api" askId="A11" defaultExpanded={false} expanded nothingMoving openAgent={() => {}} />
       </View>
     </Frame>
     </OpenPrContext.Provider>

@@ -14,12 +14,16 @@ import {
   discussionTitle,
   listAsks,
   locateAsk,
+  prLinkOf,
   prPreviewOf,
   refreshAsks,
+  waitingOnOf,
   type Action,
   type Ask,
   type Deployment,
   type PrState,
+  type WaitingOn,
+  type WaitTone,
 } from "../shared/asks";
 import { displaySettings } from "../shared/settings";
 import type { AskCard as AskCardData } from "../shared/timeline";
@@ -531,6 +535,8 @@ export function WorkspaceAskEntry(props: {
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
   openAgent?: OpenAgent;
+  /** Set by the host for an ask in progress that nothing moves; its facts line turns to the warning tone. */
+  nothingMoving?: boolean;
 }) {
   const { theme, compact, workspaceId, askId, defaultExpanded, onExpandedChange, openAgent } = props;
   const styles = useMemo(() => makeStyles(theme, compact), [theme, compact]);
@@ -543,6 +549,19 @@ export function WorkspaceAskEntry(props: {
     asks.data?.asks.find((candidate) => candidate.workspaceId === workspaceId && candidate.id === askId) ??
     asks.data?.asks.find((candidate) => candidate.id === askId);
   if (!ask) return null;
+  if (ask.status === "in_progress")
+    return (
+      <InProgressAskRow
+        ask={ask}
+        styles={styles}
+        theme={theme}
+        expanded={expanded}
+        nothingMoving={props.nothingMoving ?? false}
+        onToggle={() => setExpanded?.(!expanded)}
+        onTakenBack={() => setExpanded?.(false)}
+        openAgent={openAgent}
+      />
+    );
   return (
     <AskRow
       ask={ask}
@@ -553,6 +572,167 @@ export function WorkspaceAskEntry(props: {
       onAnswered={() => setExpanded?.(false)}
       openAgent={openAgent}
     />
+  );
+}
+
+/** About three lines of body before "More". */
+const BODY_PREVIEW_HEIGHT = 64;
+
+/**
+ * An ask its agent holds, in the Overview's In progress: what it waits on and how long it sat. Open, it shows the
+ * start of the body, a facts line, the links, and the human's ways in: take it back, remind the agent, show the chat.
+ */
+function InProgressAskRow(props: {
+  ask: Ask;
+  styles: Styles;
+  theme: PluginTheme;
+  expanded: boolean;
+  nothingMoving: boolean;
+  onToggle(): void;
+  onTakenBack(): void;
+  openAgent?: OpenAgent;
+}) {
+  const { ask, styles, theme, expanded, nothingMoving } = props;
+  const waiting = waitingOnOf(ask);
+  const toneColor = (tone: WaitTone) =>
+    ({ success: theme.colors.statusSuccess, warning: theme.colors.statusWarning, danger: theme.colors.statusDanger, muted: theme.colors.foregroundMuted })[tone];
+  const word = nothingMoving ? { text: "nothing moving", tone: "warning" as const } : waiting;
+  return (
+    <View style={[styles.card, expanded && styles.cardExpanded]}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${ask.id}: ${ask.title}`}
+        accessibilityState={{ expanded }}
+        onPress={props.onToggle}
+        style={styles.row}
+      >
+        <Icon name="MessageCircleQuestionMark" size={16} color={theme.colors.foregroundMuted} />
+        <Text style={styles.title} numberOfLines={expanded ? undefined : 1}>
+          {ask.title}
+        </Text>
+        <Text style={styles.age} numberOfLines={1}>
+          {word && <Text style={{ color: toneColor(word.tone) }}>{word.text} · </Text>}
+          {age(ask.updatedAt)}
+        </Text>
+        <Icon name={expanded ? "ChevronDown" : "ChevronRight"} size={14} color={theme.colors.foregroundMuted} />
+      </Pressable>
+      {expanded && <InProgressDetail {...props} waiting={waiting} warn={nothingMoving || Boolean(ask.orphaned)} />}
+    </View>
+  );
+}
+
+function InProgressDetail({
+  ask,
+  styles,
+  theme,
+  nothingMoving,
+  waiting,
+  warn,
+  onTakenBack,
+  openAgent,
+}: {
+  ask: Ask;
+  styles: Styles;
+  theme: PluginTheme;
+  nothingMoving: boolean;
+  waiting: WaitingOn | undefined;
+  warn: boolean;
+  onTakenBack(): void;
+  openAgent?: OpenAgent;
+}) {
+  const act = useRpc(actOnAsk);
+  const locate = useRpc(locateAsk);
+  const openPr = useContext(OpenPrContext);
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const [bodyOpened, setBodyOpened] = useState(false);
+  const [bodyHeight, setBodyHeight] = useState(0);
+  const mutation = useMutation({
+    mutationFn: (verb: "reopen" | "remind") => act({ workspaceId: ask.workspaceId, id: ask.id, verb }),
+    onSuccess: (_, verb) => {
+      if (verb === "reopen") onTakenBack();
+      void queryClient.invalidateQueries({ queryKey: ["asks"] });
+      asksChanged();
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : String(error)),
+  });
+  // Reminded until the owner changes the ask: a remind does not touch `updatedAt`, the owner's next update does.
+  const reminded = ask.remindedAt && ask.remindedAt >= ask.updatedAt ? ask.remindedAt : undefined;
+  const facts = [
+    ask.orphaned ? "Agent archived" : "",
+    waiting?.line ?? "",
+    nothingMoving ? "nothing moving" : "",
+    ask.takenAt ? `taken ${ago(ask.takenAt)}` : "",
+    `last moved ${ago(ask.updatedAt)}`,
+  ].filter(Boolean);
+  const factsLine = facts.join(" · ");
+  const body = ask.body?.trim();
+  const clipped = !bodyOpened && bodyHeight > BODY_PREVIEW_HEIGHT;
+  return (
+    <View style={styles.detail}>
+      {body ? (
+        <View>
+          <View style={bodyOpened ? undefined : { maxHeight: BODY_PREVIEW_HEIGHT, overflow: "hidden" }}>
+            <View onLayout={(event) => setBodyHeight(event.nativeEvent.layout.height)}>
+              <Markdown>{body}</Markdown>
+            </View>
+          </View>
+          {(clipped || bodyOpened) && (
+            <Pressable accessibilityRole="button" onPress={() => setBodyOpened(!bodyOpened)} style={{ alignSelf: "flex-start" }}>
+              <Text style={styles.link}>{bodyOpened ? "Less" : "More"}</Text>
+            </Pressable>
+          )}
+        </View>
+      ) : null}
+      <Text style={[styles.prDetail, warn && { color: theme.colors.statusWarning }]}>
+        {factsLine.charAt(0).toUpperCase() + factsLine.slice(1)}
+      </Text>
+      {ask.links.length > 0 && (
+        <View style={styles.chips}>
+          {ask.links.map((link) => {
+            const pr = openPr && prPreviewOf(link.url);
+            return (
+              <Pressable
+                key={link.url}
+                accessibilityRole="link"
+                accessibilityHint={pr ? "Opens in Inbox" : undefined}
+                onPress={() => (pr ? openPr(pr) : openLink(link.url))}
+                style={[styles.chip, styles.linkChip]}
+              >
+                <Icon name={prLinkOf(link.url) ? "GitPullRequest" : "Link"} size={12} color={theme.colors.foregroundMuted} />
+                <Text style={[styles.chipText, { color: theme.colors.foreground }]} numberOfLines={1}>
+                  {link.label}
+                  {pr ? "" : " ↗"}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+      <View style={styles.buttons}>
+        <Button styles={styles} label="Take it back" disabled={mutation.isPending} onPress={() => mutation.mutate("reopen")} />
+        {ask.orphaned ? null : reminded ? (
+          <View style={styles.reminded}>
+            <Icon name="Check" size={14} color={theme.colors.foregroundMuted} />
+            <Text style={styles.muted}>Reminded {ago(reminded)}</Text>
+          </View>
+        ) : (
+          <Button styles={styles} label="Remind agent" disabled={mutation.isPending} onPress={() => mutation.mutate("remind")} />
+        )}
+        {openAgent && (
+          <Button
+            styles={styles}
+            label="Show in chat"
+            onPress={() =>
+              void locate({ workspaceId: ask.workspaceId, id: ask.id }).then(
+                ({ agentId, position }) => openAgent(agentId, position),
+                () => openAgent(ask.ownerAgentId),
+              )
+            }
+          />
+        )}
+      </View>
+    </View>
   );
 }
 
@@ -965,6 +1145,12 @@ function groupBy<T>(items: readonly T[], key: (item: T) => string): Map<string, 
   return groups;
 }
 
+/** "just now" under a minute, else "5m ago". */
+function ago(iso: string): string {
+  const time = age(iso);
+  return time === "0m" ? "just now" : `${time} ago`;
+}
+
 function age(iso: string): string {
   const minutes = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60_000));
   if (minutes < 60) return `${minutes}m`;
@@ -1118,6 +1304,8 @@ function makeStyles(theme: PluginTheme, compact: boolean) {
       backgroundColor: colors.surface1,
     },
     chipText: { fontSize: 12 },
+    linkChip: { flexDirection: "row" as const, alignItems: "center" as const, gap: 4 },
+    reminded: { flexDirection: "row" as const, alignItems: "center" as const, gap: 4, paddingHorizontal: 4 },
     muted: { color: colors.foregroundMuted },
     danger: { color: colors.statusDanger },
   };

@@ -37,9 +37,9 @@ function WorkspacePanel(props: PluginWorkspacePanelProps) {
   );
 }
 
-/** A waiting ask in the host's Overview, answered in place instead of in the Asks panel. */
+/** An ask in the host's Overview: a waiting one answered in place instead of in the Asks panel, or one in progress. */
 function OverviewAskEntry(props: SummaryEntryProps) {
-  const { theme, layout, workspaceId, entryId, defaultExpanded, expanded, onExpandedChange, navigation } =
+  const { theme, layout, workspaceId, entryId, defaultExpanded, expanded, onExpandedChange, navigation, nothingMoving } =
     props;
   return (
     <OpenPrContext.Provider value={inboxReview(props)}>
@@ -52,6 +52,7 @@ function OverviewAskEntry(props: SummaryEntryProps) {
         expanded={expanded}
         onExpandedChange={onExpandedChange}
         openAgent={navigation ? agentOpenerFor(navigation) : undefined}
+        nothingMoving={nothingMoving}
       />
     </OpenPrContext.Provider>
   );

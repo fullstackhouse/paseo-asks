@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ACTION_KINDS, ASK_KINDS, ASK_STATUSES, OPEN_STATUSES, prUrlOf, type Ask, type PrState } from "../shared/asks";
+import { ACTION_KINDS, ASK_KINDS, ASK_STATUSES, OPEN_STATUSES, prUrlOf, type ActVerb, type Ask, type PrState } from "../shared/asks";
 import { REFRESH } from "./nudge";
 import { stuckReminder } from "../shared/prompts";
 import { isStale, needsReminder } from "./stuck";
@@ -36,6 +36,7 @@ const UpdateInput = z.object({
   actions: z.array(ActionInput).max(8).optional(),
   links: z.array(LinkInput).optional(),
   status: z.enum(ASK_STATUSES).optional(),
+  waitingOn: z.string().max(80).optional().describe('With in_progress: what it waits on, e.g. "CI on #12", "next release". "" clears it.'),
   subscribe: z.boolean().optional(),
 });
 const ResolveInput = z.object({ id: z.string(), actionId: z.string().optional(), note: z.string().optional() });
@@ -111,6 +112,8 @@ export class AsksService {
         }
         case "ask_update": {
           const { id, ...patch } = UpdateInput.parse(args);
+          // Only when given, as with body: an explicit undefined clears it.
+          if (patch.waitingOn !== undefined) patch.waitingOn = patch.waitingOn.trim() || undefined;
           const before = this.find(workspaceId, agentId, id);
           this.checkStillWaiting(before, agentId);
           // Only a new offer is checked: a status or body change leaves the buttons the human already has.
@@ -181,7 +184,7 @@ export class AsksService {
   async act(input: {
     workspaceId: string;
     id: string;
-    verb: "action" | "done" | "drop" | "reply";
+    verb: ActVerb;
     actionId?: string;
     note?: string;
   }): Promise<{ ask: Ask; notified: boolean }> {
@@ -230,6 +233,19 @@ export class AsksService {
         );
         message = `${head} reply from the human: "${note}". Update or resolve ${ask.id} accordingly.`;
         break;
+      case "reopen":
+        // Taken back from the owner: open again with the buttons it had, so the human answers it.
+        checkInProgress(ask);
+        next = await this.store.update(ask.workspaceId, ask.id, { status: "open" });
+        message = `${head}: the human took it back; leave it to them.`;
+        break;
+      case "remind":
+        checkInProgress(ask);
+        if (ask.orphaned) throw new Error(`${ask.id}'s agent is gone, so nobody can be reminded; take it back instead`);
+        // Not a change to the ask: its age stays, and the card says "Reminded" until the owner moves it.
+        next = await this.store.update(ask.workspaceId, ask.id, { remindedAt: at }, { touch: false });
+        message = `${head} shows nothing moving: update it or hand it back.`;
+        break;
     }
     this.tellDiscussion(ask, input.verb, input.actionId);
     if (ask.orphaned) return { ask: next, notified: false };
@@ -241,9 +257,9 @@ export class AsksService {
    * The human answered with a button, which may be in the explainer's workspace: the agent discussing the ask must
    * know, or it settles the ask a second time. No askId, so an explainer that is gone leaves the ask alone.
    */
-  private tellDiscussion(ask: Ask, verb: "action" | "done" | "drop" | "reply", actionId?: string): void {
+  private tellDiscussion(ask: Ask, verb: ActVerb, actionId?: string): void {
     const agentId = ask.discussionAgentId;
-    if (!agentId || agentId === ask.ownerAgentId || verb === "reply") return;
+    if (!agentId || agentId === ask.ownerAgentId || !(verb === "action" || verb === "done" || verb === "drop")) return;
     const action = ask.actions.find((candidate) => candidate.id === actionId);
     const what = verb === "done" ? "marked it done" : verb === "drop" ? "dropped it" : `chose "${action?.label ?? actionId}"`;
     const told = ask.orphaned ? "Nobody else was told: the agent that raised it is gone." : "The main agent has been told.";
@@ -431,6 +447,10 @@ function checkActions(actions: z.output<typeof ActionInput>[]): void {
     if (action.kind === "open" && !action.url) throw new Error(`Action "${action.label}" is "open" but has no url`);
   }
   if (actions.filter((action) => action.recommended).length > 1) throw new Error("Recommend at most one action");
+}
+
+function checkInProgress(ask: Ask): void {
+  if (ask.status !== "in_progress") throw new Error(`${ask.id} is not in progress (${ask.status.replace("_", " ")})`);
 }
 
 function summary(ask: Ask): string {

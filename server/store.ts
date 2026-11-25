@@ -12,7 +12,7 @@ export type NewAsk = Pick<Ask, "workspaceId" | "ownerAgentId" | "kind" | "title"
 };
 
 export type AskPatch = Partial<
-  Pick<Ask, "title" | "body" | "links" | "status" | "outcome" | "orphaned" | "ownerAgentId" | "subscribe" | "pr" | "discussionAgentId" | "discussionWorkspaceId" | "remindedAt" | "lastCall">
+  Pick<Ask, "title" | "body" | "links" | "status" | "outcome" | "orphaned" | "ownerAgentId" | "subscribe" | "pr" | "discussionAgentId" | "discussionWorkspaceId" | "remindedAt" | "lastCall" | "waitingOn">
 > & {
   actions?: Omit<Action, "id">[];
 };
@@ -63,7 +63,10 @@ export class AskStore {
     });
   }
 
-  /** `touch: false` for bookkeeping (a PR snapshot) that should not count as the ask changing. */
+  /**
+   * `touch: false` for bookkeeping (a PR snapshot) that should not count as the ask changing. `waitingOn` and `takenAt`
+   * describe an ask in progress, so every way out of in progress clears them, and every way in stamps `takenAt`.
+   */
   update(workspaceId: string, id: string, patch: AskPatch, { touch = true } = {}): Promise<Ask> {
     return this.mutate(workspaceId, (file) => {
       const index = file.asks.findIndex((ask) => ask.id === id);
@@ -75,6 +78,10 @@ export class AskStore {
         actions: patch.actions ? withIds(patch.actions) : current.actions,
         updatedAt: touch ? this.now().toISOString() : current.updatedAt,
       };
+      if (next.status !== "in_progress") {
+        delete next.waitingOn;
+        delete next.takenAt;
+      } else if (current.status !== "in_progress") next.takenAt = this.now().toISOString();
       file.asks[index] = next;
       return next;
     });
