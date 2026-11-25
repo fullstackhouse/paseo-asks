@@ -6,7 +6,8 @@ import type { AskEntry, InProgressEntry, WorkspaceAsks } from "../shared/asks";
 // with Overview v2 read `entries`, but the npm SDK pin types neither yet. Older hosts lack the item (Asks then only
 // shows its pills) or drop `entries`. Overview v2 hosts also render each entry with `EntryComponent`.
 // COMPAT(workspaceInProgress): FSH hosts with Overview In progress read `inProgress` and pass `nothingMoving`; the npm
-// SDK pin types neither, and older hosts ignore both.
+// SDK pin types neither, and older hosts ignore both. Hosts with sidebar In progress grouping also read each entry's
+// `waitingOnReview` (typed with `InProgressEntry`); older ones ignore it.
 export interface WorkspaceSummaryState {
   label?: string;
   count?: number;

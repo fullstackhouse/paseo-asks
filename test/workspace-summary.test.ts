@@ -77,13 +77,13 @@ describe("workspaceAsks", () => {
           { id: "A1", title: "Title A1", detail: "Question" },
           { id: "A3", title: "Title A3", detail: "Action" },
         ],
-        inProgress: [{ id: "A2", title: "Title A2", agentId: "agent-1", watched: false, updatedAt: Date.parse("2026-11-11T11:00:00Z") }],
+        inProgress: [{ id: "A2", title: "Title A2", agentId: "agent-1", watched: false, waitingOnReview: false, updatedAt: Date.parse("2026-11-11T11:00:00Z") }],
       },
       w2: { count: 0, entries: [], inProgress: [] },
       w3: {
         count: 0,
         entries: [],
-        inProgress: [{ id: "A2", title: "Title A2", agentId: "agent-1", watched: false, updatedAt: Date.parse("2026-11-11T09:00:00Z") }],
+        inProgress: [{ id: "A2", title: "Title A2", agentId: "agent-1", watched: false, waitingOnReview: false, updatedAt: Date.parse("2026-11-11T09:00:00Z") }],
       },
     });
   });
@@ -111,8 +111,8 @@ describe("workspaceAsks", () => {
       count: 0,
       entries: [],
       inProgress: [
-        { id: "A2", title: "Title A2", waitingOn: "CI running", tone: "success", agentId: "agent-2", watched: true, updatedAt: Date.parse("2026-11-11T10:00:00Z") },
-        { id: "A1", title: "Title A1", waitingOn: "next release", tone: "muted", agentId: "agent-1", watched: false, updatedAt: Date.parse("2026-11-11T12:00:00Z") },
+        { id: "A2", title: "Title A2", waitingOn: "CI running", tone: "success", agentId: "agent-2", watched: true, waitingOnReview: false, updatedAt: Date.parse("2026-11-11T10:00:00Z") },
+        { id: "A1", title: "Title A1", waitingOn: "next release", tone: "muted", agentId: "agent-1", watched: false, waitingOnReview: false, updatedAt: Date.parse("2026-11-11T12:00:00Z") },
       ],
     });
   });
@@ -131,6 +131,16 @@ describe("workspaceAsks", () => {
     expect(watched({ subscribe: true, pr: pr({ state: "MERGED" }) })).toBe(false);
     expect(watched({ subscribe: true, orphaned: true, pr: pr() })).toBe(false);
     expect(watched({ subscribe: true })).toBe(false);
+  });
+
+  it("flags a watched ask whose PR waits on a requested review, not on checks", () => {
+    const waitingOnReview = (extra: Partial<Ask>) =>
+      workspaceAsks([ask("A1", "w1", "in_progress", "2026-11-11T08:00:00Z", extra)], new Set()).get("w1")!.inProgress[0].waitingOnReview;
+    expect(waitingOnReview({ subscribe: true, pr: pr({ reviewDecision: "REVIEW_REQUIRED" }) })).toBe(true);
+    expect(waitingOnReview({ subscribe: true, pr: pr({ reviewDecision: "REVIEW_REQUIRED", checks: "pending" }) })).toBe(false);
+    expect(waitingOnReview({ pr: pr({ reviewDecision: "REVIEW_REQUIRED" }) })).toBe(false);
+    expect(waitingOnReview({ subscribe: true, pr: pr({ reviewDecision: "APPROVED" }) })).toBe(false);
+    expect(waitingOnReview({ waitingOn: "next release" })).toBe(false);
   });
 });
 
