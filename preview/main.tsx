@@ -70,14 +70,24 @@ createRoot(document.getElementById("root")!).render(
     </Frame>
     <Frame id="chat" title="Agent chat" width={620} height={700}>
       <View style={{ padding: 16, gap: 12, backgroundColor: theme.colors.surface0, flex: 1 }}>
-        <AskCard theme={theme} compact={false} agentId="main" askId="A2" verb="update" />
+        <AskCard theme={theme} compact={false} agentId="main" askId="A2" verb="update" call="latest" snapshot={{}} changed={[]} />
         <Text style={{ color: theme.colors.foreground, lineHeight: 20 }}>
           The checkout rework writes the cart on every click, so where carts live has to be settled
           before the CartStore interface is fixed. Today they sit in a 4 KB session cookie and long
           carts get cut short. Redis is fast but loses carts on eviction; Postgres keeps them and
           lets us report on abandoned carts. I recommend Postgres.
         </Text>
-        <AskCard theme={theme} compact={false} agentId="main" askId="A3" verb="create" />
+        <AskCard theme={theme} compact={false} agentId="main" askId="A3" verb="create" call="" snapshot={{}} changed={[]} />
+      </View>
+    </Frame>
+    <Frame id="chat-history" title="Agent chat · earlier calls on A2" width={620} height={300}>
+      <View style={{ padding: 16, gap: 12, backgroundColor: theme.colors.surface0, flex: 1 }}>
+        <AskCard theme={theme} compact={false} agentId="main" askId="A2" verb="create" call="c1" changed={[]}
+          snapshot={{ kind: "pr", status: "open", title: "PR #30 drop the legacy coupon code", body: "Removes the `LEGACY10` path.", actions: [{ label: "Merge (squash)", recommended: true }, { label: "Request review from alice" }] }} />
+        <AskCard theme={theme} compact={false} agentId="main" askId="A2" verb="update" call="c2" changed={["status"]}
+          snapshot={{ kind: "pr", status: "in_progress", title: "PR #30 drop the legacy coupon code: merging" }} />
+        <AskCard theme={theme} compact={false} agentId="main" askId="A9" verb="resolve" call="c3" changed={[]}
+          snapshot={{ kind: "decision", status: "done", title: "Store carts in Postgres or Redis?", choice: "Postgres", note: "Keeps carts across evictions and lets us report on abandoned carts." }} />
       </View>
     </Frame>
     </OpenPrContext.Provider>

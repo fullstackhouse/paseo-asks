@@ -83,7 +83,7 @@ Map: [simplify-ask-card-ui-map.md](./simplify-ask-card-ui-map.md). Spec: [simpli
   - Dropped by you, with a note.
   - Resolved by a decision option ("You chose b: squash-only").
 - **Edge cases.**
-  - The ask was deleted → the chat card header says "(since deleted)", and there is no body.
+  - The ask was deleted → the chat card shows a *deleted* badge in place of the status.
 
 ## Decisions (card, 2026-11-23)
 
