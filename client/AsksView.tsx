@@ -371,12 +371,6 @@ export function AgentAsks(props: {
   );
 }
 
-const VERBS: Record<AskCardData["verb"], string> = {
-  create: "Asked",
-  update: "Updated",
-  resolve: "Resolved",
-};
-
 /**
  * An ask shown in the agent chat where the agent created, updated or resolved it.
  * The card of the agent's latest call on the ask is live: open asks start expanded, with their buttons first (the chat
@@ -408,23 +402,9 @@ export function AskCard(
   const expanded = toggled ?? (live ? ask.status === "open" : false);
   const settings = useSettings(displaySettings);
 
-  const note =
-    !workspaceId || asks.isPending
-      ? "loading…"
-      : asks.isError
-        ? "could not load"
-        : !ask
-          ? "since deleted"
-          : live
-            ? null
-            : "earlier version";
   const loaded = workspaceId && !asks.isPending;
   return (
     <View style={styles.inline}>
-      <Text style={styles.muted}>
-        {VERBS[verb]} {askId}
-        {note ? ` (${note})` : ""}
-      </Text>
       {live ? (
         <AskRow
           ask={ask}
@@ -441,11 +421,14 @@ export function AskCard(
         <SnapshotRow
           {...props}
           current={ask}
+          deleted={asks.isSuccess && !ask}
           styles={styles}
           expanded={expanded}
           onToggle={() => setToggled(!expanded)}
         />
-      ) : null}
+      ) : (
+        <Text style={styles.muted}>{askId} (loading…)</Text>
+      )}
     </View>
   );
 }
@@ -462,12 +445,14 @@ function SnapshotRow(
   props: AskCardData & {
     theme: PluginTheme;
     current: Ask | undefined;
+    /** The ask no longer exists; the row is all that is left of it. */
+    deleted: boolean;
     styles: Styles;
     expanded: boolean;
     onToggle(): void;
   },
 ) {
-  const { askId, verb, snapshot, current, styles, theme, expanded } = props;
+  const { askId, verb, snapshot, current, deleted, styles, theme, expanded } = props;
   const kind = snapshot.kind ?? current?.kind;
   const title = snapshot.title ?? current?.title ?? askId;
   const changes = changeSummary(props);
@@ -481,7 +466,7 @@ function SnapshotRow(
     <View style={[styles.card, expanded && styles.cardExpanded]}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`${askId}: ${title}, earlier version`}
+        accessibilityLabel={`${askId}: ${title}, ${deleted ? "since deleted" : "earlier version"}`}
         onPress={props.onToggle}
         style={styles.row}
       >
@@ -490,7 +475,11 @@ function SnapshotRow(
         <Text style={[styles.title, styles.muted]} numberOfLines={expanded ? undefined : 1}>
           {title}
         </Text>
-        {snapshot.status && <Text style={[styles.badge, styles.muted]}>{snapshot.status.replace("_", " ")}</Text>}
+        {deleted ? (
+          <Text style={[styles.badge, styles.muted]}>deleted</Text>
+        ) : (
+          snapshot.status && <Text style={[styles.badge, styles.muted]}>{snapshot.status.replace("_", " ")}</Text>
+        )}
       </Pressable>
       {expanded && (
         <View style={styles.detail}>
