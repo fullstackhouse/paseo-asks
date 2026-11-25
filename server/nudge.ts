@@ -58,6 +58,26 @@ export async function shouldNudge(
   }
 }
 
+/** The parts of an agent handle that show work it still has running (typed in `host-sdk.ts`). */
+export interface OwnWork {
+  providerSubagents?: { list(): Promise<readonly { status: string }[]> };
+  backgroundWork?: { list(): Promise<readonly { kind: string }[]> };
+}
+
+/**
+ * Whether the agent ended its turn with its own subagents or monitors still running. Each wakes it with a new turn when
+ * it finishes, so this reply is an interim update and the reply after them gets the check. Background shells don't
+ * count: a dev server never exits. A failed read counts as nothing running.
+ */
+export async function waitsOnOwnWork(agent: OwnWork): Promise<boolean> {
+  // COMPAT(providerSubagents): hosts before fullstackhouse/paseo#101 lack both handles.
+  const [subagents, work] = await Promise.all([
+    agent.providerSubagents?.list().catch(() => []) ?? [],
+    agent.backgroundWork?.list().catch(() => []) ?? [],
+  ]);
+  return subagents.some((subagent) => subagent.status === "running") || work.some((item) => item.kind === "monitor");
+}
+
 /** The last paragraph has a question mark outside code and links. */
 export function endsWithQuestion(text: string): boolean {
   const prose = text
