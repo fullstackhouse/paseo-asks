@@ -154,6 +154,8 @@ export interface InProgressEntry {
   agentId?: string;
   /** A subscribed ask whose PR is open: the PR watcher will report back. */
   watched?: boolean;
+  /** A watched ask whose PR waits on a requested review (no checks running): it waits on a person, not machines. */
+  waitingOnReview?: boolean;
   /** Epoch ms of its last change. */
   updatedAt: number;
 }
@@ -199,12 +201,14 @@ export function inProgressEntry(
   ask: Pick<Ask, "id" | "title" | "ownerAgentId" | "waitingOn" | "pr" | "subscribe" | "orphaned" | "updatedAt">,
 ): InProgressEntry {
   const waiting = waitingOnOf(ask);
+  const watched = isWatched(ask);
   return {
     id: ask.id,
     title: ask.title,
     ...(waiting && { waitingOn: waiting.text, tone: waiting.tone }),
     agentId: ask.ownerAgentId,
-    watched: isWatched(ask),
+    watched,
+    waitingOnReview: watched && ask.pr?.checks !== "pending" && ask.pr?.reviewDecision === "REVIEW_REQUIRED",
     updatedAt: Date.parse(ask.updatedAt),
   };
 }
