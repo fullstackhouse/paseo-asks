@@ -14,7 +14,10 @@ export function useRpc(contract: Contract) {
       (candidate) => candidate.workspaceId === input.workspaceId && candidate.id === input.id,
     )!;
     // Like the server: an answer moves the ask off "waiting on you".
-    if (contract.name === "asks.act" && ask.status === "open") ask.status = "in_progress";
+    if (contract.name === "asks.act" && input.verb === "reopen") ask.status = "open";
+    else if (contract.name === "asks.act" && input.verb === "remind") ask.remindedAt = new Date().toISOString();
+    else if (contract.name === "asks.act" && ask.status === "open") ask.status = "in_progress";
+    if (contract.name === "asks.locate") return { agentId: ask.ownerAgentId };
     return { ask, notified: true };
   };
 }

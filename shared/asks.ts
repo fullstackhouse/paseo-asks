@@ -67,8 +67,12 @@ export const AskSchema = z.object({
   heldReview: z.boolean().optional(),
   /** Live state of the first GitHub PR in links, refreshed by the plugin. */
   pr: PrStateSchema.optional(),
-  /** When the owner was last reminded that this ask sat in progress at the end of its turn. */
+  /** When the owner was last reminded about this ask in progress: at the end of its turn, or by the human (Remind agent). */
   remindedAt: z.string().optional(),
+  /** In progress only: what the owner says the ask waits on ("CI on #12", "next release"). Cleared when it leaves in progress. */
+  waitingOn: z.string().optional(),
+  /** In progress only: when it last went in progress. Cleared when it leaves in progress. */
+  takenAt: z.string().optional(),
   /** The agent the human talks this ask through with; it may resolve or update the ask from its own workspace. */
   discussionAgentId: z.string().optional(),
   /** The explainer's own workspace. Unset for a side chat in the ask's workspace (the fallback, and asks from before). */
@@ -137,11 +141,72 @@ export interface AskEntry {
   detail?: string;
 }
 
-/** A workspace's asks as the host summary shows them: what waits on you, oldest first, as the Asks panel orders them. */
+export type WaitTone = "success" | "warning" | "danger" | "muted";
+
+/** One ask in progress as the host's Overview lists it under In progress. Mirrors the host's `PluginWorkspaceInProgressEntry`. */
+export interface InProgressEntry {
+  id: string;
+  title: string;
+  /** What it waits on, e.g. "CI running"; the row shows only its age when omitted. */
+  waitingOn?: string;
+  tone?: WaitTone;
+  /** The owner; its running turn counts as movement. */
+  agentId?: string;
+  /** A subscribed ask whose PR is open: the PR watcher will report back. */
+  watched?: boolean;
+  /** Epoch ms of its last change. */
+  updatedAt: number;
+}
+
+/**
+ * A workspace's asks as the host summary shows them: what waits on you, oldest first, as the Asks panel orders them,
+ * and what its agents hold in progress, least recently changed first.
+ */
 export interface WorkspaceAsks {
   count: number;
   newestId?: string;
   entries: AskEntry[];
+  inProgress: InProgressEntry[];
+}
+
+/** What an ask in progress waits on: `text` for its row, `line` for its facts line. */
+export interface WaitingOn {
+  text: string;
+  tone: WaitTone;
+  line: string;
+}
+
+/**
+ * The owner's own `waitingOn` wins. Otherwise an ask on a PR reads it from the PR snapshot the watcher keeps:
+ * merged, checks running, or waiting for a review. Undefined when nothing says.
+ */
+export function waitingOnOf(ask: Pick<Ask, "waitingOn" | "pr">): WaitingOn | undefined {
+  if (ask.waitingOn) return { text: ask.waitingOn, tone: "muted", line: `Waits on ${ask.waitingOn}` };
+  const { pr } = ask;
+  if (pr?.state === "MERGED") return { text: "merged · waiting on the agent", tone: "muted", line: `PR #${pr.number} merged · waiting on the agent` };
+  if (pr?.state !== "OPEN") return undefined;
+  if (pr.checks === "pending") return { text: "CI running", tone: "success", line: `Waits on CI for #${pr.number}` };
+  if (pr.reviewDecision === "REVIEW_REQUIRED") return { text: "review requested", tone: "muted", line: `Waits on a review of #${pr.number}` };
+  return undefined;
+}
+
+/** Something outside the owner will report back: the watcher tells a live owner when the open PR changes. */
+export function isWatched(ask: Pick<Ask, "subscribe" | "orphaned" | "pr">): boolean {
+  return Boolean(ask.subscribe && !ask.orphaned && ask.pr?.state === "OPEN");
+}
+
+export function inProgressEntry(
+  ask: Pick<Ask, "id" | "title" | "ownerAgentId" | "waitingOn" | "pr" | "subscribe" | "orphaned" | "updatedAt">,
+): InProgressEntry {
+  const waiting = waitingOnOf(ask);
+  return {
+    id: ask.id,
+    title: ask.title,
+    ...(waiting && { waitingOn: waiting.text, tone: waiting.tone }),
+    agentId: ask.ownerAgentId,
+    watched: isWatched(ask),
+    updatedAt: Date.parse(ask.updatedAt),
+  };
 }
 
 const KIND_LABELS: Record<Ask["kind"], string> = {
@@ -166,17 +231,35 @@ export function askDetail(ask: Pick<Ask, "kind" | "actions" | "pr" | "orphaned">
 
 /**
  * Every workspace with any ask (any status), so one with nothing waiting reports 0 instead of nothing.
- * Like `waitingCount`, asks in snoozed workspaces don't wait on you.
+ * Like `waitingCount`, asks in snoozed workspaces don't wait on you. Their asks in progress still list: they are
+ * information, not a call to act. An ask in progress lists only in its own workspace, where its owner runs.
  */
 export function workspaceAsks(
-  asks: readonly Pick<Ask, "id" | "title" | "kind" | "actions" | "pr" | "orphaned" | "status" | "workspaceId" | "discussionWorkspaceId" | "createdAt">[],
+  asks: readonly Pick<
+    Ask,
+    | "id"
+    | "title"
+    | "kind"
+    | "actions"
+    | "pr"
+    | "orphaned"
+    | "status"
+    | "workspaceId"
+    | "discussionWorkspaceId"
+    | "createdAt"
+    | "updatedAt"
+    | "ownerAgentId"
+    | "waitingOn"
+    | "subscribe"
+  >[],
   snoozed: ReadonlySet<string>,
 ): Map<string, WorkspaceAsks> {
   const result = new Map<string, WorkspaceAsks>();
   for (const ask of [...asks].sort(oldestFirst)) {
     for (const workspaceId of workspacesOf(ask)) {
       let workspace = result.get(workspaceId);
-      if (!workspace) result.set(workspaceId, (workspace = { count: 0, entries: [] }));
+      if (!workspace) result.set(workspaceId, (workspace = { count: 0, entries: [], inProgress: [] }));
+      if (ask.status === "in_progress" && workspaceId === ask.workspaceId) workspace.inProgress.push(inProgressEntry(ask));
       // Snoozing the ask's own workspace quiets it in the explainer's too, as the sidebar count does.
       if (!awaitsYou(ask) || snoozed.has(workspaceId) || snoozed.has(ask.workspaceId)) continue;
       workspace.count++;
@@ -184,6 +267,7 @@ export function workspaceAsks(
       workspace.entries.push({ id: ask.id, title: ask.title, detail: askDetail(ask) });
     }
   }
+  for (const workspace of result.values()) workspace.inProgress.sort((a, b) => a.updatedAt - b.updatedAt);
   return result;
 }
 
@@ -197,13 +281,19 @@ export const listAsks = defineRpc({
   }),
 });
 
-/** A human disposes of an ask: run one of its actions, mark it done, or drop it. */
+export const ACT_VERBS = ["action", "done", "drop", "reply", "reopen", "remind"] as const;
+export type ActVerb = (typeof ACT_VERBS)[number];
+
+/**
+ * A human disposes of an ask: run one of its actions, mark it done, drop it, or reply. On an ask in progress:
+ * `reopen` takes it back from the owner, `remind` asks the owner to update it or hand it back.
+ */
 export const actOnAsk = defineRpc({
   name: "asks.act",
   input: z.object({
     workspaceId: z.string(),
     id: z.string(),
-    verb: z.enum(["action", "done", "drop", "reply"]),
+    verb: z.enum(ACT_VERBS),
     actionId: z.string().optional(),
     note: z.string().optional(),
   }),

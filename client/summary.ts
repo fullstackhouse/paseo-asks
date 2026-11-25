@@ -1,10 +1,12 @@
 import type { PluginClientContext, PluginWorkspacePanelProps } from "@getpaseo/plugin/client";
 import type { ComponentType } from "react";
-import type { AskEntry, WorkspaceAsks } from "../shared/asks";
+import type { AskEntry, InProgressEntry, WorkspaceAsks } from "../shared/asks";
 
 // COMPAT(workspaceSummaryItem): FSH hosts from fullstackhouse/paseo#83 have addWorkspaceSummaryItem, and FSH hosts
 // with Overview v2 read `entries`, but the npm SDK pin types neither yet. Older hosts lack the item (Asks then only
 // shows its pills) or drop `entries`. Overview v2 hosts also render each entry with `EntryComponent`.
+// COMPAT(workspaceInProgress): FSH hosts with Overview In progress read `inProgress` and pass `nothingMoving`; the npm
+// SDK pin types neither, and older hosts ignore both.
 export interface WorkspaceSummaryState {
   label?: string;
   count?: number;
@@ -13,6 +15,8 @@ export interface WorkspaceSummaryState {
   panelId?: string;
   /** Things in this workspace that wait on the human, one Overview row each. */
   entries?: AskEntry[];
+  /** Asks this workspace's agents hold in progress, one In progress row each; empty when there are none. */
+  inProgress?: InProgressEntry[];
 }
 export interface WorkspaceSummaryRegistration {
   update(patch: WorkspaceSummaryState): void;
@@ -27,6 +31,8 @@ export interface SummaryEntryProps
   /** Set by hosts that keep one entry open at a time; toggles go to `onExpandedChange`. */
   expanded?: boolean;
   onExpandedChange?(expanded: boolean): void;
+  /** For one of `inProgress`: its owner runs no turn, nothing else will report back, and it sat over ten minutes. */
+  nothingMoving?: boolean;
 }
 type SummaryHost = {
   addWorkspaceSummaryItem?: (
@@ -39,7 +45,7 @@ type SummaryHost = {
   ) => WorkspaceSummaryRegistration;
 };
 
-/** The summary item for a workspace's asks; nothing waiting reads 0, not absent. */
+/** The summary item for a workspace's asks; nothing waiting reads 0, not absent. Asks in progress list even when snoozed. */
 export function summaryState(asks: WorkspaceAsks | undefined): WorkspaceSummaryState {
   const count = asks?.count ?? 0;
   return {
@@ -49,6 +55,7 @@ export function summaryState(asks: WorkspaceAsks | undefined): WorkspaceSummaryS
     key: asks?.newestId,
     panelId: "asks",
     entries: asks?.entries ?? [],
+    inProgress: asks?.inProgress ?? [],
   };
 }
 
