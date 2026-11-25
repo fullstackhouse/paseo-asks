@@ -237,11 +237,11 @@ export class AsksService {
         // Taken back from the owner: open again with the buttons it had, so the human answers it.
         checkInProgress(ask);
         next = await this.store.update(ask.workspaceId, ask.id, { status: "open" });
-        message = `${head}: the human took it back; leave it to them.`;
+        message = `${head}: the human took it over; leave it to them.`;
         break;
       case "remind":
         checkInProgress(ask);
-        if (ask.orphaned) throw new Error(`${ask.id}'s agent is gone, so nobody can be reminded; take it back instead`);
+        if (ask.orphaned) throw new Error(`${ask.id}'s agent is gone, so nobody can be reminded; take it over instead`);
         // Not a change to the ask: its age stays, and the card says "Reminded" until the owner moves it.
         next = await this.store.update(ask.workspaceId, ask.id, { remindedAt: at }, { touch: false });
         message = `${head} shows nothing moving: update it or hand it back.`;

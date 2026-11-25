@@ -424,7 +424,7 @@ describe("asks", () => {
       expect(ask).toMatchObject({ status: "open", actions: [{ id: "a1", label: "Merge", kind: "send" }] });
       expect(notified).toBe(true);
       await outbox.flush();
-      expect(courier.sent.map((sent) => sent.text)).toEqual(["[asks] A1 (PR #30 ready): the human took it back; leave it to them."]);
+      expect(courier.sent.map((sent) => sent.text)).toEqual(["[asks] A1 (PR #30 ready): the human took it over; leave it to them."]);
     });
 
     it("remind tells the owner and records remindedAt without counting as a change", async () => {
