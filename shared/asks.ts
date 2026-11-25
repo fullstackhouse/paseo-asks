@@ -286,7 +286,7 @@ export type ActVerb = (typeof ACT_VERBS)[number];
 
 /**
  * A human disposes of an ask: run one of its actions, mark it done, drop it, or reply. On an ask in progress:
- * `reopen` takes it back from the owner, `remind` asks the owner to update it or hand it back.
+ * `reopen` takes it over from the owner, `remind` asks the owner to update it or hand it back.
  */
 export const actOnAsk = defineRpc({
   name: "asks.act",
