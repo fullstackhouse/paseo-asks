@@ -39,8 +39,9 @@ const PATTERNS: { re: RegExp; view: (m: RegExpMatchArray) => Omit<AsksMessage, "
     view: (m) => ({ event: m[2] ? `resolved in a side chat: “${m[2]}”` : "resolved in a side chat", note: m[3] }),
   },
   {
-    re: /^\((.*?)\): the human took it back; leave it to them\.$/,
-    view: () => ({ event: "took it back" }),
+    // COMPAT(took-it-back): transcripts from before the Take over rename say "took it back"; remove after 2027-02-01.
+    re: /^\((.*?)\): the human took it (?:over|back); leave it to them\.$/,
+    view: () => ({ event: "took it over" }),
   },
   {
     re: /^\((.*?)\) shows nothing moving: update it or hand it back\.$/,

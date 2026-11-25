@@ -88,13 +88,18 @@ describe("parseAsksMessage", () => {
     });
   });
 
-  it("reads taking an ask back and reminding its agent", async () => {
+  it("reads taking an ask over and reminding its agent", async () => {
     await create();
     await service.callTool(OWNER, "ask_update", { id: "A1", status: "in_progress" });
     await service.act({ workspaceId: WS, id: "A1", verb: "remind" });
     expect(await last()).toEqual({ askId: "A1", title: TITLE, event: "reminded the agent: nothing moving" });
     await service.act({ workspaceId: WS, id: "A1", verb: "reopen" });
-    expect(await last()).toEqual({ askId: "A1", title: TITLE, event: "took it back" });
+    expect(await last()).toEqual({ askId: "A1", title: TITLE, event: "took it over" });
+    expect(parseAsksMessage(`[asks] A1 (${TITLE}): the human took it back; leave it to them.`)).toEqual({
+      askId: "A1",
+      title: TITLE,
+      event: "took it over",
+    });
   });
 
   it("reads PR updates", () => {

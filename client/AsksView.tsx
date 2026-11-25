@@ -580,7 +580,7 @@ const BODY_PREVIEW_HEIGHT = 64;
 
 /**
  * An ask its agent holds, in the Overview's In progress: what it waits on and how long it sat. Open, it shows the
- * start of the body, a facts line, the links, and the human's ways in: take it back, remind the agent, show the chat.
+ * start of the body, a facts line, the links, and the human's ways in: take it over, remind the agent, show the chat.
  */
 function InProgressAskRow(props: {
   ask: Ask;
@@ -710,7 +710,7 @@ function InProgressDetail({
         </View>
       )}
       <View style={styles.buttons}>
-        <Button styles={styles} label="Take it back" disabled={mutation.isPending} onPress={() => mutation.mutate("reopen")} />
+        <Button styles={styles} label="Take over" disabled={mutation.isPending} onPress={() => mutation.mutate("reopen")} />
         {ask.orphaned ? null : reminded ? (
           <View style={styles.reminded}>
             <Icon name="Check" size={14} color={theme.colors.foregroundMuted} />
