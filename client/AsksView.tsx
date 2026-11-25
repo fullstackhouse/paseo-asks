@@ -417,6 +417,7 @@ export function AskCard(
           openAgent={openAgent}
           viewingAgentId={agentId}
           foldBody={settings.status === "ready" && settings.values.foldChatBodies}
+          quiet={ask.status !== "open"}
         />
       ) : loaded ? (
         <EventRow
@@ -474,7 +475,7 @@ function EventRow(
   const event = eventSummary(props);
   const hasDetail = Boolean(snapshot.note || snapshot.body?.trim() || snapshot.actions?.length || snapshot.links?.length);
   return (
-    <View style={[styles.card, expanded && styles.cardExpanded]}>
+    <View style={[styles.card, styles.quiet]}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${askId}: ${event}: ${title}${deleted ? ", since deleted" : ""}`}
@@ -583,11 +584,13 @@ function AskRow(props: {
   /** The agent whose chat this is shown in, so "Show in chat" does not point at itself. */
   viewingAgentId?: string;
   foldBody?: boolean;
+  /** In the chat, for an ask that is not waiting on the human: drawn flat so it does not compete with ones that are. */
+  quiet?: boolean;
 }) {
   const { ask, styles, theme, expanded } = props;
   const onAnswered = useFoldInPlace(props.onAnswered);
   return (
-    <View ref={onAnswered.ref} style={[styles.card, expanded && styles.cardExpanded]}>
+    <View ref={onAnswered.ref} style={[styles.card, props.quiet ? styles.quiet : expanded && styles.cardExpanded]}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${ask.id}: ${ask.title}`}
@@ -1046,6 +1049,7 @@ function makeStyles(theme: PluginTheme, compact: boolean) {
       backgroundColor: colors.surface1,
     },
     cardExpanded: { borderColor: colors.accent },
+    quiet: { backgroundColor: colors.surface0 },
     row: {
       flexDirection: "row" as const,
       alignItems: "center" as const,
