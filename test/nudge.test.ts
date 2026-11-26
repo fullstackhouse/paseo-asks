@@ -23,6 +23,17 @@ const tool = (name: string) =>
     error: null,
   }) as unknown as AgentTimelineItem;
 
+/** A completed asks call as the timeline carries it: the call's input and the tool's summary line. */
+const askCall = (verb: "create" | "update" | "resolve", input: object, output: string) =>
+  ({
+    type: "tool_call",
+    name: `mcp__asks__ask_${verb}`,
+    callId: `${verb}-${JSON.stringify(input)}`,
+    status: "completed",
+    error: null,
+    detail: { type: "mcp", input, output },
+  }) as unknown as AgentTimelineItem;
+
 describe("shouldNudge", () => {
   const yes = async () => true;
   const none = () => false;
@@ -38,10 +49,29 @@ describe("shouldNudge", () => {
     ).toBe(true);
   });
 
-  it("does not nudge when the turn used an asks tool", async () => {
-    expect(
-      await shouldNudge([user("go"), tool("mcp__asks__ask_create"), reply("Which one?")], none, yes),
-    ).toBe(false);
+  it("does not nudge when an ask the turn created is still open", async () => {
+    const created = askCall("create", { kind: "decision", title: "Which one?" }, "A3 [open] decision: Which one?");
+    expect(await shouldNudge([user("go"), created, reply("Which one?")], openA3, yes)).toBe(false);
+  });
+
+  it("does not nudge when an ask the turn updated is still open", async () => {
+    const updated = askCall("update", { id: "A3", status: "open" }, "A3 [open] pr: Merge PR #12");
+    expect(await shouldNudge([user("go"), updated, reply("Ready to merge.")], openA3, yes)).toBe(false);
+  });
+
+  it("nudges when the turn only resolved an ask but the reply still waits on the human", async () => {
+    const resolved = askCall("resolve", { id: "A7" }, "A7 [done] followup: Deprecate the rest");
+    const turn = [user("go"), resolved, reply("Resolved A7. Still waiting on you: merge #1543.")];
+    expect(await shouldNudge(turn, openA3, yes)).toBe(true);
+  });
+
+  it("nudges when the ask the turn updated is closed", async () => {
+    const updated = askCall("update", { id: "A3", status: "done" }, "A3 [done] pr: Merge PR #12");
+    expect(await shouldNudge([user("go"), updated, reply("Next, pick A205 or A207.")], none, yes)).toBe(true);
+  });
+
+  it("nudges when the turn only listed asks", async () => {
+    expect(await shouldNudge([user("go"), tool("mcp__asks__ask_list"), reply("Which one?")], none, yes)).toBe(true);
   });
 
   it("does not nudge when the reply points to an existing ask", async () => {
