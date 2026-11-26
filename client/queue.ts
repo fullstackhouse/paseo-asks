@@ -16,3 +16,11 @@ export function askQueue(
   for (const rows of Object.values(queue)) rows.sort(oldestFirst);
   return queue;
 }
+
+/** The ask to open once `answered` is answered: the next one below it that waits on you, else the first above it. */
+export function nextWaitingAsk(rows: readonly Ask[], answered: Pick<Ask, "workspaceId" | "id">): Ask | undefined {
+  const index = rows.findIndex((ask) => ask.workspaceId === answered.workspaceId && ask.id === answered.id);
+  const after = index === -1 ? rows : rows.slice(index + 1);
+  const before = index === -1 ? [] : rows.slice(0, index);
+  return after.find(awaitsYou) ?? before.find(awaitsYou);
+}

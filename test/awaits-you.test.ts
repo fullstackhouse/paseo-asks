@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { awaitsYou, waitingByWorkspace, waitingCount, type PrState, type Ask } from "../shared/asks";
 
-import { askQueue } from "../client/queue";
+import { askQueue, nextWaitingAsk } from "../client/queue";
 
 const pr = (state: PrState["state"]): PrState => ({
   number: 1,
@@ -94,6 +94,33 @@ describe("main ask queue", () => {
     const asks = [ask("later", { workspaceId: "later" })];
     expect(askQueue(asks, snoozed).needs_you).toHaveLength(0);
     expect(askQueue(asks, new Set()).needs_you).toHaveLength(1);
+  });
+
+  describe("next ask after an answer", () => {
+    const rows = [
+      ask("A1"),
+      ask("A2", { status: "in_progress" }),
+      ask("A3"),
+      ask("A4", { workspaceId: "other" }),
+    ];
+    const next = (id: string, workspaceId = "workspace") => nextWaitingAsk(rows, { id, workspaceId })?.id;
+
+    it("opens the next ask below that waits on you, skipping ones in progress", () => {
+      expect(next("A1")).toBe("A3");
+      expect(next("A3")).toBe("A4");
+    });
+
+    it("wraps to the first waiting ask above when none is left below", () => {
+      expect(next("A4", "other")).toBe("A1");
+    });
+
+    it("matches the answered ask by workspace too", () => {
+      expect(nextWaitingAsk([ask("A1", { workspaceId: "other" }), ask("A1")], { id: "A1", workspaceId: "workspace" })?.workspaceId).toBe("other");
+    });
+
+    it("opens nothing when the answered ask was the last one waiting", () => {
+      expect(nextWaitingAsk([ask("A1"), ask("A2", { status: "in_progress" })], { id: "A1", workspaceId: "workspace" })).toBeUndefined();
+    });
   });
 });
 

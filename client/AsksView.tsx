@@ -2,7 +2,7 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { useAgent, useRpc, useSettings } from "@getpaseo/plugin/client";
 import { Icon, ScrollView, TextInput, useToast } from "@getpaseo/plugin/client/react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useContext, useMemo, useRef, useState, type ReactNode } from "react";
+import { useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Platform, Pressable, Text, View } from "react-native";
 import { asksChanged } from "./changes";
 import { useDraft } from "./drafts";
@@ -10,6 +10,7 @@ import { MoreMenu, type MenuEntry } from "./menu";
 import type { OpenAgent } from "./navigation";
 import {
   actOnAsk,
+  awaitsYou,
   discussAsk,
   discussionTitle,
   listAsks,
@@ -31,7 +32,7 @@ import { Markdown } from "@getpaseo/plugin/client/ui";
 import { OpenPrContext } from "./inbox";
 import { openLink } from "./open-link";
 import { useRevealInScroll } from "./reveal";
-import { askQueue, type QueueFilter } from "./queue";
+import { askQueue, nextWaitingAsk, type QueueFilter } from "./queue";
 import { useSnoozedWorkspaceIds } from "./snoozed";
 
 export const POLL_MS = 4000;
@@ -94,8 +95,8 @@ function MainAsks({ theme, compact, openAgent }: ViewProps) {
   const asks = useAsks();
   const snoozed = useSnoozedWorkspaceIds();
   const [filter, setFilter] = useState<QueueFilter>("needs_you");
-  const [expanded, setExpanded] = useState<string | null>(null);
   const queue = useMemo(() => askQueue(asks.data?.asks ?? [], snoozed), [asks.data, snoozed]);
+  const open = useOpenAsk(queue[filter]);
   const selected = FILTERS.find((item) => item.id === filter)!;
 
   if (asks.isPending) return <Message styles={styles} text="Loading asks…" />;
@@ -114,7 +115,7 @@ function MainAsks({ theme, compact, openAgent }: ViewProps) {
               accessibilityState={{ selected: filter === item.id }}
               onPress={() => {
                 setFilter(item.id);
-                setExpanded(null);
+                open.close();
               }}
               style={({ pressed }) => [
                 styles.filter,
@@ -143,23 +144,18 @@ function MainAsks({ theme, compact, openAgent }: ViewProps) {
           </View>
         ) : (
           <View style={styles.queueList}>
-            {queue[filter].map((ask) => {
-              const key = `${ask.workspaceId}/${ask.id}`;
-              return (
-                <QueueRow
-                  key={key}
-                  ask={ask}
-                  workspaceName={asks.data.workspaceNames?.[ask.workspaceId] ?? ask.workspaceId}
-                  snoozed={snoozed.has(ask.workspaceId)}
-                  styles={styles}
-                  theme={theme}
-                  expanded={expanded === key}
-                  onToggle={() => setExpanded(expanded === key ? null : key)}
-                  onAnswered={() => setExpanded(null)}
-                  openAgent={openAgent}
-                />
-              );
-            })}
+            {queue[filter].map((ask) => (
+              <QueueRow
+                key={askKey(ask)}
+                ask={ask}
+                workspaceName={asks.data.workspaceNames?.[ask.workspaceId] ?? ask.workspaceId}
+                snoozed={snoozed.has(ask.workspaceId)}
+                styles={styles}
+                theme={theme}
+                {...open.rowProps(ask)}
+                openAgent={openAgent}
+              />
+            ))}
           </View>
         )}
       </View>
@@ -174,13 +170,14 @@ function QueueRow(props: {
   styles: Styles;
   theme: PluginTheme;
   expanded: boolean;
+  reveal?: number;
   onToggle(): void;
-  onAnswered?(): void;
+  onAnswered?(): boolean | void;
   openAgent?: OpenAgent;
 }) {
   const { ask, workspaceName, snoozed, styles, theme, expanded } = props;
   const [hovered, setHovered] = useState(false);
-  const onAnswered = useFoldInPlace(props.onAnswered);
+  const onAnswered = useFoldInPlace(props.onAnswered, props.reveal);
   return (
     <View ref={onAnswered.ref} style={styles.queueItem}>
       <Pressable
@@ -232,7 +229,13 @@ function QueueRow(props: {
 function WorkspaceAsks({ theme, compact, workspaceId, openAgent }: ViewProps) {
   const styles = useMemo(() => makeStyles(theme, compact), [theme, compact]);
   const asks = useAsks(workspaceId);
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const groups = useMemo(() => {
+    const all = asks.data?.asks ?? [];
+    return workspaceId ? [[workspaceId, all] as const] : [...groupBy(all, (ask) => ask.workspaceId)];
+  }, [asks.data, workspaceId]);
+  // The order rows render in: by workspace, then waiting before in progress.
+  const rows = useMemo(() => groups.flatMap(([, items]) => statusOrder(items)), [groups]);
+  const open = useOpenAsk(rows);
 
   if (asks.isPending) return <Message styles={styles} text="Loading asks…" />;
   if (asks.isError)
@@ -246,9 +249,6 @@ function WorkspaceAsks({ theme, compact, workspaceId, openAgent }: ViewProps) {
       />
     );
 
-  const groups = workspaceId
-    ? [[workspaceId, all] as const]
-    : [...groupBy(all, (ask) => ask.workspaceId)];
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       {groups.map(([groupId, items]) => (
@@ -259,26 +259,61 @@ function WorkspaceAsks({ theme, compact, workspaceId, openAgent }: ViewProps) {
           <StatusSections
             asks={items}
             styles={styles}
-            renderRow={(ask) => {
-              const key = `${ask.workspaceId}/${ask.id}`;
-              return (
-                <AskRow
-                  key={key}
-                  ask={ask}
-                  styles={styles}
-                  theme={theme}
-                  expanded={expanded === key}
-                  onToggle={() => setExpanded(expanded === key ? null : key)}
-                  onAnswered={() => setExpanded(null)}
-                  openAgent={openAgent}
-                />
-              );
-            }}
+            renderRow={(ask) => (
+              <AskRow
+                key={askKey(ask)}
+                ask={ask}
+                styles={styles}
+                theme={theme}
+                {...open.rowProps(ask)}
+                openAgent={openAgent}
+              />
+            )}
           />
         </View>
       ))}
     </ScrollView>
   );
+}
+
+const SECTIONS = ["open", "in_progress"] as const;
+
+/** Asks in the order `StatusSections` draws them. */
+function statusOrder(asks: readonly Ask[]): Ask[] {
+  return SECTIONS.flatMap((status) => asks.filter((ask) => ask.status === status));
+}
+
+function askKey(ask: Pick<Ask, "workspaceId" | "id">): string {
+  return `${ask.workspaceId}/${ask.id}`;
+}
+
+/**
+ * One ask open at a time in a list of `rows` (in the order they render). Answering the open ask opens the next one
+ * that waits on you and scrolls to it, so you can work down the list without tapping each row.
+ */
+function useOpenAsk(rows: readonly Ask[]) {
+  // `answered`: the ask whose answer opened this one.
+  const [open, setOpen] = useState<{ key: string; answered?: string } | null>(null);
+  // The answered ask keeps its slot until the refetch moves it out (closed, or to In progress), which shifts the
+  // rows below it: the opened card scrolls to itself once more then.
+  const answeredInSlot = rows.some((ask) => askKey(ask) === open?.answered && awaitsYou(ask));
+  return {
+    close: () => setOpen(null),
+    rowProps: (ask: Ask) => {
+      const key = askKey(ask);
+      const expanded = open?.key === key;
+      return {
+        expanded,
+        reveal: expanded && open.answered ? (answeredInSlot ? 1 : 2) : 0,
+        onToggle: () => setOpen(expanded ? null : { key }),
+        onAnswered: () => {
+          const next = nextWaitingAsk(rows, ask);
+          setOpen(next ? { key: askKey(next), answered: key } : null);
+          return next !== undefined;
+        },
+      };
+    },
+  };
 }
 
 /** Splits asks into what waits on the human and what the agent is already doing. */
@@ -293,7 +328,7 @@ function StatusSections({
 }) {
   return (
     <>
-      {(["open", "in_progress"] as const).map((status) => {
+      {SECTIONS.map((status) => {
         const rows = asks.filter((ask) => ask.status === status);
         if (rows.length === 0) return null;
         return (
@@ -320,7 +355,13 @@ export function AgentAsks(props: {
   const { theme, compact, workspaceId, agentId, openAgent } = props;
   const styles = useMemo(() => makeStyles(theme, compact), [theme, compact]);
   const asks = useAsks(workspaceId);
-  const [expanded, setExpanded] = useState<string | null>(null);
+  // This agent's asks first, the one it discusses included.
+  const ordered = useMemo(() => {
+    const own = (ask: Ask) => (ask.ownerAgentId === agentId || ask.discussionAgentId === agentId ? 0 : 1);
+    return [...(asks.data?.asks ?? [])].sort((a, b) => own(a) - own(b));
+  }, [asks.data, agentId]);
+  const rows = useMemo(() => statusOrder(ordered), [ordered]);
+  const open = useOpenAsk(rows);
   const refresh = useRpc(refreshAsks);
   const toast = useToast();
   const mutation = useMutation({
@@ -337,9 +378,6 @@ export function AgentAsks(props: {
   if (asks.isPending) return <Message styles={styles} text="Loading asks…" />;
   if (asks.isError)
     return <Message styles={styles} text={`Could not load asks: ${asks.error.message}`} danger />;
-  // This agent's asks first, the one it discusses included.
-  const own = (ask: Ask) => (ask.ownerAgentId === agentId || ask.discussionAgentId === agentId ? 0 : 1);
-  const ordered = [...asks.data.asks].sort((a, b) => own(a) - own(b));
   return (
     <View style={styles.popover}>
       {ordered.length === 0 && <Text style={styles.muted}>No open asks in this workspace.</Text>}
@@ -348,16 +386,11 @@ export function AgentAsks(props: {
         styles={styles}
         renderRow={(ask) => (
           <AskRow
-            key={`${ask.workspaceId}/${ask.id}`}
+            key={askKey(ask)}
             ask={ask}
             styles={styles}
             theme={theme}
-            expanded={expanded === `${ask.workspaceId}/${ask.id}`}
-            onToggle={() => {
-              const key = `${ask.workspaceId}/${ask.id}`;
-              setExpanded(expanded === key ? null : key);
-            }}
-            onAnswered={() => setExpanded(null)}
+            {...open.rowProps(ask)}
             openAgent={openAgent}
             viewingAgentId={agentId}
           />
@@ -739,16 +772,19 @@ function InProgressDetail({
 /**
  * Folds an answered card and scrolls back to it: folding a long card leaves the sheet's scroll offset past
  * it, below the next ask. The card still sits in its slot when the scroll lands; the refetch then moves it to
- * In progress and the next waiting ask takes that slot.
+ * In progress and the next waiting ask takes that slot. When the list opened another ask instead (`fold` returns
+ * true), that ask scrolls to itself: a card scrolls to itself whenever its non-zero `revealPass` changes.
  */
-function useFoldInPlace(fold?: () => void) {
+function useFoldInPlace(fold?: () => boolean | void, revealPass = 0) {
   const ref = useRef<View>(null);
   const reveal = useRevealInScroll();
+  useEffect(() => {
+    if (revealPass) reveal(ref.current);
+  }, [revealPass, reveal]);
   return {
     ref,
     fold: () => {
-      fold?.();
-      reveal(ref.current);
+      if (fold?.() !== true) reveal(ref.current);
     },
   };
 }
@@ -758,8 +794,11 @@ function AskRow(props: {
   styles: Styles;
   theme: PluginTheme;
   expanded: boolean;
+  /** Non-zero scrolls to the card, and each new value scrolls again: the list opened it after you answered another. */
+  reveal?: number;
   onToggle(): void;
-  onAnswered?(): void;
+  /** Returns true when the list opened another ask, which then scrolls to itself. */
+  onAnswered?(): boolean | void;
   openAgent?: OpenAgent;
   /** The agent whose chat this is shown in, so "Show in chat" does not point at itself. */
   viewingAgentId?: string;
@@ -768,7 +807,7 @@ function AskRow(props: {
   quiet?: boolean;
 }) {
   const { ask, styles, theme, expanded } = props;
-  const onAnswered = useFoldInPlace(props.onAnswered);
+  const onAnswered = useFoldInPlace(props.onAnswered, props.reveal);
   return (
     <View ref={onAnswered.ref} style={[styles.card, props.quiet ? styles.quiet : expanded && styles.cardExpanded]}>
       <Pressable
