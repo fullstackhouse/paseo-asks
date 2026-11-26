@@ -3,7 +3,7 @@ import { useAgent, useRpc, useSettings } from "@getpaseo/plugin/client";
 import { Icon, ScrollView, TextInput, useToast } from "@getpaseo/plugin/client/react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useContext, useMemo, useRef, useState, type ReactNode } from "react";
-import { Platform, Pressable, Text, View } from "react-native";
+import { type LayoutChangeEvent, Platform, Pressable, Text, View } from "react-native";
 import { asksChanged } from "./changes";
 import { useDraft } from "./drafts";
 import { MoreMenu, type MenuEntry } from "./menu";
@@ -575,6 +575,15 @@ export function WorkspaceAskEntry(props: {
   );
 }
 
+/** Below this card width the title gets its own line and the id, badge and age move under it. */
+const NARROW_CARD_WIDTH = 420;
+
+/** Whether the card is narrow (phone, sidebar, side panel), measured from its own layout. */
+function useNarrow(): [boolean, (event: LayoutChangeEvent) => void] {
+  const [narrow, setNarrow] = useState(false);
+  return [narrow, (event) => setNarrow(event.nativeEvent.layout.width < NARROW_CARD_WIDTH)];
+}
+
 /** About three lines of body before "More". */
 const BODY_PREVIEW_HEIGHT = 64;
 
@@ -597,23 +606,38 @@ function InProgressAskRow(props: {
   const toneColor = (tone: WaitTone) =>
     ({ success: theme.colors.statusSuccess, warning: theme.colors.statusWarning, danger: theme.colors.statusDanger, muted: theme.colors.foregroundMuted })[tone];
   const word = nothingMoving ? { text: "nothing moving", tone: "warning" as const } : waiting;
+  const [narrow, onLayout] = useNarrow();
+  const meta = (
+    <Text style={styles.age} numberOfLines={1}>
+      {word && <Text style={{ color: toneColor(word.tone) }}>{word.text} · </Text>}
+      {age(ask.updatedAt)}
+    </Text>
+  );
   return (
-    <View style={[styles.card, expanded && styles.cardExpanded]}>
+    <View onLayout={onLayout} style={[styles.card, expanded && styles.cardExpanded]}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${ask.id}: ${ask.title}`}
         accessibilityState={{ expanded }}
         onPress={props.onToggle}
-        style={styles.row}
+        style={[styles.row, narrow && styles.rowNarrow]}
       >
         <Icon name="MessageCircleQuestionMark" size={16} color={theme.colors.foregroundMuted} />
-        <Text style={styles.title} numberOfLines={expanded ? undefined : 1}>
-          {ask.title}
-        </Text>
-        <Text style={styles.age} numberOfLines={1}>
-          {word && <Text style={{ color: toneColor(word.tone) }}>{word.text} · </Text>}
-          {age(ask.updatedAt)}
-        </Text>
+        {narrow ? (
+          <View style={styles.rowText}>
+            <Text style={styles.title} numberOfLines={expanded ? undefined : 2}>
+              {ask.title}
+            </Text>
+            {meta}
+          </View>
+        ) : (
+          <>
+            <Text style={styles.title} numberOfLines={expanded ? undefined : 1}>
+              {ask.title}
+            </Text>
+            {meta}
+          </>
+        )}
         <Icon name={expanded ? "ChevronDown" : "ChevronRight"} size={14} color={theme.colors.foregroundMuted} />
       </Pressable>
       {expanded && <InProgressDetail {...props} waiting={waiting} warn={nothingMoving || Boolean(ask.orphaned)} />}
@@ -769,22 +793,46 @@ function AskRow(props: {
 }) {
   const { ask, styles, theme, expanded } = props;
   const onAnswered = useFoldInPlace(props.onAnswered);
+  const [narrow, onLayout] = useNarrow();
+  const meta = (
+    <>
+      {ask.pr && <PrBadge pr={ask.pr} styles={styles} />}
+      {ask.orphaned && <Text style={styles.orphaned}>orphaned</Text>}
+      <Text style={styles.age}>{age(ask.updatedAt)}</Text>
+    </>
+  );
   return (
-    <View ref={onAnswered.ref} style={[styles.card, props.quiet ? styles.quiet : expanded && styles.cardExpanded]}>
+    <View
+      ref={onAnswered.ref}
+      onLayout={onLayout}
+      style={[styles.card, props.quiet ? styles.quiet : expanded && styles.cardExpanded]}
+    >
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${ask.id}: ${ask.title}`}
         onPress={props.onToggle}
-        style={styles.row}
+        style={[styles.row, narrow && styles.rowNarrow]}
       >
         <Icon name={KIND_ICONS[ask.kind]} size={16} color={theme.colors.foregroundMuted} />
-        <Text style={styles.id}>{ask.id}</Text>
-        <Text style={styles.title} numberOfLines={expanded ? undefined : 1}>
-          {ask.title}
-        </Text>
-        {ask.pr && <PrBadge pr={ask.pr} styles={styles} />}
-        {ask.orphaned && <Text style={styles.orphaned}>orphaned</Text>}
-        <Text style={styles.age}>{age(ask.updatedAt)}</Text>
+        {narrow ? (
+          <View style={styles.rowText}>
+            <Text style={styles.title} numberOfLines={expanded ? undefined : 2}>
+              {ask.title}
+            </Text>
+            <View style={styles.rowMeta}>
+              <Text style={styles.id}>{ask.id}</Text>
+              {meta}
+            </View>
+          </View>
+        ) : (
+          <>
+            <Text style={styles.id}>{ask.id}</Text>
+            <Text style={styles.title} numberOfLines={expanded ? undefined : 1}>
+              {ask.title}
+            </Text>
+            {meta}
+          </>
+        )}
       </Pressable>
       {expanded && <AskDetail {...props} onAnswered={onAnswered.fold} />}
     </View>
@@ -1242,6 +1290,9 @@ function makeStyles(theme: PluginTheme, compact: boolean) {
       gap: 8,
       padding: compact ? 12 : 10,
     },
+    rowNarrow: { alignItems: "flex-start" as const },
+    rowText: { flex: 1, minWidth: 0, gap: 4 },
+    rowMeta: { flexDirection: "row" as const, flexWrap: "wrap" as const, alignItems: "center" as const, gap: 8 },
     id: { color: colors.foregroundMuted, fontSize: 12, fontVariant: ["tabular-nums" as const] },
     title: { color: colors.foreground, flex: 1, fontSize: 14 },
     age: { color: colors.foregroundMuted, fontSize: 12 },
