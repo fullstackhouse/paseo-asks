@@ -88,8 +88,11 @@ export async function startProxy(options: { mode: Mode; cassette: string; root: 
         return res.end(JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: `e2e cassette miss ${key}; re-record with npm run e2e:record` } }));
       }
       res.writeHead(take.status, { "content-type": take.contentType });
-      // A replayed tool call must point into this run's sandbox, not the recording's.
-      res.end(take.body.split(ROOT).join(options.root));
+      // A replayed tool call must point into this run's sandbox, not the recording's: the root, and the random
+      // worktree directory (the key hides it) of the agent asking, read from its own request.
+      const body = take.body.split(ROOT).join(options.root);
+      const worktree = raw.toString("utf8").match(worktreeIn(options.root))?.[0];
+      res.end(worktree ? body.replace(new RegExp(worktreeIn(options.root).source, "g"), worktree) : body);
       answered.push(request);
       return;
     }
@@ -252,6 +255,11 @@ function scrubValue(value: unknown, root: string): unknown {
     );
   }
   return value;
+}
+
+/** A worktree Paseo creates under the sandbox (Discuss's explainer): `<root>/paseo/worktrees/<random>/<name>`. */
+function worktreeIn(root: string): RegExp {
+  return new RegExp(`${root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/paseo/worktrees/[^/\\s"\\\\]+/[^/\\s"\\\\]+`);
 }
 
 function scrubText(text: string, root: string): string {
