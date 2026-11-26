@@ -1300,8 +1300,9 @@ function makeStyles(theme: PluginTheme, compact: boolean) {
     detail: { paddingHorizontal: compact ? 12 : 10, paddingBottom: 12, gap: 10 },
     link: { color: colors.accent, fontSize: 13 },
     buttons: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: 8, flex: 1 },
-    actionRow: { flexDirection: "row" as const, alignItems: "flex-end" as const, gap: 8 },
-    replyRow: { flexDirection: "row" as const, alignItems: "flex-end" as const, gap: 8 },
+    // Wraps so the inline menu (hosts without a ⋯ menu) takes its own line instead of squeezing the buttons.
+    actionRow: { flexDirection: "row" as const, flexWrap: "wrap" as const, alignItems: "flex-end" as const, gap: 8 },
+    replyRow: { flexDirection: "row" as const, flexWrap: "wrap" as const, alignItems: "flex-end" as const, gap: 8 },
     replyField: { flex: 1, flexDirection: "row" as const, alignItems: "flex-end" as const },
     send: {
       position: "absolute" as const,
@@ -1311,7 +1312,7 @@ function makeStyles(theme: PluginTheme, compact: boolean) {
       borderRadius: 6,
       backgroundColor: colors.accent,
     },
-    fallback: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: 4 },
+    fallback: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: 4, width: "100%" as const },
     fallbackItem: { paddingVertical: compact ? 10 : 6, paddingHorizontal: 8 },
     fallbackText: { color: colors.foregroundMuted, fontSize: 13 },
     fallbackDestructive: { color: colors.statusDanger },
