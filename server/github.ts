@@ -22,6 +22,16 @@ export class PrReadFailed extends Error {}
 /** No PR can be read this pass: no daemon session yet, or a host older than `changeRequests.read`. */
 export class PrReadsUnavailable extends Error {}
 
+/**
+ * The host holds GitHub reads to stay under the rate limit until `retryAt`. The pause covers every PR, so the pass
+ * stops and each ask keeps its last snapshot.
+ */
+export class PrReadsPaused extends Error {
+  constructor(readonly retryAt: number | undefined) {
+    super(`Paseo paused GitHub reads${retryAt ? ` until ${new Date(retryAt).toISOString()}` : ""}`);
+  }
+}
+
 const REVIEW_DECISIONS = { approved: "APPROVED", changes_requested: "CHANGES_REQUESTED", review_required: "REVIEW_REQUIRED" } as const;
 const MERGEABLE = { mergeable: "MERGEABLE", conflicting: "CONFLICTING", unknown: "UNKNOWN" } as const;
 
@@ -56,7 +66,7 @@ export function hostFetcher(readPrs: ReadPrs, gh: Gh | null): FetchPr {
       : Promise.resolve(undefined);
     const [read] = await readPrs([url]);
     if (!read) throw new PrReadFailed("the host returned no result");
-    if (!read.ok) throw new PrReadFailed(read.error);
+    if (!read.ok) throw read.reason === "paused" ? new PrReadsPaused(read.retryAt) : new PrReadFailed(read.error);
     return { ...prStateOf(read), deployments: await deployments };
   };
 }

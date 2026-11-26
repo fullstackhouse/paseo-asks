@@ -1,12 +1,14 @@
 import { OPEN_STATUSES, prUrlOf, type Ask, type PrState } from "../shared/asks";
 import { RateLimited } from "./gh";
-import { changesNewlyRequested, describePrChange, PrReadsUnavailable, watchedAsks, type FetchPr } from "./github";
+import { changesNewlyRequested, describePrChange, PrReadsPaused, PrReadsUnavailable, watchedAsks, type FetchPr } from "./github";
 import type { AsksService } from "./service";
 import type { AskStore } from "./store";
 
 /** Keeps each open PR ask's `pr` snapshot fresh and tells subscribed owners what changed. */
 export class PrWatcher {
   private running: Promise<void> = Promise.resolve();
+  /** The host pause last logged, so a pause is logged once however many passes hit it. */
+  private loggedPause: number | undefined | null = null;
 
   constructor(
     private readonly store: AskStore,
@@ -50,6 +52,11 @@ export class PrWatcher {
         } catch (error) {
           // The rest of the pass would fail the same way; the next one after the reset picks it up.
           if (error instanceof RateLimited || error instanceof PrReadsUnavailable) return;
+          if (error instanceof PrReadsPaused) {
+            if (this.loggedPause !== error.retryAt) console.error(`[asks] ${error.message}; keeping the last PR snapshots`);
+            this.loggedPause = error.retryAt;
+            return;
+          }
           console.error(`[asks] PR read failed for ${url}`, error instanceof Error ? error.message : error);
           fetched.set(url, null);
         }

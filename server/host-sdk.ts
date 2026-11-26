@@ -61,7 +61,15 @@ export type HostChangeRequestRead =
       checks: { name: string; state: "passing" | "failing" | "pending" | "skipped"; url?: string }[];
       headSha: string;
     }
-  | { url: string; ok: false; error: string };
+  | {
+      url: string;
+      ok: false;
+      error: string;
+      /** Missing on the first #270 builds; read it as "error". */
+      reason?: "paused" | "not_found" | "unsupported" | "error";
+      /** For "paused": when the host reads again, epoch ms. */
+      retryAt?: number;
+    };
 
 // COMPAT(changeRequestsRead): FSH hosts from fullstackhouse/paseo#270 read PR state for plugins (one batched,
 // rate-limited, cached reader for every plugin and the daemon). Older hosts lack it; the npm client has no type for it.

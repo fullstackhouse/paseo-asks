@@ -1,12 +1,12 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PrState } from "../shared/asks";
 import { prPreviewOf, prUrlOf } from "../shared/asks";
 import { seedPrompt } from "../server/discuss";
 import { RateLimited } from "../server/gh";
-import { describePrChange, hostFetcher, PrReadFailed, PrReadsUnavailable, prStateOf } from "../server/github";
+import { describePrChange, hostFetcher, PrReadFailed, PrReadsPaused, PrReadsUnavailable, prStateOf } from "../server/github";
 import { latestReply } from "../server/last-output";
 import { Outbox, type Courier } from "../server/outbox";
 import { AsksService, instructions } from "../server/service";
@@ -127,6 +127,15 @@ describe("phase 2", () => {
     await expect(fetch("https://example.com/o/r/pull/1")).rejects.toThrow(PrReadFailed);
   });
 
+  it("reports a host pause as paused, not as a failed PR", async () => {
+    const fetch = hostFetcher(
+      async (urls) => urls.map((url) => ({ url, ok: false as const, error: "Paused", reason: "paused" as const, retryAt: 5_000 })),
+      null,
+    );
+    await expect(fetch("https://github.com/o/r/pull/1")).rejects.toMatchObject({ retryAt: 5_000 });
+    await expect(fetch("https://github.com/o/r/pull/1")).rejects.toThrow(PrReadsPaused);
+  });
+
   it("describes only the PR changes an agent would act on", () => {
     expect(describePrChange(pr(), pr({ fetchedAt: "later" }))).toBeNull();
     expect(describePrChange(pr(), pr({ checks: "failing" }))).toBe("PR #30 checks failing");
@@ -166,6 +175,31 @@ describe("phase 2", () => {
     available = false;
     await watcher.refresh();
     await outbox.flush();
+    expect(store.get(WS, "A1")?.pr?.checks).toBe("pending");
+    expect(sent).toEqual([]);
+  });
+
+  it("keeps the last snapshot while the host pauses reads, logging the pause once", async () => {
+    await prAsk(true);
+    let paused = false;
+    let reads = 0;
+    const watcher = new PrWatcher(store, service, async () => {
+      reads++;
+      if (paused) throw new PrReadsPaused(5_000);
+      return pr();
+    });
+    await watcher.refresh();
+    paused = true;
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await watcher.refresh();
+      await watcher.refresh();
+      expect(log).toHaveBeenCalledTimes(1);
+    } finally {
+      log.mockRestore();
+    }
+    await outbox.flush();
+    expect(reads).toBe(3);
     expect(store.get(WS, "A1")?.pr?.checks).toBe("pending");
     expect(sent).toEqual([]);
   });
