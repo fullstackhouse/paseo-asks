@@ -3,10 +3,10 @@ import type { PaseoAgentConfig, PaseoApi } from "@getpaseo/client";
 import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 
 import { NUDGE } from "../shared/prompts";
+import { askCardFor, type ToolCallLike } from "../shared/timeline";
 
 export { NUDGE, REFRESH } from "../shared/prompts";
 
-const ASK_TOOL = /(^|[_.])ask_(create|update|resolve|list)$/;
 const ASK_ID = /\bA\d+\b/g;
 
 /** Whether an ask id names an open ask in the agent's own workspace. Ids are numbered per workspace. */
@@ -20,9 +20,11 @@ export type IsOpenAsk = (id: string) => boolean;
 export type Classify = (reply: string, human: readonly string[]) => Promise<boolean>;
 
 /**
- * The final reply of a finished turn that never touched asks, or null when there is nothing to check.
- * Turns that answer the nudge itself are never checked. A reply that points to one of its workspace's open asks
- * is recorded; ids of asks elsewhere (an explainer naming the ask it explains) don't count.
+ * The final reply of a finished turn that left no ask open, or null when there is nothing to check.
+ * Turns that answer the nudge itself are never checked. The reply is recorded when the turn created or updated an ask
+ * that is still open, or when it points to one of its workspace's open asks. Resolving or listing asks records nothing:
+ * a turn that closes the last ask often still lists what waits on the human. Ids of asks elsewhere (another
+ * workspace's, or closed ones) don't count either.
  */
 export function unrecordedReply(timeline: readonly AgentTimelineItem[], isOpenAsk: IsOpenAsk): string | null {
   const reply: string[] = [];
@@ -32,12 +34,18 @@ export function unrecordedReply(timeline: readonly AgentTimelineItem[], isOpenAs
       if (item.text.includes(NUDGE)) return null;
       break;
     }
-    if (item.type === "tool_call" && ASK_TOOL.test(item.name)) return null;
+    if (item.type === "tool_call" && leftOpen(item as unknown as ToolCallLike, isOpenAsk)) return null;
     if (item.type === "assistant_message") reply.unshift(item.text);
   }
   const text = reply.join("").trim();
   if (!text) return null;
   return (text.match(ASK_ID) ?? []).some(isOpenAsk) ? null : text;
+}
+
+/** An ask_create or ask_update call whose ask is still open. */
+function leftOpen(call: ToolCallLike, isOpenAsk: IsOpenAsk): boolean {
+  const card = askCardFor(call);
+  return !!card && card.verb !== "resolve" && isOpenAsk(card.askId);
 }
 
 /** Whether a finished turn left something for the human and never recorded it. Falls back to a question mark check when the classifier fails. */
