@@ -74,8 +74,8 @@ describe("workspaceAsks", () => {
         count: 2,
         newestId: "A3",
         entries: [
-          { id: "A1", title: "Title A1", detail: "Question" },
-          { id: "A3", title: "Title A3", detail: "Action" },
+          { id: "A1", title: "Title A1", detail: "Question", agentId: "agent-1" },
+          { id: "A3", title: "Title A3", detail: "Action", agentId: "agent-1" },
         ],
         inProgress: [{ id: "A2", title: "Title A2", agentId: "agent-1", watched: false, waitingOnReview: false, updatedAt: Date.parse("2026-11-11T11:00:00Z") }],
       },
@@ -86,6 +86,15 @@ describe("workspaceAsks", () => {
         inProgress: [{ id: "A2", title: "Title A2", agentId: "agent-1", watched: false, waitingOnReview: false, updatedAt: Date.parse("2026-11-11T09:00:00Z") }],
       },
     });
+  });
+
+  it("names the ask's owner on its entry, also where the ask is shown outside its own workspace", () => {
+    const result = workspaceAsks(
+      [ask("A1", "w1", "open", "2026-11-11T10:00:00Z", { ownerAgentId: "agent-7", discussionWorkspaceId: "w2" })],
+      new Set(),
+    );
+    expect(result.get("w1")?.entries).toEqual([{ id: "A1", title: "Title A1", detail: "Question", agentId: "agent-7" }]);
+    expect(result.get("w2")?.entries).toEqual([{ id: "A1", title: "Title A1", detail: "Question", agentId: "agent-7" }]);
   });
 
   it("treats a snoozed workspace's asks as not waiting, like waitingCount", () => {

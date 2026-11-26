@@ -134,11 +134,16 @@ export function oldestFirst(a: Pick<Ask, "createdAt">, b: Pick<Ask, "createdAt">
   return a.createdAt.localeCompare(b.createdAt);
 }
 
-/** One waiting ask as the host's Overview lists it. */
+/** One waiting ask as the host's Overview lists it. Mirrors the host's `PluginWorkspaceSummaryEntry`. */
 export interface AskEntry {
   id: string;
   title: string;
   detail?: string;
+  /**
+   * The ask's owner, so the host can tell which agent's status card it records. FSH hosts from
+   * fullstackhouse/paseo#268; older hosts ignore it.
+   */
+  agentId?: string;
 }
 
 export type WaitTone = "success" | "warning" | "danger" | "muted";
@@ -268,7 +273,7 @@ export function workspaceAsks(
       if (!awaitsYou(ask) || snoozed.has(workspaceId) || snoozed.has(ask.workspaceId)) continue;
       workspace.count++;
       workspace.newestId = ask.id;
-      workspace.entries.push({ id: ask.id, title: ask.title, detail: askDetail(ask) });
+      workspace.entries.push({ id: ask.id, title: ask.title, detail: askDetail(ask), agentId: ask.ownerAgentId });
     }
   }
   for (const workspace of result.values()) workspace.inProgress.sort((a, b) => a.updatedAt - b.updatedAt);
