@@ -857,8 +857,11 @@ function AskDetail({
   const [bodyOpened, setBodyOpened] = useState(false);
   const bodyShown = !foldBody || bodyOpened;
   // One line when empty, then the field follows its text up to about six lines and scrolls.
-  const [contentHeight, setContentHeight] = useState(0);
-  const inputHeight = Math.min(132, Math.max(36, contentHeight + 16));
+  // The height comes from a hidden copy of the text at the field's width. The field's own
+  // content size can't be used: on web it is the textarea's scroll height, which never drops
+  // below the field's current height, so the field grew on every keystroke and never shrank.
+  const [textHeight, setTextHeight] = useState(0);
+  const inputHeight = Math.min(132, Math.max(36, Math.ceil(textHeight)));
   const mutation = useMutation({
     mutationFn: (input: { verb: "action" | "done" | "drop" | "reply"; actionId?: string }) =>
       act({ workspaceId: ask.workspaceId, id: ask.id, note, ...input }),
@@ -997,15 +1000,23 @@ function AskDetail({
       )}
       <View style={styles.replyRow}>
         <View style={styles.replyField}>
+          <Text
+            accessible={false}
+            aria-hidden
+            pointerEvents="none"
+            style={[styles.input, styles.inputMeasure]}
+            onLayout={(event) => setTextHeight(event.nativeEvent.layout.height)}
+          >
+            {`${note}\u200b`}
+          </Text>
           <TextInput
             value={note}
             onChangeText={setNote}
             placeholder="Reply to the agent…"
             placeholderTextColor={styles.placeholder.color}
-            style={[styles.input, { height: note ? inputHeight : 36 }]}
+            style={[styles.input, { height: inputHeight }]}
             multiline
             numberOfLines={1}
-            onContentSizeChange={(event) => setContentHeight(event.nativeEvent.contentSize.height)}
             onKeyPress={(event) => {
               // Desktop/web: Enter sends the reply, Shift+Enter adds a line. Native keeps Return as newline.
               const e = event.nativeEvent as typeof event.nativeEvent & {
@@ -1326,6 +1337,15 @@ function makeStyles(theme: PluginTheme, compact: boolean) {
       maxHeight: 132,
       flex: 1,
       fontSize: 13,
+    },
+    inputMeasure: {
+      position: "absolute" as const,
+      top: 0,
+      left: 0,
+      right: 0,
+      maxHeight: undefined,
+      opacity: 0,
+      borderColor: "transparent",
     },
     placeholder: { color: colors.foregroundMuted },
     badge: { fontSize: 11 },
