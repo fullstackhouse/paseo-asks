@@ -1,6 +1,6 @@
 import { OPEN_STATUSES, prUrlOf, type Ask, type PrState } from "../shared/asks";
 import { RateLimited } from "./gh";
-import { changesNewlyRequested, describePrChange, PrReadsPaused, PrReadsUnavailable, watchedAsks, type FetchPr } from "./github";
+import { changesNewlyRequested, describePrChange, PrReadsPaused, PrReadsUnavailable, watchedAsks, type FetchPrs } from "./github";
 import type { AsksService } from "./service";
 import type { AskStore } from "./store";
 
@@ -13,7 +13,7 @@ export class PrWatcher {
   constructor(
     private readonly store: AskStore,
     private readonly service: AsksService,
-    private readonly fetchPr: FetchPr,
+    private readonly fetchPrs: FetchPrs,
     /** False when the human wants requested changes held as an ask rather than sent to the agent. */
     private readonly actOnReviewChanges: () => Promise<boolean> = async () => true,
     /** Ids of the workspaces that are not archived; null while the daemon can't be asked. */
@@ -42,27 +42,34 @@ export class PrWatcher {
     const asks = live ? watched.filter((ask) => live.has(ask.workspaceId)) : watched;
     if (!asks.length) return;
     const actOnReviews = await this.actOnReviewChanges();
-    // Several asks often link one PR; each pass reads it once.
-    const fetched = new Map<string, PrState | null>();
+    // Several asks often link one PR; each pass reads every PR once, in one host read.
+    const urls = [...new Set(asks.map((ask) => prUrlOf(ask)!))];
+    const snapshots = new Map<string, PrState>();
+    for (const ask of asks) {
+      if (ask.pr && ask.pr.url === prUrlOf(ask) && !snapshots.has(ask.pr.url)) snapshots.set(ask.pr.url, ask.pr);
+    }
+    let fetched: Map<string, PrState | Error>;
+    try {
+      fetched = await this.fetchPrs(urls, snapshots);
+    } catch (error) {
+      // The whole pass failed the same way; the next one after the reset picks it up.
+      if (error instanceof RateLimited || error instanceof PrReadsUnavailable) return;
+      if (error instanceof PrReadsPaused) {
+        if (this.loggedPause !== error.retryAt) console.error(`[asks] ${error.message}; keeping the last PR snapshots`);
+        this.loggedPause = error.retryAt;
+        return;
+      }
+      console.error("[asks] PR refresh failed", error instanceof Error ? error.message : error);
+      return;
+    }
+    for (const [url, result] of fetched) {
+      if (result instanceof Error) console.error(`[asks] PR read failed for ${url}`, result.message);
+    }
     for (const ask of asks) {
       const url = prUrlOf(ask)!;
-      if (!fetched.has(url)) {
-        try {
-          fetched.set(url, await this.fetchPr(url));
-        } catch (error) {
-          // The rest of the pass would fail the same way; the next one after the reset picks it up.
-          if (error instanceof RateLimited || error instanceof PrReadsUnavailable) return;
-          if (error instanceof PrReadsPaused) {
-            if (this.loggedPause !== error.retryAt) console.error(`[asks] ${error.message}; keeping the last PR snapshots`);
-            this.loggedPause = error.retryAt;
-            return;
-          }
-          console.error(`[asks] PR read failed for ${url}`, error instanceof Error ? error.message : error);
-          fetched.set(url, null);
-        }
-      }
-      let pr = fetched.get(url);
-      if (pr == null) continue;
+      const result = fetched.get(url);
+      if (!result || result instanceof Error) continue;
+      let pr = result;
       // Held whenever changes are requested, not only on the change into it: the setting may have been turned off
       // afterwards, and agents told to wait for the Address ask must get one.
       const holdReview = !actOnReviews && pr.reviewDecision === "CHANGES_REQUESTED";

@@ -44,6 +44,10 @@ export const PrStateSchema = z.object({
   mergeable: z.string(),
   /** Unset when the deployments lookup failed or predates this field; empty when the head commit has none. */
   deployments: z.array(DeploymentSchema).optional(),
+  /** The head commit `deployments` describe; unset on snapshots from before deployments were skipped. */
+  headSha: z.string().optional(),
+  /** When `deployments` were last looked up; unset on snapshots from before deployments were skipped. */
+  deploymentsAt: z.string().optional(),
   fetchedAt: z.string(),
 });
 export type PrState = z.infer<typeof PrStateSchema>;

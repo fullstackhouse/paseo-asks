@@ -5,14 +5,30 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PrState } from "../shared/asks";
 import { prPreviewOf, prUrlOf } from "../shared/asks";
 import { seedPrompt } from "../server/discuss";
-import { RateLimited } from "../server/gh";
-import { describePrChange, hostFetcher, PrReadFailed, PrReadsPaused, PrReadsUnavailable, prStateOf } from "../server/github";
+import { Gh, RateLimited } from "../server/gh";
+import { DEPLOYMENTS_RECHECK_MS, describePrChange, hostFetcher, PrReadFailed, PrReadsPaused, PrReadsUnavailable, prStateOf, type FetchPrs } from "../server/github";
 import { latestReply } from "../server/last-output";
 import { Outbox, type Courier } from "../server/outbox";
 import { AsksService, instructions } from "../server/service";
 import { ASK_FREQUENCIES, INSTRUCTIONS_LIMIT } from "../shared/instructions";
 import { AskStore } from "../server/store";
 import { PrWatcher } from "../server/watcher";
+
+/** A one-URL fetch as the watcher's batch fetcher: errors that end the whole pass still throw. */
+const each =
+  (fetch: (url: string) => Promise<PrState>): FetchPrs =>
+  async (urls) => {
+    const results = new Map<string, PrState | Error>();
+    for (const url of urls) {
+      try {
+        results.set(url, await fetch(url));
+      } catch (error) {
+        if (error instanceof RateLimited || error instanceof PrReadsPaused || error instanceof PrReadsUnavailable) throw error;
+        results.set(url, error as Error);
+      }
+    }
+    return results;
+  };
 
 const WS = "wks_1";
 const OWNER = "owner";
@@ -124,7 +140,107 @@ describe("phase 2", () => {
 
   it("fails a PR the host can't read, without gh", async () => {
     const fetch = hostFetcher(async (urls) => urls.map((url) => ({ url, ok: false as const, error: "unknown forge" })), null);
-    await expect(fetch("https://example.com/o/r/pull/1")).rejects.toThrow(PrReadFailed);
+    const result = (await fetch(["https://example.com/o/r/pull/1"], new Map())).get("https://example.com/o/r/pull/1");
+    expect(result).toBeInstanceOf(PrReadFailed);
+  });
+
+  describe("one pass's GitHub calls", () => {
+    const URL_A = "https://github.com/o/r/pull/1";
+    const URL_B = "https://github.com/o/r/pull/2";
+    const NOW = Date.parse("2026-11-27T10:00:00Z");
+    const open = (url: string, overrides: Record<string, unknown> = {}) => ({
+      url,
+      ok: true as const,
+      number: Number(url.split("/").pop()),
+      title: "Fix",
+      state: "open" as const,
+      isDraft: false,
+      mergeable: "mergeable" as const,
+      reviewDecision: null,
+      checksState: "passing" as const,
+      checks: [],
+      headSha: "sha1",
+      ...overrides,
+    });
+    const reader = (reads: Record<string, Record<string, unknown>> = {}) => {
+      const calls: string[][] = [];
+      const read = async (urls: string[]) => {
+        calls.push(urls);
+        return urls.map((url) => open(url, reads[url]));
+      };
+      return { calls, read };
+    };
+    const ghCounting = () => {
+      const calls: string[][] = [];
+      const gh = new Gh(async (args) => {
+        calls.push(args);
+        return JSON.stringify({ data: { repository: { pullRequest: { commits: { nodes: [{ commit: { deployments: { nodes: [] } } }] } } } } });
+      });
+      return { calls, gh };
+    };
+    const looked = (overrides: Partial<PrState> = {}): PrState => pr({ headSha: "sha1", deployments: [], deploymentsAt: new Date(NOW - 60_000).toISOString(), ...overrides });
+
+    it("reads every PR of a pass in one host read", async () => {
+      const host = reader();
+      const fetch = hostFetcher(host.read, null, () => NOW);
+      const results = await fetch([URL_A, URL_B], new Map());
+      expect(host.calls).toEqual([[URL_A, URL_B]]);
+      expect([...results.keys()]).toEqual([URL_A, URL_B]);
+    });
+
+    it("keeps settled deployments of an unchanged head commit without asking gh", async () => {
+      const { calls, gh } = ghCounting();
+      const fetch = hostFetcher(reader().read, gh, () => NOW);
+      const before = looked({ deployments: [{ label: "x.dev", state: "ready", url: "https://x.dev" }] });
+      const result = (await fetch([URL_A], new Map([[URL_A, before]]))).get(URL_A) as PrState;
+      expect(calls).toEqual([]);
+      expect(result.deployments).toEqual(before.deployments);
+      expect(result.deploymentsAt).toBe(before.deploymentsAt);
+    });
+
+    it("looks deployments up again when something says they may have changed", async () => {
+      const cases: [string, Record<string, unknown>, Partial<PrState>][] = [
+        ["a new head commit", { headSha: "sha2" }, {}],
+        ["checks still running", { checksState: "pending" }, {}],
+        ["a deployment still running", {}, { deployments: [{ label: "x.dev", state: "deploying" }] }],
+        ["a lookup older than the recheck interval", {}, { deploymentsAt: new Date(NOW - DEPLOYMENTS_RECHECK_MS).toISOString() }],
+        ["a snapshot from before head commits were kept", {}, { headSha: undefined, deploymentsAt: undefined }],
+      ];
+      for (const [, read, snapshot] of cases) {
+        const { calls, gh } = ghCounting();
+        const fetch = hostFetcher(reader({ [URL_A]: read }).read, gh, () => NOW);
+        const result = (await fetch([URL_A], new Map([[URL_A, looked(snapshot)]]))).get(URL_A) as PrState;
+        expect(calls).toHaveLength(1);
+        expect(result.deploymentsAt).toBe(new Date(NOW).toISOString());
+      }
+    });
+
+    it("never asks gh about a merged PR's deployments", async () => {
+      const { calls, gh } = ghCounting();
+      const fetch = hostFetcher(reader({ [URL_A]: { state: "merged" } }).read, gh, () => NOW);
+      await fetch([URL_A], new Map());
+      expect(calls).toEqual([]);
+    });
+
+    it("drops another commit's deployments when it can't look up the new ones", async () => {
+      const fetch = hostFetcher(reader({ [URL_A]: { headSha: "sha2" } }).read, null, () => NOW);
+      const before = looked({ deployments: [{ label: "x.dev", state: "ready", url: "https://x.dev" }] });
+      const result = (await fetch([URL_A], new Map([[URL_A, before]]))).get(URL_A) as PrState;
+      expect(result.deployments).toBeUndefined();
+      expect(result.headSha).toBe("sha2");
+    });
+
+    it("fetches each PR once per pass however many asks link it", async () => {
+      await prAsk(true);
+      await service.callTool(OWNER, "ask_create", { kind: "followup", title: "Also on PR #30", links: [{ label: "PR", url: "https://github.com/o/r/pull/30" }] });
+      const calls: (readonly string[])[] = [];
+      const watcher = new PrWatcher(store, service, async (urls) => {
+        calls.push(urls);
+        return new Map(urls.map((url) => [url, pr()]));
+      });
+      await watcher.refresh();
+      expect(calls).toEqual([["https://github.com/o/r/pull/30"]]);
+    });
   });
 
   it("reports a host pause as paused, not as a failed PR", async () => {
@@ -132,8 +248,8 @@ describe("phase 2", () => {
       async (urls) => urls.map((url) => ({ url, ok: false as const, error: "Paused", reason: "paused" as const, retryAt: 5_000 })),
       null,
     );
-    await expect(fetch("https://github.com/o/r/pull/1")).rejects.toMatchObject({ retryAt: 5_000 });
-    await expect(fetch("https://github.com/o/r/pull/1")).rejects.toThrow(PrReadsPaused);
+    await expect(fetch(["https://github.com/o/r/pull/1"], new Map())).rejects.toMatchObject({ retryAt: 5_000 });
+    await expect(fetch(["https://github.com/o/r/pull/1"], new Map())).rejects.toThrow(PrReadsPaused);
   });
 
   it("describes only the PR changes an agent would act on", () => {
@@ -152,7 +268,7 @@ describe("phase 2", () => {
   it("refreshes PR state quietly, and tells a subscribed owner about a change", async () => {
     await prAsk(true);
     let next = pr();
-    const watcher = new PrWatcher(store, service, async () => next);
+    const watcher = new PrWatcher(store, service, each(async () => next));
     await watcher.refresh();
     await outbox.flush();
     expect(store.get(WS, "A1")?.pr?.checks).toBe("pending");
@@ -167,10 +283,10 @@ describe("phase 2", () => {
   it("keeps the last snapshot while the host can't read PRs", async () => {
     await prAsk(true);
     let available = true;
-    const watcher = new PrWatcher(store, service, async () => {
+    const watcher = new PrWatcher(store, service, each(async () => {
       if (!available) throw new PrReadsUnavailable("Host lacks changeRequests.read");
       return pr();
-    });
+    }));
     await watcher.refresh();
     available = false;
     await watcher.refresh();
@@ -183,11 +299,11 @@ describe("phase 2", () => {
     await prAsk(true);
     let paused = false;
     let reads = 0;
-    const watcher = new PrWatcher(store, service, async () => {
+    const watcher = new PrWatcher(store, service, each(async () => {
       reads++;
       if (paused) throw new PrReadsPaused(5_000);
       return pr();
-    });
+    }));
     await watcher.refresh();
     paused = true;
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -208,7 +324,7 @@ describe("phase 2", () => {
     await prAsk(true);
     const preview = { label: "pr-30.example.dev", url: "https://pr-30.example.dev" };
     let next = pr({ deployments: [{ ...preview, state: "deploying", link: "https://ci.example.com/1" }] });
-    const watcher = new PrWatcher(store, service, async () => next);
+    const watcher = new PrWatcher(store, service, each(async () => next));
     await watcher.refresh();
 
     next = pr();
@@ -230,7 +346,7 @@ describe("phase 2", () => {
       subscribe: true,
     });
     let next = pr({ number: 29, url: "https://github.com/o/r/pull/29", state: "MERGED" });
-    const watcher = new PrWatcher(store, service, async () => next);
+    const watcher = new PrWatcher(store, service, each(async () => next));
     await watcher.refresh();
 
     await service.callTool(OWNER, "ask_update", { id: "A1", links: [{ label: "PR", url: "https://github.com/o/r/pull/30" }] });
@@ -249,10 +365,10 @@ describe("phase 2", () => {
   it("stops polling a PR ask once its PR is merged", async () => {
     await prAsk(true);
     const fetched: string[] = [];
-    const watcher = new PrWatcher(store, service, async (url) => {
+    const watcher = new PrWatcher(store, service, each(async (url) => {
       fetched.push(url);
       return pr({ state: "MERGED" });
-    });
+    }));
     await watcher.refresh();
     await watcher.refresh();
     expect(fetched).toEqual(["https://github.com/o/r/pull/30"]);
@@ -263,7 +379,7 @@ describe("phase 2", () => {
     await prAsk(true);
     await store.update(WS, "A1", { orphaned: true });
     let next = pr();
-    const watcher = new PrWatcher(store, service, async () => next);
+    const watcher = new PrWatcher(store, service, each(async () => next));
     await watcher.refresh();
     next = pr({ checks: "passing" });
     await watcher.refresh();
@@ -276,10 +392,10 @@ describe("phase 2", () => {
     await prAsk(true);
     await prAsk(true);
     const fetched: string[] = [];
-    const watcher = new PrWatcher(store, service, async (url) => {
+    const watcher = new PrWatcher(store, service, each(async (url) => {
       fetched.push(url);
       return pr({ checks: "passing" });
-    });
+    }));
     await watcher.refresh();
     expect(fetched).toEqual(["https://github.com/o/r/pull/30"]);
     expect([store.get(WS, "A1")?.pr?.checks, store.get(WS, "A2")?.pr?.checks]).toEqual(["passing", "passing"]);
@@ -293,10 +409,10 @@ describe("phase 2", () => {
       links: [{ label: "PR", url: "https://github.com/o/r/pull/31" }],
     });
     const fetched: string[] = [];
-    const watcher = new PrWatcher(store, service, async (url) => {
+    const watcher = new PrWatcher(store, service, each(async (url) => {
       fetched.push(url);
       return pr({ url });
-    });
+    }));
     await watcher.refresh({ workspaceId: WS, id: "A2" });
     expect(fetched).toEqual(["https://github.com/o/r/pull/31"]);
   });
@@ -313,10 +429,10 @@ describe("phase 2", () => {
       links: [{ label: "PR", url: "https://github.com/o/r/pull/31" }],
     });
     const fetched: string[] = [];
-    const watcher = new PrWatcher(store, service, async (url) => {
+    const watcher = new PrWatcher(store, service, each(async (url) => {
       fetched.push(url);
       throw new RateLimited(0);
-    });
+    }));
     await watcher.refresh();
     expect(fetched).toEqual(["https://github.com/o/r/pull/30"]);
   });
@@ -336,10 +452,10 @@ describe("phase 2", () => {
     const watcher = new PrWatcher(
       store,
       service,
-      async (url) => {
+      each(async (url) => {
         fetched.push(url);
         return pr({ url });
-      },
+      }),
       async () => true,
       async () => new Set([WS]),
     );
@@ -353,10 +469,10 @@ describe("phase 2", () => {
     const watcher = new PrWatcher(
       store,
       service,
-      async (url) => {
+      each(async (url) => {
         fetched.push(url);
         return pr();
-      },
+      }),
       async () => true,
       async () => {
         throw new Error("daemon unavailable");
@@ -370,7 +486,7 @@ describe("phase 2", () => {
     await prAsk(false);
     const before = store.get(WS, "A1")!.updatedAt;
     let next = pr();
-    const watcher = new PrWatcher(store, service, async () => next);
+    const watcher = new PrWatcher(store, service, each(async () => next));
     await watcher.refresh();
     next = pr({ checks: "failing" });
     await watcher.refresh();
@@ -389,7 +505,7 @@ describe("phase 2", () => {
   it("holds requested changes as an ask instead of telling the owner, once per open ask", async () => {
     await prAsk(true);
     let next = pr();
-    const watcher = new PrWatcher(store, service, async () => next, async () => false);
+    const watcher = new PrWatcher(store, service, each(async () => next), async () => false);
     await watcher.refresh();
 
     next = pr({ reviewDecision: "CHANGES_REQUESTED" });
@@ -434,7 +550,7 @@ describe("phase 2", () => {
     await store.update(WS, "A1", { orphaned: true });
     await prAsk(true);
     let next = pr();
-    const watcher = new PrWatcher(store, service, async () => next, async () => false);
+    const watcher = new PrWatcher(store, service, each(async () => next), async () => false);
     await watcher.refresh();
     next = pr({ reviewDecision: "CHANGES_REQUESTED" });
     await watcher.refresh();
@@ -448,10 +564,10 @@ describe("phase 2", () => {
     const watcher = new PrWatcher(
       store,
       service,
-      async () => {
+      each(async () => {
         if (closeDuringFetch) await store.update(WS, "A1", { status: "dropped" });
         return next;
-      },
+      }),
       async () => false,
     );
     await watcher.refresh();
@@ -465,7 +581,7 @@ describe("phase 2", () => {
 
   it("raises a review ask for a PR that already has changes requested when its ask is first seen", async () => {
     await prAsk(true);
-    const watcher = new PrWatcher(store, service, async () => pr({ reviewDecision: "CHANGES_REQUESTED" }), async () => false);
+    const watcher = new PrWatcher(store, service, each(async () => pr({ reviewDecision: "CHANGES_REQUESTED" })), async () => false);
     await watcher.refresh();
     await outbox.flush();
     expect(sent).toEqual([]);
@@ -514,7 +630,7 @@ describe("phase 2", () => {
   it("raises a review ask when the setting is turned off after changes were requested", async () => {
     await prAsk(true);
     let held = false;
-    const watcher = new PrWatcher(store, service, async () => pr({ reviewDecision: "CHANGES_REQUESTED" }), async () => !held);
+    const watcher = new PrWatcher(store, service, each(async () => pr({ reviewDecision: "CHANGES_REQUESTED" })), async () => !held);
     await watcher.refresh();
     expect(store.list(WS)).toHaveLength(1);
 
@@ -526,7 +642,7 @@ describe("phase 2", () => {
   it("does not bring a closed review ask back on every poll, only for a new round of changes", async () => {
     await prAsk(true);
     let next = pr({ reviewDecision: "CHANGES_REQUESTED" });
-    const watcher = new PrWatcher(store, service, async () => next, async () => false);
+    const watcher = new PrWatcher(store, service, each(async () => next), async () => false);
     await watcher.refresh();
     await service.act({ workspaceId: WS, id: "A2", verb: "drop" });
     await watcher.refresh();
@@ -546,10 +662,10 @@ describe("phase 2", () => {
     const watcher = new PrWatcher(
       store,
       service,
-      async (url) => {
+      each(async (url) => {
         fetched.push(url);
         return pr({ reviewDecision: "CHANGES_REQUESTED" });
-      },
+      }),
       async () => false,
     );
     await watcher.refresh();
@@ -562,7 +678,7 @@ describe("phase 2", () => {
   it("still tells the owner about checks and merges while holding reviews", async () => {
     await prAsk(true);
     let next = pr();
-    const watcher = new PrWatcher(store, service, async () => next, async () => false);
+    const watcher = new PrWatcher(store, service, each(async () => next), async () => false);
     await watcher.refresh();
     next = pr({ checks: "failing", reviewDecision: "CHANGES_REQUESTED" });
     await watcher.refresh();
@@ -573,7 +689,7 @@ describe("phase 2", () => {
   it("tells the owner about requested changes by default", async () => {
     await prAsk(true);
     let next = pr();
-    const watcher = new PrWatcher(store, service, async () => next);
+    const watcher = new PrWatcher(store, service, each(async () => next));
     await watcher.refresh();
     next = pr({ reviewDecision: "CHANGES_REQUESTED" });
     await watcher.refresh();
