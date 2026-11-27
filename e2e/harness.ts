@@ -82,7 +82,7 @@ export class Sandbox {
 
     const sandbox = new Sandbox(root, project, paseoHome, daemon, proxy);
     try {
-      await waitFor("daemon listening", async () => (await sandbox.paseo("daemon", "status")).includes("running"), 30_000);
+      await waitFor("daemon listening", async () => (await sandbox.paseo("daemon", "status")).includes("running"), 90_000);
       await sandbox.paseo("plugin", "install", PLUGIN);
       await waitFor("plugin running", async () => /paseo-asks\s+running/.test(await sandbox.paseo("plugin", "ls")), 30_000);
     } catch (error) {

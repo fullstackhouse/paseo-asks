@@ -51,9 +51,10 @@ function output(value, flags) {
   const json = JSON.stringify(value);
   if (jq) {
     try {
-      process.stdout.write(execFileSync("jq", ["-r", jq], { input: json, encoding: "utf8" }));
-    } catch (error) {
-      fail(`failed to parse jq expression: ${error.stderr ?? error.message}`);
+      process.stdout.write(execFileSync("jq", ["-r", jq], { input: json, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }));
+    } catch {
+      // jq words its errors differently per version (macOS vs CI), and they land in what the model sees: keep them fixed.
+      fail(`failed to parse jq expression: ${jq}`);
     }
   } else process.stdout.write(json + "\n");
 }

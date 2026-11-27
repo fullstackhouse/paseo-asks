@@ -275,6 +275,9 @@ function scrubText(text: string, root: string): string {
     // `ls -l` lines: keep the type and name; owner, size and mtime differ between machines and runs.
     .replace(/^([-dl])[rwxsStT-]{9}[@+.]?\s+\d+\s+\S+\s+\S+\s+\d+\s+\w{3}\s+\d{1,2}\s+[\d:]{4,5}\s+(.*)$/gm, "$1 $2")
     .replace(/^total \d+$/gm, "total <n>")
+    // A mis-quoted command's error: bash 3.2 (macOS) and bash 5 (CI) word it, and exit with it, differently.
+    .replace(/(?:^\/bin\/bash: (?:eval: )?line \d+: (?:unexpected EOF|syntax error)[^\n]*(?:\n|$))+/gm, "<shell syntax error>\n")
+    .replace(/^Exit code \d+\n<shell syntax error>/gm, "Exit code <n>\n<shell syntax error>")
     // Codex's exec tool output: a random chunk id and the time the command took.
     .replace(/"chunk_id":"[0-9a-f]+"/g, '"chunk_id":"<id>"')
     .replace(/"wall_time_seconds":[\d.e-]+/g, '"wall_time_seconds":<n>')
