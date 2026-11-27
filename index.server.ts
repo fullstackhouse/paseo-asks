@@ -69,8 +69,12 @@ export default function contribute(server: PluginServerContext) {
   const mcp = installBridge(dir);
   // The daemon session behind `paseo` lives as long as this subprocess; any hook or handler hands it over.
   let paseo: PaseoApi | null = null;
+  // Set once the PR watcher exists: its first pass needs a session to follow PRs with.
+  let onSession: () => void = () => undefined;
   const capture = (api: PaseoApi) => {
-    paseo ??= api;
+    if (paseo) return;
+    paseo = api;
+    onSession();
   };
   const requirePaseo = () => {
     if (!paseo) throw new Error("No daemon session yet");
@@ -157,6 +161,8 @@ export default function contribute(server: PluginServerContext) {
     },
   );
   const watcher = new PrWatcher(store, service, feed.fetch, actOnReviewChanges, liveWorkspaces, (urls) => feed.retain(urls));
+  // The start-up pass below runs before any hook hands over a session and can't follow anything; this one can.
+  onSession = () => void watcher.refresh();
   // Short-lived classifier agents the plugin starts itself; its hooks leave them alone.
   const helpers = new Set<string>();
   const classifierFor = paseoClassifier(requirePaseo, helpers, async () =>
