@@ -1,6 +1,6 @@
 import { prUrlOf, type Action, type Ask } from "../shared/asks";
 
-/** What decides the buttons of an ask on a PR that waits for its first review. */
+/** What decides which buttons of an ask on a PR that waits for a review can work. */
 export interface PrReview {
   number: number;
   state: string;
@@ -9,8 +9,6 @@ export interface PrReview {
   /** True when the human may merge past the review: an admin past branch protection, or a ruleset bypass actor. */
   viewerCanMergeAsAdmin: boolean;
   author: string | null;
-  /** Reviews requested and not yet given. */
-  reviewRequests: number;
 }
 
 export type PrReviewOf = (url: string) => Promise<PrReview>;
@@ -23,7 +21,6 @@ type ActionLike = Pick<Action, "kind" | "label" | "prompt">;
  * "Close it, don't merge it", "Fix merge conflicts".
  */
 const MERGE_VERB = /(?:^|[\n.,;:!?(]\s*|\b(?:then|and)\s+)(?:squash[- ]?)?merge\b(?![- ]conflicts?\b)|\bgh pr merge\b/i;
-const ADMIN = /--admin\b/;
 const REVIEW = /\breview\b/i;
 // "Request review from alice", "Request review on PR #30 from @alice", "Ask bob for a review".
 const REVIEWER = /\bfrom\s+@?([A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)\b|\bask\s+@?([A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)\s+(?:for|to)\b/i;
@@ -39,10 +36,6 @@ const text = (action: ActionLike) => `${action.label}\n${action.prompt ?? ""}`;
  */
 export function isMergeAction(action: ActionLike): boolean {
   return action.kind === "send" && MERGE_VERB.test(text(action)) && !(REVIEW.test(action.label) && REVIEWER.test(action.label));
-}
-
-export function isAdminMerge(action: ActionLike): boolean {
-  return isMergeAction(action) && ADMIN.test(text(action));
 }
 
 /** The reviewer a send action asks for, or null when it asks for nobody in particular (or for a bot). */
@@ -70,47 +63,28 @@ export function isPrMove(ask: Pick<Ask, "kind" | "links">, actions: readonly Act
 }
 
 /**
- * What is wrong with these buttons for a PR that waits for its first review, or null when they are right. The rule,
- * from #18: one "Request review from <person>" per candidate (2-4, never the author or Copilot), plus "Merge with
- * --admin" exactly when the human can merge past the review. No other Merge. Once a review is requested the PR stays
- * REVIEW_REQUIRED until someone approves, so the ask may then wait for that approval instead of naming reviewers again.
+ * What cannot work among these buttons on a PR that waits for a review, or null when every one can. Only buttons whose
+ * click cannot succeed are refused (SPEC-051): a merge the human cannot perform (no admin or ruleset bypass), and a
+ * review request to Copilot or the author, whose review never counts toward the required one. Which buttons to offer is
+ * the repo's delivery process's call, so none is required. A merge that waits for an approval can work.
  */
 export function reviewButtonsProblem(pr: PrReview, actions: readonly ActionLike[]): string | null {
   if (pr.state !== "OPEN" || pr.isDraft || pr.reviewDecision !== "REVIEW_REQUIRED") return null;
   const problems: string[] = [];
-  const requested = pr.reviewRequests > 0;
-  const merge = actions.find(
-    (action) => isMergeAction(action) && !isAdminMerge(action) && !(requested && WAITS_FOR_APPROVAL.test(text(action))),
-  );
-  if (merge) {
-    const wait = requested ? "; a merge must wait for the requested review's approval" : "";
-    problems.push(`"${merge.label}" merges a PR that still needs a review${wait}`);
-  }
-  const admin = actions.find(isAdminMerge);
-  if (admin && !pr.viewerCanMergeAsAdmin) problems.push(`"${admin.label}" is offered, but the human cannot merge past the review (viewerCanMergeAsAdmin is false)`);
-  if (!admin && pr.viewerCanMergeAsAdmin) problems.push(`"Merge with --admin" is missing: the human can merge past the review`);
+  const merge = pr.viewerCanMergeAsAdmin ? undefined : actions.find((action) => isMergeAction(action) && !WAITS_FOR_APPROVAL.test(text(action)));
+  if (merge) problems.push(`"${merge.label}" merges a PR that still needs a review, and the human cannot merge past it (viewerCanMergeAsAdmin is false)`);
   const bot = actions.find(isBotReview);
   if (bot) problems.push(`"${bot.label}" asks Copilot, whose review does not count toward the required one`);
-  const reviewers = actions.map(reviewerOf).filter((login): login is string => login !== null);
-  const author = pr.author ? reviewers.find((login) => login.toLowerCase() === pr.author!.toLowerCase()) : undefined;
+  const author = pr.author ? actions.map(reviewerOf).find((login) => login?.toLowerCase() === pr.author!.toLowerCase()) : undefined;
   if (author) problems.push(`${author} wrote the PR and cannot review it`);
-  if (!requested && !reviewers.some((login) => login !== author)) problems.push("no action requests a review from a person");
   return problems.length ? problems.join("; ") : null;
 }
 
 export function reviewButtonsRefusal(pr: PrReview, problem: string): string {
-  const admin = pr.viewerCanMergeAsAdmin ? ` plus a send action "Merge with --admin" (prompt "Merge PR #${pr.number} with --admin")` : "";
-  const author = pr.author ? `, never ${pr.author} (the author)` : "";
-  if (pr.reviewRequests > 0) {
-    return (
-      `PR #${pr.number} is REVIEW_REQUIRED on GitHub, with a review already requested: ${problem}. Nothing was saved. ` +
-      `Offer a merge that waits for the approval ("Merge PR #${pr.number} with squash once approved")${admin}, or more reviewers as "Request review from <login>"; never Copilot${author}.`
-    );
-  }
+  const author = pr.author ? ` or ${pr.author} (the author)` : "";
   return (
     `PR #${pr.number} is REVIEW_REQUIRED on GitHub: ${problem}. Nothing was saved. ` +
-    `Offer one send action per candidate reviewer, 2-4 of them, labelled "Request review from <login>" with the prompt "Request review on PR #${pr.number} from <login>", one marked recommended${admin}. ` +
-    `Candidates are people: CODEOWNERS, then recent reviewers (gh pr list --state merged -L 20 --json reviews), then collaborators; never Copilot${author}. Fewer than 2 only if fewer exist.`
+    `Drop the buttons that cannot work. A merge must wait for the approval ("Merge PR #${pr.number} with squash once approved"); a review request names a person, never Copilot${author}.`
   );
 }
 
@@ -121,7 +95,7 @@ export function ghPrReviewOf(run: (args: string[]) => Promise<string>): PrReview
     if (!match) throw new Error(`Not a PR URL: ${url}`);
     const [, owner, name, number] = match;
     const query =
-      "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){number state isDraft reviewDecision viewerCanMergeAsAdmin author{login} reviewRequests{totalCount}}}}";
+      "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){number state isDraft reviewDecision viewerCanMergeAsAdmin author{login}}}}";
     const out = await run(["api", "graphql", "-f", `query=${query}`, "-f", `owner=${owner}`, "-f", `name=${name}`, "-F", `number=${number}`]);
     const pr = JSON.parse(out).data?.repository?.pullRequest;
     if (!pr) throw new Error(`No PR at ${url}`);
@@ -132,7 +106,6 @@ export function ghPrReviewOf(run: (args: string[]) => Promise<string>): PrReview
       reviewDecision: pr.reviewDecision || null,
       viewerCanMergeAsAdmin: Boolean(pr.viewerCanMergeAsAdmin),
       author: pr.author?.login ?? null,
-      reviewRequests: pr.reviewRequests?.totalCount ?? 0,
     };
   };
 }

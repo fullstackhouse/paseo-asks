@@ -374,10 +374,9 @@ export class AsksService {
   }
 
   /**
-   * An ask on a PR that waits for its first review offers reviewers by name, plus "Merge with --admin" exactly when the
-   * human can merge past the review. The rule used to live only in the instructions, and agents skipped it: they offered
-   * Merge or a Copilot review. Read live, since the watcher's snapshot may be minutes old or missing. When gh fails the
-   * ask goes through.
+   * Refuses buttons that cannot work on a PR that waits for a review: a merge the human cannot perform, a review from
+   * Copilot or the author. Agents offered both despite the instructions. Read live, since the watcher's snapshot may be
+   * minutes old or missing. When gh fails the ask goes through.
    */
   private async checkReviewButtons(ask: Pick<Ask, "kind" | "links">, actions: readonly z.output<typeof ActionInput>[]): Promise<void> {
     const url = prUrlOf(ask);
