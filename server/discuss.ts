@@ -99,12 +99,18 @@ export async function discuss(deps: DiscussDeps, ask: Ask, note?: string): Promi
   return { agentId: handle.id, workspaceId: ask.workspaceId, created: true };
 }
 
+/**
+ * Providers whose Paseo adapter enforces exact MCP tool grants. Paseo rejects `toolPolicy` for any other
+ * provider ("cannot preapprove exact MCP tools"), so an explainer for a Copilot, Pi, ACP, Antigravity or Muse
+ * owner would fail to start. Paseo doesn't tell plugins which providers these are yet, so the list mirrors
+ * the host's adapters; elsewhere the asks tools still attach and the permission hook answers them.
+ */
+const EXACT_GRANT_PROVIDERS = new Set(["claude", "codex", "opencode"]);
+
 function agentConfig(deps: DiscussDeps, owner: PaseoAgent, model: string) {
-  return {
-    provider: `${owner.provider}/${model}`,
-    mcpServers: { asks: deps.mcp },
-    toolPolicy: { preapproved: ASK_TOOLS.map((tool) => ({ kind: "mcp" as const, server: "asks", tool })) },
-  };
+  const config = { provider: `${owner.provider}/${model}`, mcpServers: { asks: deps.mcp } };
+  if (!EXACT_GRANT_PROVIDERS.has(owner.provider)) return config;
+  return { ...config, toolPolicy: { preapproved: ASK_TOOLS.map((tool) => ({ kind: "mcp" as const, server: "asks", tool })) } };
 }
 
 /** The owner's mode when it can write; an owner in plan mode leaves the explainer on the provider's default. */

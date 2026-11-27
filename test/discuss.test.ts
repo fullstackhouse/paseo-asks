@@ -31,11 +31,12 @@ function fakePaseo(
     refreshFails = false,
     readOnly = true,
     workspaceReady = Promise.resolve(),
+    provider = "claude",
   } = {},
 ): DiscussDeps["paseo"] {
   const owner = {
     id: OWNER,
-    provider: "claude",
+    provider,
     model: "claude-opus-5-5",
     cwd: "/repos/app/.paseo/worktrees/feature",
     currentModeId: "bypassPermissions",
@@ -141,6 +142,20 @@ describe("Discuss", () => {
     expect(prompt).toContain("The release tool reads commit subjects.");
     expect(prompt).toContain("Both PRs are green.");
     expect(store.get(WS, "A1")).toMatchObject({ discussionAgentId: EXPLAINER, discussionWorkspaceId: EXPLAIN_WS });
+  });
+
+  it("preapproves the asks tools for an explainer on a provider that enforces exact grants", async () => {
+    await discuss(deps(fakePaseo(created)), await decision());
+    const [agent] = created.agents;
+    expect(agent!.options.config.toolPolicy.preapproved.map((grant: { tool: string }) => grant.tool)).toContain("ask_create");
+  });
+
+  it("still opens an explainer for an owner on Copilot, without a tool policy Paseo would reject", async () => {
+    await discuss(deps(fakePaseo(created, { provider: "copilot" })), await decision());
+    const [agent] = created.agents;
+    expect(agent!.options.config).toMatchObject({ provider: "copilot/claude-opus-5-5" });
+    expect(agent!.options.config.mcpServers.asks).toBeDefined();
+    expect(agent!.options.config).not.toHaveProperty("toolPolicy");
   });
 
   it("opens with the human's note instead of the explain run when they typed one", async () => {
