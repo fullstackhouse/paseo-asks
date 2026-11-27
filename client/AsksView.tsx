@@ -862,6 +862,9 @@ function AskDetail({
   // below the field's current height, so the field grew on every keystroke and never shrank.
   const [textHeight, setTextHeight] = useState(0);
   const inputHeight = Math.min(132, Math.max(36, Math.ceil(textHeight)));
+  // Scroll (the field's default) only past the cap: a classic scrollbar narrows the field, so its text wraps
+  // onto more lines than the measuring copy and the last line gets cut off.
+  const inputOverflow = textHeight > 132 ? undefined : "hidden";
   const mutation = useMutation({
     mutationFn: (input: { verb: "action" | "done" | "drop" | "reply"; actionId?: string }) =>
       act({ workspaceId: ask.workspaceId, id: ask.id, note, ...input }),
@@ -1014,7 +1017,7 @@ function AskDetail({
             onChangeText={setNote}
             placeholder="Reply to the agent…"
             placeholderTextColor={styles.placeholder.color}
-            style={[styles.input, { height: inputHeight }]}
+            style={[styles.input, { height: inputHeight, overflow: inputOverflow }]}
             multiline
             numberOfLines={1}
             onKeyPress={(event) => {
@@ -1337,13 +1340,16 @@ function makeStyles(theme: PluginTheme, compact: boolean) {
       maxHeight: 132,
       flex: 1,
       fontSize: 13,
+      lineHeight: 18,
     },
     inputMeasure: {
       position: "absolute" as const,
       top: 0,
       left: 0,
       right: 0,
-      maxHeight: undefined,
+      // One pixel past the field's cap, so overflow shows as a height above 132 without the copy
+      // spilling far out of the row. (`undefined` doesn't lift the cap on web.)
+      maxHeight: 133,
       opacity: 0,
       borderColor: "transparent",
     },
