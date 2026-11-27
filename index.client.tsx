@@ -12,12 +12,12 @@ import { SidebarRow } from "@getpaseo/plugin/client/ui";
 import { useEffect } from "react";
 import { Text } from "react-native";
 import { AsksMessage } from "./client/AsksMessage";
-import { onAsksChanged } from "./client/changes";
+import { asksChanged, onAsksChanged, type SubscribingClient, watchAskChanges } from "./client/changes";
 import { agentOpenerFor, type OpenAgent } from "./client/navigation";
 import { inboxReview, OpenPrContext } from "./client/inbox";
 import { AgentAsks, AskCard, AsksView, POLL_MS, useAsks, WorkspaceAskEntry } from "./client/AsksView";
 import { SettingsScreen } from "./client/SettingsScreen";
-import { observeSnoozedWorkspaces, snoozedWorkspaceIds, useSnoozedWorkspaceIds } from "./client/snoozed";
+import { observeSnoozedWorkspaces, onSnoozedChange, snoozedWorkspaceIds, useSnoozedWorkspaceIds } from "./client/snoozed";
 import { listAsks, waitingByWorkspace, waitingCount, workspaceAsks } from "./shared/asks";
 import { createWorkspaceSummaries, type SummaryEntryProps } from "./client/summary";
 import { ASKS_MESSAGE, AsksMessageSchema, parseAsksMessage, type AsksMessage as AsksMessageData } from "./shared/messages";
@@ -278,8 +278,15 @@ export default function contribute(client: PluginClientContext) {
   client.addTimelineRenderer({ ...ASKS_MESSAGE, schema: AsksMessageSchema, Component: TimelineMessage });
   const stopPills = contributePills(client);
   const stopSnoozed = observeSnoozedWorkspaces(client, "asks");
+  // The server pushes every ask change (an agent's ask_create/update/resolve, the PR watcher), so pills, Overview and
+  // open Asks views re-read at once; their polls stay as the backstop.
+  const stopWatching = watchAskChanges(client as PluginClientContext & SubscribingClient);
+  // Snoozing changes which asks count as waiting, so re-count without waiting for the poll.
+  const stopSnoozeRefresh = onSnoozedChange(() => asksChanged());
   return () => {
     stopPills();
     stopSnoozed();
+    stopWatching();
+    stopSnoozeRefresh();
   };
 }

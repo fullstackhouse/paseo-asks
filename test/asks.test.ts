@@ -70,6 +70,19 @@ describe("asks", () => {
     expect(new AskStore(dir).list(WS).map((ask) => ask.id)).toEqual(["A1", "A2"]);
   });
 
+  it("tells change listeners about each write, after it lands, until they stop listening", async () => {
+    const seen: string[][] = [];
+    const stop = store.onChange((workspaceId) => seen.push([workspaceId, ...store.list(workspaceId).map((ask) => ask.status)]));
+    await service.callTool(AGENT, "ask_create", decision);
+    await service.callTool(AGENT, "ask_update", { id: "A1", status: "in_progress" });
+    stop();
+    await service.callTool(AGENT, "ask_resolve", { id: "A1" });
+    expect(seen).toEqual([
+      [WS, "open"],
+      [WS, "in_progress"],
+    ]);
+  });
+
   it("rejects a bundled ask on create and update, saving nothing", async () => {
     const bundled = await service.callTool(AGENT, "ask_create", {
       kind: "review",

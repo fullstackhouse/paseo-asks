@@ -4,7 +4,7 @@ import { Icon, ScrollView, TextInput, useToast } from "@getpaseo/plugin/client/r
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Platform, Pressable, Text, View } from "react-native";
-import { asksChanged } from "./changes";
+import { asksChanged, onAsksChanged } from "./changes";
 import { useDraft } from "./drafts";
 import { MoreMenu, type MenuEntry } from "./menu";
 import type { OpenAgent } from "./navigation";
@@ -58,6 +58,9 @@ interface ViewProps {
 
 export function useAsks(workspaceId?: string, includeClosed = false) {
   const list = useRpc(listAsks);
+  const queryClient = useQueryClient();
+  // A change pushed by the server or made in another view re-reads now; the poll is the backstop.
+  useEffect(() => onAsksChanged(() => void queryClient.invalidateQueries({ queryKey: ["asks"] })), [queryClient]);
   return useQuery({
     queryKey: ["asks", workspaceId ?? "*", includeClosed ? "all" : "open"],
     queryFn: () => list({ workspaceId, includeClosed }),
