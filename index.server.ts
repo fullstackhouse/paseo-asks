@@ -5,7 +5,7 @@ import { AgentDirectory, pickCaller } from "./server/agents";
 import { installBridge } from "./server/bridge";
 import { Discussions } from "./server/discuss";
 import { Gh, ghExec } from "./server/gh";
-import { findGh, ghFetcher } from "./server/github";
+import { findGh, hostFetcher, PrReadsUnavailable } from "./server/github";
 import { LastOutputs } from "./server/last-output";
 import { HumanMessages } from "./server/human-messages";
 import { listen } from "./server/listener";
@@ -105,7 +105,7 @@ export default function contribute(server: PluginServerContext) {
     }
   });
   const ghPath = findGh();
-  if (!ghPath) console.error("[asks] gh not found; PR asks will show no live status");
+  if (!ghPath) console.error("[asks] gh not found; PR asks will show no preview deployments or review-button checks");
   // One Gh for every call, so a spent rate limit pauses them all.
   const gh = ghPath ? new Gh(ghExec(ghPath)) : null;
   const service = new AsksService(
@@ -125,9 +125,18 @@ export default function contribute(server: PluginServerContext) {
   const humanMessages = new HumanMessages(dir);
   // Until a hook or RPC hands over a daemon session (e.g. right after a reload), every workspace is polled.
   const liveWorkspaces = async () => (paseo ? new Set((await activeWorkspaces(paseo)).keys()) : null);
-  const watcher = gh
-    ? new PrWatcher(store, service, ghFetcher(gh), actOnReviewChanges, liveWorkspaces)
-    : null;
+  // PR state comes from the host (`changeRequests.read`), which reads for every plugin under one rate limit.
+  let warnedOldHost = false;
+  const readPrs = async (urls: string[]) => {
+    if (!paseo) throw new PrReadsUnavailable("No daemon session yet");
+    if (!paseo.changeRequests) {
+      if (!warnedOldHost) console.error("[asks] this Paseo can't read pull requests for plugins; update it for live PR status on asks");
+      warnedOldHost = true;
+      throw new PrReadsUnavailable("Host lacks changeRequests.read");
+    }
+    return paseo.changeRequests.read(urls);
+  };
+  const watcher = new PrWatcher(store, service, hostFetcher(readPrs, gh), actOnReviewChanges, liveWorkspaces);
   // Short-lived classifier agents the plugin starts itself; its hooks leave them alone.
   const helpers = new Set<string>();
   const classifierFor = paseoClassifier(requirePaseo, helpers, async () =>
@@ -285,7 +294,7 @@ export default function contribute(server: PluginServerContext) {
         args,
       );
       // Shows a newly linked PR's state now rather than at the next poll.
-      if (result.ask && (name === "ask_create" || name === "ask_update")) void watcher?.refresh(result.ask);
+      if (result.ask && (name === "ask_create" || name === "ask_update")) void watcher.refresh(result.ask);
       return { text: result.text, isError: result.isError };
     },
     // The same disposal the UI does, for scripts and terminal use.
@@ -300,7 +309,7 @@ export default function contribute(server: PluginServerContext) {
     if (paseo && outbox.pending().length) void outbox.flush();
   }, FLUSH_EVERY_MS);
 
-  const prTimer = setInterval(() => void watcher?.refresh(), PR_EVERY_MS);
+  const prTimer = setInterval(() => void watcher.refresh(), PR_EVERY_MS);
   // Also the backlog sweep: the first run after start reopens asks that went stale before this existed.
   const reopenStale = () => {
     if (!paseo) return;
@@ -308,7 +317,7 @@ export default function contribute(server: PluginServerContext) {
   };
   const staleTimer = setInterval(reopenStale, STALE_EVERY_MS);
   const firstStale = setTimeout(reopenStale, PR_EVERY_MS);
-  void watcher?.refresh();
+  void watcher.refresh();
 
   return async () => {
     clearInterval(timer);

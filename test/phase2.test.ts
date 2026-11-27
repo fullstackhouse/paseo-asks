@@ -1,12 +1,12 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PrState } from "../shared/asks";
 import { prPreviewOf, prUrlOf } from "../shared/asks";
 import { seedPrompt } from "../server/discuss";
 import { RateLimited } from "../server/gh";
-import { describePrChange, summarizeChecks } from "../server/github";
+import { describePrChange, hostFetcher, PrReadFailed, PrReadsPaused, PrReadsUnavailable, prStateOf } from "../server/github";
 import { latestReply } from "../server/last-output";
 import { Outbox, type Courier } from "../server/outbox";
 import { AsksService, instructions } from "../server/service";
@@ -90,12 +90,50 @@ describe("phase 2", () => {
     expect(prPreviewOf("https://github.com/o/r/issues/30")).toBeUndefined();
   });
 
-  it("summarizes check rollups", () => {
-    expect(summarizeChecks([])).toBe("none");
-    expect(summarizeChecks([{ status: "COMPLETED", conclusion: "SUCCESS" }, { state: "SUCCESS" }])).toBe("passing");
-    expect(summarizeChecks([{ status: "IN_PROGRESS" }, { status: "COMPLETED", conclusion: "SUCCESS" }])).toBe("pending");
-    expect(summarizeChecks([{ status: "IN_PROGRESS" }, { status: "COMPLETED", conclusion: "FAILURE" }])).toBe("failing");
-    expect(summarizeChecks([{ status: "COMPLETED", conclusion: "SKIPPED" }])).toBe("passing");
+  it("maps the host's PR read to the stored snapshot", () => {
+    const read = {
+      url: "https://github.com/o/r/pull/30",
+      ok: true as const,
+      number: 30,
+      title: "Fix",
+      state: "merged" as const,
+      isDraft: false,
+      mergeable: "conflicting" as const,
+      reviewDecision: "changes_requested" as const,
+      checksState: "failing" as const,
+      checks: [],
+      headSha: "abc",
+    };
+    expect(prStateOf(read, new Date("2026-01-01T00:00:00Z"))).toEqual({
+      number: 30,
+      url: "https://github.com/o/r/pull/30",
+      state: "MERGED",
+      isDraft: false,
+      reviewDecision: "CHANGES_REQUESTED",
+      mergeable: "CONFLICTING",
+      checks: "failing",
+      fetchedAt: "2026-01-01T00:00:00.000Z",
+    });
+    expect(prStateOf({ ...read, state: "open", mergeable: undefined, reviewDecision: null, checksState: "none" })).toMatchObject({
+      state: "OPEN",
+      mergeable: "UNKNOWN",
+      reviewDecision: null,
+      checks: "none",
+    });
+  });
+
+  it("fails a PR the host can't read, without gh", async () => {
+    const fetch = hostFetcher(async (urls) => urls.map((url) => ({ url, ok: false as const, error: "unknown forge" })), null);
+    await expect(fetch("https://example.com/o/r/pull/1")).rejects.toThrow(PrReadFailed);
+  });
+
+  it("reports a host pause as paused, not as a failed PR", async () => {
+    const fetch = hostFetcher(
+      async (urls) => urls.map((url) => ({ url, ok: false as const, error: "Paused", reason: "paused" as const, retryAt: 5_000 })),
+      null,
+    );
+    await expect(fetch("https://github.com/o/r/pull/1")).rejects.toMatchObject({ retryAt: 5_000 });
+    await expect(fetch("https://github.com/o/r/pull/1")).rejects.toThrow(PrReadsPaused);
   });
 
   it("describes only the PR changes an agent would act on", () => {
@@ -124,6 +162,46 @@ describe("phase 2", () => {
     await watcher.refresh();
     await outbox.flush();
     expect(sent).toEqual(["[asks] A1 (Merge PR #30) PR #30 merged."]);
+  });
+
+  it("keeps the last snapshot while the host can't read PRs", async () => {
+    await prAsk(true);
+    let available = true;
+    const watcher = new PrWatcher(store, service, async () => {
+      if (!available) throw new PrReadsUnavailable("Host lacks changeRequests.read");
+      return pr();
+    });
+    await watcher.refresh();
+    available = false;
+    await watcher.refresh();
+    await outbox.flush();
+    expect(store.get(WS, "A1")?.pr?.checks).toBe("pending");
+    expect(sent).toEqual([]);
+  });
+
+  it("keeps the last snapshot while the host pauses reads, logging the pause once", async () => {
+    await prAsk(true);
+    let paused = false;
+    let reads = 0;
+    const watcher = new PrWatcher(store, service, async () => {
+      reads++;
+      if (paused) throw new PrReadsPaused(5_000);
+      return pr();
+    });
+    await watcher.refresh();
+    paused = true;
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await watcher.refresh();
+      await watcher.refresh();
+      expect(log).toHaveBeenCalledTimes(1);
+    } finally {
+      log.mockRestore();
+    }
+    await outbox.flush();
+    expect(reads).toBe(3);
+    expect(store.get(WS, "A1")?.pr?.checks).toBe("pending");
+    expect(sent).toEqual([]);
   });
 
   it("keeps the last deployments when a lookup fails, and tells the owner when a preview becomes ready", async () => {
