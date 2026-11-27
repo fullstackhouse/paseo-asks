@@ -591,10 +591,10 @@ describe("phase 2", () => {
   it("tells agents to leave requested changes to the human only while reviews are held", () => {
     const told = instructions();
     const held = instructions({ actOnReviewChanges: false });
-    expect(told).toContain('"CHANGES_REQUESTED": no Merge action. Address the comments');
-    expect(held).not.toContain("Address the comments");
+    expect(told).not.toContain("CHANGES_REQUESTED");
     expect(held).toContain("Paseo raises an ask whose button sends it to you; don't start or offer it");
-    expect(held.replace(/\n  - "CHANGES_REQUESTED".*\n/, "\n")).toBe(told.replace(/\n  - "CHANGES_REQUESTED".*\n/, "\n"));
+    expect(held).toContain("An approved PR's comments raise none");
+    expect(held.replace(/\n  - "CHANGES_REQUESTED".*/, "")).toBe(told);
   });
 
   it("tells agents not to ask about what the human settled", () => {
@@ -603,27 +603,29 @@ describe("phase 2", () => {
     }
   });
 
-  it("tells agents to read every review and comment before a Merge action, approvals included", () => {
+  // SPEC-051: the plugin holds no delivery policy; the repo's delivery process names the buttons.
+  it("gives PRs one generic rule: the repo's buttons, else one Merge that waits for green", () => {
     for (const rules of [instructions(), instructions({ actOnReviewChanges: false })]) {
-      expect(rules).toContain("Before any Merge action, read every human review and comment, approvals included (not bot status ones)");
-      expect(rules).toContain("gh api --paginate repos/OWNER/REPO/pulls/N/comments");
-      expect(rules).toContain("Resolved threads (reviewThreads { isResolved }, gh api graphql) don't count");
-      expect(rules).toContain("then offer Merge (not a re-review unless asked), naming what changed");
+      const pr = rules.split("\n").find((line) => line.startsWith("- PRs:"))!;
+      expect(pr).toContain("one ask per PR, PR URL in links, subscribe: true");
+      expect(pr).toContain("Use the buttons the repo's delivery process lists for it");
+      expect(pr).toContain('otherwise one send action "Merge when green"');
+      expect(pr.split(/\s+/).length).toBeLessThanOrEqual(60);
+      expect(rules).not.toContain("REVIEW_REQUIRED");
+      expect(rules).not.toContain("--admin");
     }
-    expect(instructions({ actOnReviewChanges: false })).toContain("An approved PR's comments raise none");
   });
 
   // Claude Code cuts MCP server instructions at 4096 characters and appends "… [truncated]". An agent that lost the
-  // REVIEW_REQUIRED rule to that cut offered Merge on a PR still waiting for its review.
-  it("fits every frequency and review variant in the 4096 characters Claude Code keeps, with the no-Merge review rules in them", () => {
+  // PR rule to that cut offered Merge on a PR still waiting for its review.
+  it("fits every frequency and review variant in the 4096 characters Claude Code keeps, with the PR rule in them", () => {
     const variants = ASK_FREQUENCIES.flatMap((frequency) => [
       instructions({ frequency }),
       instructions({ frequency, actOnReviewChanges: false }),
     ]);
     for (const rules of variants) {
       expect(rules.length).toBeLessThanOrEqual(INSTRUCTIONS_LIMIT);
-      expect(rules).toContain('"REVIEW_REQUIRED": no Merge action; the human picks a reviewer.');
-      expect(rules).toContain('"CHANGES_REQUESTED": no Merge action.');
+      expect(rules).toContain("- PRs: one ask per PR");
     }
   });
 
