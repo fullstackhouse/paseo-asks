@@ -16,6 +16,11 @@ function subscribe(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
+/** Calls `listener` whenever the snoozed set changes, for code outside React. */
+export function onSnoozedChange(listener: () => void): () => void {
+  return subscribe(listener);
+}
+
 /** Ids of workspaces the user has snoozed, kept live while the plugin runs. Empty on hosts without snooze. */
 /** The snoozed set outside React, for code that polls. */
 export function snoozedWorkspaceIds(): ReadonlySet<string> {

@@ -24,6 +24,7 @@ export class AskStore {
   private readonly locks = new Map<string, Promise<unknown>>();
   /** Every workspace with a file. Read from disk once: this process is the only writer, and lists run on every poll. */
   private known: Set<string> | null = null;
+  private readonly changeListeners = new Set<(workspaceId: string) => void>();
 
   constructor(root: string, private readonly now: () => Date = () => new Date()) {
     this.dir = join(root, "workspaces");
@@ -87,6 +88,14 @@ export class AskStore {
     });
   }
 
+  /** Calls `listener` with the workspace after every write to it lands, so clients can re-read at once. */
+  onChange(listener: (workspaceId: string) => void): () => void {
+    this.changeListeners.add(listener);
+    return () => {
+      this.changeListeners.delete(listener);
+    };
+  }
+
   private workspaceIds(): string[] {
     this.known ??= new Set(
       readdirSync(this.dir)
@@ -118,6 +127,7 @@ export class AskStore {
       renameSync(`${path}.tmp`, path);
       this.cache.set(workspaceId, draft);
       this.known?.add(workspaceId);
+      for (const listener of this.changeListeners) listener(workspaceId);
       return result;
     };
     const next = (this.locks.get(workspaceId) ?? Promise.resolve()).then(run, run);

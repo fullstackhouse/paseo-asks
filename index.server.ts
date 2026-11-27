@@ -27,6 +27,8 @@ import { ghPrReviewOf } from "./server/review-buttons";
 import { AsksService, TOOLS } from "./server/service";
 import { instructions } from "./shared/instructions";
 import { AskStore } from "./server/store";
+import { pushAskChanges } from "./server/changes";
+import { askChanges, type AskChangesEvent } from "./shared/changes";
 import { attentionForOpenAsks } from "./server/schedule-attention";
 import { PrWatcher } from "./server/watcher";
 import { activeWorkspaces, isBackground } from "./server/workspaces";
@@ -35,6 +37,15 @@ import { agentSettings, displaySettings, reviewSettings } from "./shared/setting
 const FLUSH_EVERY_MS = 20_000;
 const PR_EVERY_MS = 120_000;
 const STALE_EVERY_MS = 60 * 60 * 1000;
+
+type SubscriptionHandle = (
+  this: PluginServerContext,
+  contract: typeof askChanges,
+  handler: (
+    input: Record<string, never>,
+    context: { push(event: AskChangesEvent): Promise<void>; signal: AbortSignal },
+  ) => void,
+) => void;
 
 export default function contribute(server: PluginServerContext) {
   server.registerSettings(displaySettings);
@@ -255,6 +266,11 @@ export default function contribute(server: PluginServerContext) {
     capture(api);
     return service.act(input);
   });
+  // COMPAT(pluginSubscriptions): the npm SDK pin types only RPC handlers; hosts from Paseo 0.15 serve this contract
+  // (it has `event`) as a subscription and pass `push` and `signal`.
+  (server.handle as unknown as SubscriptionHandle).call(server, askChanges, (_input, { push, signal }) =>
+    pushAskChanges(store, push, signal),
+  );
   server.handle(refreshAsks, ({ agentId }, { paseo: api }) => {
     capture(api);
     return service.refresh(agentId);
