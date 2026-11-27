@@ -865,6 +865,9 @@ function AskDetail({
   // Scroll (the field's default) only past the cap: a classic scrollbar narrows the field, so its text wraps
   // onto more lines than the measuring copy and the last line gets cut off.
   const inputOverflow = textHeight > 132 ? undefined : "hidden";
+  // Once the field scrolls, keep the send button clear of its scrollbar. Paseo styles web scrollbars
+  // `thin` (11px in Chromium); native scrollbars overlay the text, so the button stays put there.
+  const sendRight = Platform.OS === "web" && inputOverflow === undefined ? 15 : 4;
   const mutation = useMutation({
     mutationFn: (input: { verb: "action" | "done" | "drop" | "reply"; actionId?: string }) =>
       act({ workspaceId: ask.workspaceId, id: ask.id, note, ...input }),
@@ -1037,7 +1040,7 @@ function AskDetail({
               accessibilityLabel="Send reply"
               disabled={busy}
               onPress={reply}
-              style={styles.send}
+              style={[styles.send, { right: sendRight }]}
             >
               <Icon name="SendHorizontal" size={16} color={theme.colors.accentForeground} />
             </Pressable>
@@ -1307,7 +1310,6 @@ function makeStyles(theme: PluginTheme, compact: boolean) {
     replyField: { flex: 1, flexDirection: "row" as const, alignItems: "flex-end" as const },
     send: {
       position: "absolute" as const,
-      right: 4,
       bottom: 4,
       padding: 6,
       borderRadius: 6,
