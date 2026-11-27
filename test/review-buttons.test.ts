@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { Outbox, type Courier } from "../server/outbox";
-import { ghPrReviewOf, isAdminMerge, isMergeAction, reviewButtonsProblem, reviewerOf, type PrReview } from "../server/review-buttons";
+import { ghPrReviewOf, hostPrReviewOf, isAdminMerge, isMergeAction, reviewButtonsProblem, reviewerOf, type PrReview } from "../server/review-buttons";
 import { AsksService } from "../server/service";
 import { AskStore } from "../server/store";
 
@@ -150,5 +150,52 @@ describe("ask_create and ask_update on a PR that needs a review", () => {
     expect((await service.callTool(OWNER, "ask_update", { id: "A1", status: "in_progress" })).isError).toBeUndefined();
     expect((await service.callTool(OWNER, "ask_update", { id: "A1", status: "done", links: [{ label: "PR", url: URL }] })).isError).toBeUndefined();
     expect(reads).toBe(0);
+  });
+});
+
+describe("hostPrReviewOf", () => {
+  const URL = "https://github.com/o/r/pull/7";
+  const read = (overrides: Record<string, unknown> = {}) => ({
+    url: URL,
+    ok: true as const,
+    number: 7,
+    title: "Fix",
+    state: "open" as const,
+    isDraft: false,
+    reviewDecision: "review_required" as const,
+    checksState: "passing" as const,
+    checks: [],
+    headSha: "abc",
+    ...overrides,
+  });
+
+  it("reads the review facts from the host's PR read, without gh", async () => {
+    const calls: string[][] = [];
+    const reviewOf = hostPrReviewOf(
+      () => async (urls) => {
+        calls.push(urls);
+        return [read({ author: "alice", reviewRequestCount: 2, viewerCanMergeAsAdmin: true })];
+      },
+      async () => {
+        throw new Error("gh must not be called");
+      },
+    );
+    expect(await reviewOf(URL)).toEqual({
+      number: 7,
+      state: "OPEN",
+      isDraft: false,
+      reviewDecision: "REVIEW_REQUIRED",
+      viewerCanMergeAsAdmin: true,
+      author: "alice",
+      reviewRequests: 2,
+    });
+    expect(calls).toEqual([[URL]]);
+  });
+
+  it("asks gh on a host whose reads lack the review facts", async () => {
+    const fallback = { number: 7, state: "OPEN", isDraft: false, reviewDecision: "REVIEW_REQUIRED", viewerCanMergeAsAdmin: false, author: null, reviewRequests: 0 };
+    const reviewOf = hostPrReviewOf(() => async () => [read()], async () => fallback);
+    expect(await reviewOf(URL)).toBe(fallback);
+    expect(await hostPrReviewOf(() => null, async () => fallback)(URL)).toBe(fallback);
   });
 });

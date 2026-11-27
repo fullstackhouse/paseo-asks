@@ -1,3 +1,4 @@
+import type { HostChangeRequestRead } from "./host-sdk";
 import { prUrlOf, type Action, type Ask } from "../shared/asks";
 
 /** What decides the buttons of an ask on a PR that waits for its first review. */
@@ -134,5 +135,31 @@ export function ghPrReviewOf(run: (args: string[]) => Promise<string>): PrReview
       author: pr.author?.login ?? null,
       reviewRequests: pr.reviewRequests?.totalCount ?? 0,
     };
+  };
+}
+
+/**
+ * The same facts from the host's PR read (fullstackhouse/paseo#285 adds author, review requests and admin merge), so
+ * checking an ask's buttons costs no GitHub call of its own. `fallback` covers hosts without them.
+ * COMPAT(changeRequestSubscriptions): drop `fallback` and `ghPrReviewOf` once every host has #285.
+ */
+export function hostPrReviewOf(read: () => ((urls: string[]) => Promise<HostChangeRequestRead[]>) | null, fallback: PrReviewOf | null): PrReviewOf {
+  return async (url) => {
+    const reader = read();
+    const [result] = reader ? await reader([url]) : [];
+    if (result?.ok && result.reviewRequestCount !== undefined) {
+      return {
+        number: result.number,
+        state: result.state.toUpperCase(),
+        isDraft: result.isDraft,
+        reviewDecision: result.reviewDecision ? result.reviewDecision.toUpperCase() : null,
+        viewerCanMergeAsAdmin: result.viewerCanMergeAsAdmin ?? false,
+        author: result.author ?? null,
+        reviewRequests: result.reviewRequestCount,
+      };
+    }
+    if (fallback) return fallback(url);
+    if (result && !result.ok) throw new Error(result.error);
+    throw new Error(`No review facts for ${url}`);
   };
 }

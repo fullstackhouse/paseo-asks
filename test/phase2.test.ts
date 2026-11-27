@@ -6,7 +6,10 @@ import type { PrState } from "../shared/asks";
 import { prPreviewOf, prUrlOf } from "../shared/asks";
 import { seedPrompt } from "../server/discuss";
 import { Gh, RateLimited } from "../server/gh";
-import { DEPLOYMENTS_RECHECK_MS, describePrChange, hostFetcher, PrReadFailed, PrReadsPaused, PrReadsUnavailable, prStateOf, type FetchPrs } from "../server/github";
+import { describePrChange, PrReadFailed, PrReadsPaused, PrReadsUnavailable, prStateOf, type FetchPrs } from "../server/github";
+import { deploymentsOf, PrFeed } from "../server/pr-feed";
+import type { HostChangeRequestRead, HostSubscriptionTarget, HostSubscriptionUpdate } from "../server/host-sdk";
+import type { PaseoApi } from "@getpaseo/client";
 import { latestReply } from "../server/last-output";
 import { Outbox, type Courier } from "../server/outbox";
 import { AsksService, instructions } from "../server/service";
@@ -138,96 +141,114 @@ describe("phase 2", () => {
     });
   });
 
-  it("fails a PR the host can't read, without gh", async () => {
-    const fetch = hostFetcher(async (urls) => urls.map((url) => ({ url, ok: false as const, error: "unknown forge" })), null);
-    const result = (await fetch(["https://example.com/o/r/pull/1"], new Map())).get("https://example.com/o/r/pull/1");
-    expect(result).toBeInstanceOf(PrReadFailed);
-  });
-
-  describe("one pass's GitHub calls", () => {
+  describe("PrFeed", () => {
     const URL_A = "https://github.com/o/r/pull/1";
     const URL_B = "https://github.com/o/r/pull/2";
-    const NOW = Date.parse("2026-11-27T10:00:00Z");
-    const open = (url: string, overrides: Record<string, unknown> = {}) => ({
-      url,
-      ok: true as const,
-      number: Number(url.split("/").pop()),
-      title: "Fix",
-      state: "open" as const,
-      isDraft: false,
-      mergeable: "mergeable" as const,
-      reviewDecision: null,
-      checksState: "passing" as const,
-      checks: [],
-      headSha: "sha1",
-      ...overrides,
-    });
-    const reader = (reads: Record<string, Record<string, unknown>> = {}) => {
-      const calls: string[][] = [];
-      const read = async (urls: string[]) => {
-        calls.push(urls);
-        return urls.map((url) => open(url, reads[url]));
+    const open = (url: string, overrides: Record<string, unknown> = {}): HostChangeRequestRead =>
+      ({
+        url,
+        ok: true,
+        number: Number(url.split("/").pop()),
+        title: "Fix",
+        state: "open",
+        isDraft: false,
+        mergeable: "mergeable",
+        reviewDecision: null,
+        checksState: "passing",
+        checks: [],
+        headSha: "sha1",
+        ...overrides,
+      }) as HostChangeRequestRead;
+    /** A host PR service: answers each subscription from `reads`; `push` sends an update to the live ones. */
+    const fakeHost = (reads: Record<string, HostChangeRequestRead> = {}) => {
+      const subscriptions: { target: HostSubscriptionTarget; onUpdate: (update: HostSubscriptionUpdate) => void; live: boolean }[] = [];
+      const api = {
+        changeRequests: {
+          read: async () => [],
+          subscribe: async (target: HostSubscriptionTarget, onUpdate: (update: HostSubscriptionUpdate) => void) => {
+            const subscription = { target, onUpdate, live: true };
+            subscriptions.push(subscription);
+            return {
+              initial: { results: (target.urls ?? []).map((url) => reads[url] ?? open(url)), branches: [] },
+              unsubscribe: async () => void (subscription.live = false),
+            };
+          },
+        },
+      } as unknown as PaseoApi;
+      const push = (read: HostChangeRequestRead) => {
+        for (const subscription of subscriptions) {
+          if (subscription.live && subscription.target.urls?.includes(read.url)) subscription.onUpdate({ results: [read], branches: [] });
+        }
       };
-      return { calls, read };
+      return { api, subscriptions, push };
     };
-    const ghCounting = () => {
-      const calls: string[][] = [];
-      const gh = new Gh(async (args) => {
-        calls.push(args);
-        return JSON.stringify({ data: { repository: { pullRequest: { commits: { nodes: [{ commit: { deployments: { nodes: [] } } }] } } } } });
-      });
-      return { calls, gh };
-    };
-    const looked = (overrides: Partial<PrState> = {}): PrState => pr({ headSha: "sha1", deployments: [], deploymentsAt: new Date(NOW - 60_000).toISOString(), ...overrides });
 
-    it("reads every PR of a pass in one host read", async () => {
-      const host = reader();
-      const fetch = hostFetcher(host.read, null, () => NOW);
-      const results = await fetch([URL_A, URL_B], new Map());
-      expect(host.calls).toEqual([[URL_A, URL_B]]);
-      expect([...results.keys()]).toEqual([URL_A, URL_B]);
+    it("follows each PR once, with its deployments, and reads from what the host pushed", async () => {
+      const host = fakeHost();
+      const feed = new PrFeed(() => host.api);
+      await feed.fetch([URL_A, URL_B], new Map());
+      await feed.fetch([URL_A], new Map());
+      expect(host.subscriptions.map((subscription) => subscription.target)).toEqual([
+        { urls: [URL_A], priority: "background", include: ["deployments"] },
+        { urls: [URL_B], priority: "background", include: ["deployments"] },
+      ]);
+      host.push(open(URL_A, { checksState: "failing" }));
+      expect(((await feed.fetch([URL_A], new Map())).get(URL_A) as PrState).checks).toBe("failing");
     });
 
-    it("keeps settled deployments of an unchanged head commit without asking gh", async () => {
-      const { calls, gh } = ghCounting();
-      const fetch = hostFetcher(reader().read, gh, () => NOW);
-      const before = looked({ deployments: [{ label: "x.dev", state: "ready", url: "https://x.dev" }] });
-      const result = (await fetch([URL_A], new Map([[URL_A, before]]))).get(URL_A) as PrState;
-      expect(calls).toEqual([]);
-      expect(result.deployments).toEqual(before.deployments);
-      expect(result.deploymentsAt).toBe(before.deploymentsAt);
+    it("tells the watcher which PR the host pushed", async () => {
+      const host = fakeHost();
+      const changed = vi.fn();
+      const feed = new PrFeed(() => host.api, changed);
+      await feed.fetch([URL_A], new Map());
+      host.push(open(URL_A, { state: "merged" }));
+      expect(changed).toHaveBeenCalledWith([URL_A]);
     });
 
-    it("looks deployments up again when something says they may have changed", async () => {
-      const cases: [string, Record<string, unknown>, Partial<PrState>][] = [
-        ["a new head commit", { headSha: "sha2" }, {}],
-        ["checks still running", { checksState: "pending" }, {}],
-        ["a deployment still running", {}, { deployments: [{ label: "x.dev", state: "deploying" }] }],
-        ["a lookup older than the recheck interval", {}, { deploymentsAt: new Date(NOW - DEPLOYMENTS_RECHECK_MS).toISOString() }],
-        ["a snapshot from before head commits were kept", {}, { headSha: undefined, deploymentsAt: undefined }],
+    it("maps the host's deployments to preview entries", async () => {
+      const deployments = [
+        { environment: "preview", state: "IN_PROGRESS", createdAt: "2026-11-27T10:01:00Z", logUrl: "https://ci/log" },
+        { environment: "preview", state: "SUCCESS", createdAt: "2026-11-27T10:00:00Z", url: "https://pr-1.example.dev" },
       ];
-      for (const [, read, snapshot] of cases) {
-        const { calls, gh } = ghCounting();
-        const fetch = hostFetcher(reader({ [URL_A]: read }).read, gh, () => NOW);
-        const result = (await fetch([URL_A], new Map([[URL_A, looked(snapshot)]]))).get(URL_A) as PrState;
-        expect(calls).toHaveLength(1);
-        expect(result.deploymentsAt).toBe(new Date(NOW).toISOString());
-      }
+      expect(deploymentsOf(deployments)).toEqual([
+        { label: "pr-1.example.dev", state: "ready", url: "https://pr-1.example.dev", link: "https://pr-1.example.dev" },
+        { label: "Deploying", state: "deploying", link: "https://ci/log" },
+      ]);
+      const host = fakeHost({ [URL_A]: open(URL_A, { deployments }) });
+      const result = (await new PrFeed(() => host.api).fetch([URL_A], new Map())).get(URL_A) as PrState;
+      expect(result.deployments).toHaveLength(2);
+      expect(result.headSha).toBe("sha1");
     });
 
-    it("never asks gh about a merged PR's deployments", async () => {
-      const { calls, gh } = ghCounting();
-      const fetch = hostFetcher(reader({ [URL_A]: { state: "merged" } }).read, gh, () => NOW);
-      await fetch([URL_A], new Map());
-      expect(calls).toEqual([]);
+    it("keeps the last deployments of an unchanged head commit when a read has none", async () => {
+      const host = fakeHost();
+      const before = pr({ url: URL_A, headSha: "sha1", deployments: [{ label: "x.dev", state: "ready", url: "https://x.dev" }], deploymentsAt: "2026-11-27T09:00:00Z" });
+      const result = (await new PrFeed(() => host.api).fetch([URL_A], new Map([[URL_A, before]]))).get(URL_A) as PrState;
+      expect(result.deployments).toEqual(before.deployments);
+      const moved = fakeHost({ [URL_A]: open(URL_A, { headSha: "sha2" }) });
+      expect(((await new PrFeed(() => moved.api).fetch([URL_A], new Map([[URL_A, before]]))).get(URL_A) as PrState).deployments).toBeUndefined();
     });
 
-    it("drops another commit's deployments when it can't look up the new ones", async () => {
-      const fetch = hostFetcher(reader({ [URL_A]: { headSha: "sha2" } }).read, null, () => NOW);
-      const before = looked({ deployments: [{ label: "x.dev", state: "ready", url: "https://x.dev" }] });
-      const result = (await fetch([URL_A], new Map([[URL_A, before]]))).get(URL_A) as PrState;
-      expect(result.deployments).toBeUndefined();
-      expect(result.headSha).toBe("sha2");
+    it("fails a PR the host can't read, and reports a pause as paused", async () => {
+      const host = fakeHost({ [URL_A]: { url: URL_A, ok: false, error: "unknown forge" }, [URL_B]: { url: URL_B, ok: false, error: "Paused", reason: "paused", retryAt: 5_000 } });
+      const feed = new PrFeed(() => host.api);
+      expect((await feed.fetch([URL_A], new Map())).get(URL_A)).toBeInstanceOf(PrReadFailed);
+      await expect(feed.fetch([URL_B], new Map())).rejects.toMatchObject({ retryAt: 5_000 });
+      await expect(feed.fetch([URL_B], new Map())).rejects.toThrow(PrReadsPaused);
+    });
+
+    it("stops following PRs no open ask watches, and says to update Paseo when it can't follow any", async () => {
+      const host = fakeHost();
+      const feed = new PrFeed(() => host.api);
+      await feed.fetch([URL_A, URL_B], new Map());
+      await feed.retain([URL_B]);
+      expect(host.subscriptions.filter((subscription) => subscription.live).map((subscription) => subscription.target.urls)).toEqual([[URL_B]]);
+      const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const old = new PrFeed(() => ({ changeRequests: { read: async () => [] } }) as unknown as PaseoApi);
+      await expect(old.fetch([URL_A], new Map())).rejects.toThrow(PrReadsUnavailable);
+      await expect(old.fetch([URL_A], new Map())).rejects.toThrow(PrReadsUnavailable);
+      expect(error).toHaveBeenCalledTimes(1);
+      error.mockRestore();
     });
 
     it("fetches each PR once per pass however many asks link it", async () => {
@@ -241,15 +262,16 @@ describe("phase 2", () => {
       await watcher.refresh();
       expect(calls).toEqual([["https://github.com/o/r/pull/30"]]);
     });
-  });
 
-  it("reports a host pause as paused, not as a failed PR", async () => {
-    const fetch = hostFetcher(
-      async (urls) => urls.map((url) => ({ url, ok: false as const, error: "Paused", reason: "paused" as const, retryAt: 5_000 })),
-      null,
-    );
-    await expect(fetch(["https://github.com/o/r/pull/1"], new Map())).rejects.toMatchObject({ retryAt: 5_000 });
-    await expect(fetch(["https://github.com/o/r/pull/1"], new Map())).rejects.toThrow(PrReadsPaused);
+    it("retains only the PRs open asks still watch after a full pass", async () => {
+      await prAsk(true);
+      const retained: string[][] = [];
+      const watcher = new PrWatcher(store, service, async (urls) => new Map(urls.map((url) => [url, pr()])), undefined, undefined, async (urls) => {
+        retained.push(urls);
+      });
+      await watcher.refresh();
+      expect(retained).toEqual([["https://github.com/o/r/pull/30"]]);
+    });
   });
 
   it("describes only the PR changes an agent would act on", () => {
