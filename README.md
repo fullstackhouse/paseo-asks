@@ -50,7 +50,7 @@ agent ──stdio MCP──▶ bridge.mjs ──HTTP 127.0.0.1──▶ plugin s
 
 ## Install
 
-Paseo 0.12 or newer, with plugins enabled on the daemon. `gh`, if installed in `/opt/homebrew/bin`, `/usr/local/bin` or `/usr/bin`, adds live PR status.
+Paseo 0.12 or newer, with plugins enabled on the daemon. `gh`, if on the daemon's PATH or installed in `/opt/homebrew/bin`, `/usr/local/bin` or `/usr/bin`, adds live PR status.
 
 ```bash
 git clone git@github.com:fullstackhouse/paseo-asks.git
