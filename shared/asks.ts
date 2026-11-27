@@ -82,12 +82,14 @@ export const AskSchema = z.object({
   /** The explainer's own workspace. Unset for a side chat in the ask's workspace (the fallback, and asks from before). */
   discussionWorkspaceId: z.string().optional(),
   /**
-   * The human's last act, while it can still be undone: the fields it changed, as they were, and the messages it queued.
-   * Any later change to the ask clears it.
+   * The human's last act, while it can still be undone: what it was, the fields it changed, as they were, and the
+   * messages it queued. Any later change to the ask clears it.
    */
   undo: z
     .object({
       at: z.string(),
+      /** What the human did, as the agent was told: `chose "Merge"`, `dropped it`. */
+      what: z.string(),
       deliveryIds: z.array(z.string()),
       prev: z.object({
         status: z.enum(ASK_STATUSES),
@@ -317,13 +319,13 @@ export type ActVerb = (typeof ACT_VERBS)[number];
 
 /** How long the toast after an act offers Undo. */
 export const UNDO_WINDOW_MS = 6_000;
-/** How long an act's messages wait before they go out, so Undo can take them back: the window plus time for the undo call. */
-export const UNDO_HOLD_MS = UNDO_WINDOW_MS + 2_000;
+/** How long the server takes an undo: the toast's window plus time for the undo call. */
+export const UNDO_ACCEPT_MS = UNDO_WINDOW_MS + 2_000;
 
 /**
  * A human disposes of an ask: run one of its actions, mark it done, drop it, or reply. On an ask in progress:
  * `reopen` takes it over from the owner, `remind` asks the owner to update it or hand it back. `undo` takes the last
- * act back while its messages still wait to go out (`UNDO_HOLD_MS`), so nobody hears of it.
+ * act back (`UNDO_ACCEPT_MS`): messages still waiting are dropped, and agents that already got one are told to stop.
  */
 export const actOnAsk = defineRpc({
   name: "asks.act",

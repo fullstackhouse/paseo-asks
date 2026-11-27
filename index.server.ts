@@ -1,6 +1,6 @@
 import type { PaseoApi } from "@getpaseo/client";
 import { latestTurn, type PluginServerContext } from "@getpaseo/plugin/server";
-import { actOnAsk, discussAsk, listAsks, locateAsk, OPEN_STATUSES, oldestFirst, refreshAsks, showsIn, UNDO_HOLD_MS } from "./shared/asks";
+import { actOnAsk, discussAsk, listAsks, locateAsk, OPEN_STATUSES, oldestFirst, refreshAsks, showsIn } from "./shared/asks";
 import { AgentDirectory, pickCaller } from "./server/agents";
 import { installBridge } from "./server/bridge";
 import { Discussions } from "./server/discuss";
@@ -124,7 +124,7 @@ export default function contribute(server: PluginServerContext) {
       // agent the gone path orphans the ask.
       await store.update(workspaceId, ask.id, reason === "gone" ? { orphaned: true, status: "open" } : { status: "open" });
     }
-  }, undefined, UNDO_HOLD_MS);
+  });
   const ghPath = findGh();
   if (!ghPath) console.error("[asks] gh not found; review-button checks need it on hosts without the PR service");
   // One Gh for every call, so a spent rate limit pauses them all.

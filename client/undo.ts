@@ -31,8 +31,8 @@ function doneMessage(ask: Ask, verb: DoneVerb, actionId: string | undefined, not
 }
 
 /**
- * After an act lands: a toast saying what you did, with Undo while the act's message to the agent still waits
- * (`UNDO_HOLD_MS` on the server). Undo puts the ask back as it was, and the agent never hears of it.
+ * After an act lands: a toast saying what you did, with Undo. Undo puts the ask back as it was; an agent that already
+ * got the answer is told to stop.
  */
 export interface Done {
   actionId?: string;
@@ -53,10 +53,10 @@ export function useUndoToast(): (ask: Ask, verb: DoneVerb, done: Done) => void {
       };
       const undo = () =>
         void act({ workspaceId: ask.workspaceId, id: ask.id, verb: "undo" }).then(
-          () => {
+          ({ notified: told }) => {
             if (note) writeDraft(ask.workspaceId, ask.id, note);
             refresh();
-            toast.show(`Undone: ${ask.id} is as it was.`);
+            toast.show(told ? `Undone: ${ask.id} is as it was; its agent was told to stop.` : `Undone: ${ask.id} is as it was.`);
           },
           (error: unknown) => toast.error(error instanceof Error ? error.message : String(error)),
         );

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ACTION_KINDS, ASK_KINDS, ASK_STATUSES, OPEN_STATUSES, prUrlOf, type ActVerb, type Ask, type PrState } from "../shared/asks";
+import { ACTION_KINDS, ASK_KINDS, ASK_STATUSES, OPEN_STATUSES, prUrlOf, UNDO_ACCEPT_MS, type ActVerb, type Ask, type PrState } from "../shared/asks";
 import { REFRESH } from "./nudge";
 import { stuckReminder } from "../shared/prompts";
 import { isStale, needsReminder } from "./stuck";
@@ -196,6 +196,7 @@ export class AsksService {
     const noted = note ? ` Note from the human: "${note}"` : "";
     let next: Ask;
     let message: string;
+    let what: string;
     switch (input.verb) {
       case "action": {
         const action = ask.actions.find((candidate) => candidate.id === input.actionId);
@@ -208,20 +209,24 @@ export class AsksService {
           // Resolving drops the ask from the PR watcher, so a review request resolved here would never hear the approval.
           const watched = ask.subscribe && prUrlOf(ask) ? " If the PR then waits on someone other than the human (CI, a reviewer you requested), keep the ask in progress instead of resolving it: resolving ends its PR updates. If it waits on the human (a label, an approval, a merge only they can do), ask_update it with the action they need, which sets it back to open." : "";
           message = `${head} "${action.label}": ${action.prompt ?? action.label}.${noted} When it is done, call ask_resolve for ${ask.id}.${watched}`;
+          what = `chose "${action.label}"`;
         } else {
           const outcome = { actionId: action.id, label: action.label, note, by: "human" as const, at };
           next = await this.store.update(ask.workspaceId, ask.id, { status: "done", outcome });
           message = `${head} resolved: ${action.label}.${noted}`;
+          what = `chose "${action.label}"`;
         }
         break;
       }
       case "done":
         next = await this.store.update(ask.workspaceId, ask.id, { status: "done", outcome: { note, by: "human", at } });
         message = `${head} marked done by the human.${noted}`;
+        what = "marked it done";
         break;
       case "drop":
         next = await this.store.update(ask.workspaceId, ask.id, { status: "dropped", outcome: { note, by: "human", at } });
         message = `${head} dropped by the human; do not pursue it.${noted}`;
+        what = "dropped it";
         break;
       case "reply":
         if (!note) throw new Error("A reply needs text");
@@ -233,12 +238,14 @@ export class AsksService {
           ask.status === "open" ? { status: "in_progress", outcome: { note, by: "human", at } } : {},
         );
         message = `${head} reply from the human: "${note}". Update or resolve ${ask.id} accordingly.`;
+        what = `replied "${note}"`;
         break;
       case "reopen":
         // Taken back from the owner: open again with the buttons it had, so the human answers it.
         checkInProgress(ask);
         next = await this.store.update(ask.workspaceId, ask.id, { status: "open" });
         message = `${head}: the human took it over; leave it to them.`;
+        what = "took it over";
         break;
       case "remind":
         checkInProgress(ask);
@@ -246,27 +253,36 @@ export class AsksService {
         // Not a change to the ask: its age stays, and the card says "Reminded" until the owner moves it.
         next = await this.store.update(ask.workspaceId, ask.id, { remindedAt: at }, { touch: false });
         message = `${head} shows nothing moving: update it or hand it back.`;
+        what = "reminded you about it";
         break;
     }
-    // Held back for the undo window, so Undo takes the act back before anyone hears of it.
     const told = this.tellDiscussion(ask, input.verb, input.actionId);
-    const owner = ask.orphaned ? undefined : this.notify(ask, message, { hold: true });
+    const owner = ask.orphaned ? undefined : this.notify(ask, message);
     const deliveryIds = [told, owner].flatMap((delivery) => (delivery ? [delivery.id] : []));
     const { status, outcome, remindedAt, waitingOn, takenAt, updatedAt } = ask;
     const prev = { status, outcome, remindedAt, waitingOn, takenAt, updatedAt };
-    next = await this.store.update(ask.workspaceId, ask.id, { undo: { at, deliveryIds, prev } }, { touch: false });
+    next = await this.store.update(ask.workspaceId, ask.id, { undo: { at, what, deliveryIds, prev } }, { touch: false });
     return { ask: next, notified: !ask.orphaned };
   }
 
-  /** Takes the human's last act back while its messages still wait, so the ask is as it was and nobody was told. */
+  /**
+   * Takes the human's last act back: the ask is as it was. A message about it that has not gone out is dropped; an
+   * agent that already got one is told, steered into its running turn when it can take that, to stop and undo what it
+   * started. Returns whether anyone was told.
+   */
   private async undo(ask: Ask): Promise<{ ask: Ask; notified: boolean }> {
     const { undo } = ask;
     if (!undo) throw new Error(`${ask.id} changed since, so there is nothing to undo`);
-    // Nobody to tell (its agent is gone) leaves no message to take back: the hold alone bounds the window.
-    if (!undo.deliveryIds.length && Date.now() - Date.parse(undo.at) > this.outbox.holdMs)
-      throw new Error(`Too late to undo ${ask.id}`);
-    if (!this.outbox.cancel(undo.deliveryIds)) throw new Error(`Too late to undo ${ask.id}: its agent already has your answer`);
-    return { ask: await this.store.restore(ask.workspaceId, ask.id), notified: false };
+    if (Date.now() - Date.parse(undo.at) > UNDO_ACCEPT_MS) throw new Error(`Too late to undo ${ask.id}`);
+    const delivered = this.outbox.cancel(undo.deliveryIds);
+    const next = await this.store.restore(ask.workspaceId, ask.id);
+    const status = next.status === "open" ? "it waits on the human again" : `it is ${next.status.replace("_", " ")} again`;
+    for (const { agentId, workspaceId, askId } of delivered) {
+      const text = `[asks] ${ask.id} (${ask.title}): the human undid their last answer (they ${undo.what}); ${status}. Stop anything you started for that answer and undo what you can.`;
+      this.outbox.enqueue({ agentId, workspaceId, askId, text });
+      void this.outbox.flush(agentId);
+    }
+    return { ask: next, notified: delivered.length > 0 };
   }
 
   /**
@@ -283,7 +299,6 @@ export class AsksService {
       agentId,
       ask.discussionWorkspaceId ?? ask.workspaceId,
       `[asks] The human answered ${ask.id} (${ask.title}) with its buttons: they ${what}. ${told} Do not resolve or update ${ask.id}. Reply in one line.`,
-      { hold: true },
     );
     void this.outbox.flush(agentId);
     return delivery;
@@ -301,8 +316,8 @@ export class AsksService {
   }
 
   /** Queue a message for the ask's owner; it goes out once the owner is between turns. */
-  notify(ask: Ask, text: string, options?: { hold?: boolean }): Delivery {
-    const delivery = this.outbox.enqueue({ agentId: ask.ownerAgentId, workspaceId: ask.workspaceId, askId: ask.id, text }, options);
+  notify(ask: Ask, text: string): Delivery {
+    const delivery = this.outbox.enqueue({ agentId: ask.ownerAgentId, workspaceId: ask.workspaceId, askId: ask.id, text });
     void this.outbox.flush(ask.ownerAgentId);
     return delivery;
   }
@@ -336,9 +351,9 @@ export class AsksService {
   }
 
   /** Queue a message about asks in general. The same text already waiting is not queued twice. */
-  message(agentId: string, workspaceId: string, text: string, options?: { hold?: boolean }): Delivery | undefined {
+  message(agentId: string, workspaceId: string, text: string): Delivery | undefined {
     if (this.outbox.pending(agentId).some((entry) => entry.text === text)) return;
-    return this.outbox.enqueue({ agentId, workspaceId, text }, options);
+    return this.outbox.enqueue({ agentId, workspaceId, text });
   }
 
   /** The human asks an agent to bring its asks up to date. Returns whether it went out now (steered into a running turn when possible) or waits for the turn to end. */
