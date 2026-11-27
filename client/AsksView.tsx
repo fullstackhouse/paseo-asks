@@ -1307,8 +1307,8 @@ function makeStyles(theme: PluginTheme, compact: boolean) {
     replyField: { flex: 1, flexDirection: "row" as const, alignItems: "flex-end" as const },
     send: {
       position: "absolute" as const,
-      right: 6,
-      bottom: 6,
+      right: 4,
+      bottom: 4,
       padding: 6,
       borderRadius: 6,
       backgroundColor: colors.accent,
