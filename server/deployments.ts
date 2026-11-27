@@ -1,22 +1,12 @@
 import type { Deployment } from "../shared/asks";
-import type { Gh } from "./gh";
 
-/** One GitHub deployment of the PR's head commit, as the GraphQL query below returns it. */
+/** One deployment of the PR's head commit, in GitHub's GraphQL shape (`pr-feed.ts` maps the host's deployments into it). */
 export interface DeploymentNode {
   environment?: string | null;
   createdAt: string;
   latestStatus?: { state?: string | null; logUrl?: string | null } | null;
   statuses?: { nodes?: ({ environmentUrl?: string | null } | null)[] | null } | null;
 }
-
-// `gh pr view --json` has no deployments. Costs 1 GraphQL point; statuses carry the URL, which the latest one may lack.
-const QUERY = `query($owner: String!, $name: String!, $number: Int!) {
-  repository(owner: $owner, name: $name) { pullRequest(number: $number) { commits(last: 1) { nodes { commit {
-    deployments(last: 20) { nodes {
-      environment createdAt latestStatus { state logUrl } statuses(first: 10) { nodes { environmentUrl } }
-    } }
-  } } } } }
-}`;
 
 const STATES: Record<string, Deployment["state"]> = {
   SUCCESS: "ready",
@@ -56,15 +46,4 @@ function hostOf(url: string): string {
   } catch {
     return url;
   }
-}
-
-const PR_URL = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/;
-
-export async function fetchDeployments(gh: Gh, prUrl: string): Promise<Deployment[]> {
-  const match = PR_URL.exec(prUrl);
-  if (!match) return [];
-  const [, owner, name, number] = match;
-  const stdout = await gh.run(["api", "graphql", "-f", `query=${QUERY}`, "-f", `owner=${owner}`, "-f", `name=${name}`, "-F", `number=${number}`]);
-  const commit = JSON.parse(stdout).data?.repository?.pullRequest?.commits?.nodes?.[0]?.commit;
-  return summarizeDeployments(commit?.deployments?.nodes ?? []);
 }
