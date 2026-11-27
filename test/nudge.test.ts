@@ -280,6 +280,11 @@ describe("refresh", () => {
 });
 
 describe("isAsksPermission", () => {
+  it("matches the host's provider-neutral tool on any provider", () => {
+    expect(isAsksPermission({ kind: "tool", name: "asks.ask_create" }, { server: "asks" })).toBe(true);
+    expect(isAsksPermission({ kind: "tool", name: "mcp__asks__ask_create" }, { server: "prs" })).toBe(false);
+  });
+
   it("recognises Claude and Codex prompts for the asks tools only", () => {
     expect(isAsksPermission({ kind: "tool", name: "mcp__asks__ask_create" })).toBe(true);
     expect(

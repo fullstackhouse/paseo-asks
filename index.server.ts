@@ -23,6 +23,7 @@ import { isWorking, Outbox, type Courier } from "./server/outbox";
 import { checkFilePaths, diskPathEnv } from "./server/file-paths";
 import { dataDir } from "./server/paths";
 import { isAsksPermission } from "./server/permissions";
+import { toolGrantSupport } from "./server/tool-grants";
 import { ghPrReviewOf } from "./server/review-buttons";
 import { AsksService, TOOLS } from "./server/service";
 import { instructions } from "./shared/instructions";
@@ -204,7 +205,8 @@ export default function contribute(server: PluginServerContext) {
   });
   // Plan mode (the side chat's read-only mode) and Codex prompt even for preapproved MCP tools. The asks
   // tools only touch asks, so answer those prompts here instead of interrupting the human.
-  server.on("agent.permission_requested", async ({ agent, request }, { paseo: api }) => {
+  server.on("agent.permission_requested", async (event, { paseo: api }) => {
+    const { agent, request } = event;
     capture(api);
     // A classifier only needs to answer; never let it put a prompt in front of the human.
     if (helpers.has(agent.id)) {
@@ -214,7 +216,7 @@ export default function contribute(server: PluginServerContext) {
       });
       return;
     }
-    if (!isAsksPermission(request)) return;
+    if (!isAsksPermission(request, (event as { tool?: { server: string } }).tool)) return;
     await api.agents
       .ref(agent.id)
       .respondToPermission({ requestId: request.id, response: { behavior: "allow" } });
@@ -276,11 +278,15 @@ export default function contribute(server: PluginServerContext) {
     return service.refresh(agentId);
   });
   const discussions = new Discussions();
+  const exactToolGrants = toolGrantSupport(async () => {
+    if (!paseo) throw new Error("no daemon session yet");
+    return paseo.providers.snapshot();
+  });
   const startDiscussion = (api: PaseoApi, workspaceId: string, id: string, note?: string) => {
     const ask = store.get(workspaceId, id);
     if (!ask) throw new Error(`No ask ${id} in this workspace`);
     return discussions.start(
-      { paseo: api, store, mcp, lastOutput: (agentId) => lastOutputs.get(agentId), log: console.log },
+      { paseo: api, store, mcp, lastOutput: (agentId) => lastOutputs.get(agentId), log: console.log, exactToolGrants },
       ask,
       note,
     );

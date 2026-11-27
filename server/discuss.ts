@@ -1,3 +1,4 @@
+import { toolGrantSupport } from "./tool-grants";
 import type { PaseoAgent, PaseoApi } from "@getpaseo/client";
 import type { McpServerConfig } from "@getpaseo/protocol/agent-types";
 import { discussionTitle, type Ask } from "../shared/asks";
@@ -15,6 +16,8 @@ export interface DiscussDeps {
   lastOutput(agentId: string): string | undefined;
   /** Why the explainer's workspace could not be made, before falling back to a side chat. One line, no stack: it is expected. */
   log?(message: string): void;
+  /** Whether agents on a provider can hold exact MCP tool grants (`toolGrantSupport`); the fallback list when omitted. */
+  exactToolGrants?(provider: string): Promise<boolean>;
 }
 
 export interface Discussion {
@@ -65,7 +68,7 @@ export async function discuss(deps: DiscussDeps, ask: Ask, note?: string): Promi
   if (workspace) {
     const handle = await workspace.agents
       .create({
-        config: { ...agentConfig(deps, snapshot, model), ...writingMode(snapshot) },
+        config: { ...(await agentConfig(deps, snapshot, model)), ...writingMode(snapshot) },
         title: discussionTitle(ask),
         labels: { "asks.discussion": `${ask.workspaceId}/${ask.id}` },
         prompt: explainerPrompt(ask, snapshot.cwd, ownerOutput, message),
@@ -88,7 +91,7 @@ export async function discuss(deps: DiscussDeps, ask: Ask, note?: string): Promi
     );
   }
   const handle = await paseo.workspaces.ref(ask.workspaceId).agents.create({
-    config: { ...agentConfig(deps, snapshot, model), modeId: mode.id },
+    config: { ...(await agentConfig(deps, snapshot, model)), modeId: mode.id },
     parent: ask.ownerAgentId,
     title: `Discuss ${ask.id}: ${ask.title}`.slice(0, 60),
     labels: { "asks.discussion": `${ask.workspaceId}/${ask.id}` },
@@ -99,17 +102,15 @@ export async function discuss(deps: DiscussDeps, ask: Ask, note?: string): Promi
   return { agentId: handle.id, workspaceId: ask.workspaceId, created: true };
 }
 
-/**
- * Providers whose Paseo adapter enforces exact MCP tool grants. Paseo rejects `toolPolicy` for any other
- * provider ("cannot preapprove exact MCP tools"), so an explainer for a Copilot, Pi, ACP, Antigravity or Muse
- * owner would fail to start. Paseo doesn't tell plugins which providers these are yet, so the list mirrors
- * the host's adapters; elsewhere the asks tools still attach and the permission hook answers them.
- */
-const EXACT_GRANT_PROVIDERS = new Set(["claude", "codex", "opencode"]);
+const fallbackGrants = toolGrantSupport(async () => ({ entries: [] }));
 
-function agentConfig(deps: DiscussDeps, owner: PaseoAgent, model: string) {
+/**
+ * The explainer's config: the asks MCP server, and its tools preapproved where the owner's provider can
+ * hold an exact grant. Elsewhere the tools still attach and the permission hook answers them.
+ */
+async function agentConfig(deps: DiscussDeps, owner: PaseoAgent, model: string) {
   const config = { provider: `${owner.provider}/${model}`, mcpServers: { asks: deps.mcp } };
-  if (!EXACT_GRANT_PROVIDERS.has(owner.provider)) return config;
+  if (!(await (deps.exactToolGrants ?? fallbackGrants)(owner.provider))) return config;
   return { ...config, toolPolicy: { preapproved: ASK_TOOLS.map((tool) => ({ kind: "mcp" as const, server: "asks", tool })) } };
 }
 

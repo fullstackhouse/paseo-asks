@@ -158,6 +158,15 @@ describe("Discuss", () => {
     expect(agent!.options.config).not.toHaveProperty("toolPolicy");
   });
 
+  it("preapproves the asks tools wherever the host says the owner's provider holds exact grants", async () => {
+    await discuss(
+      { ...deps(fakePaseo(created, { provider: "my-plugin-agent" })), exactToolGrants: async (provider) => provider === "my-plugin-agent" },
+      await decision(),
+    );
+    const [agent] = created.agents;
+    expect(agent!.options.config.toolPolicy.preapproved.map((grant: { tool: string }) => grant.tool)).toContain("ask_create");
+  });
+
   it("opens with the human's note instead of the explain run when they typed one", async () => {
     const ask = await decision();
     await discuss(deps(fakePaseo(created)), ask, "Why not rebase?");
