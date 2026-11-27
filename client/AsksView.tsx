@@ -857,8 +857,17 @@ function AskDetail({
   const [bodyOpened, setBodyOpened] = useState(false);
   const bodyShown = !foldBody || bodyOpened;
   // One line when empty, then the field follows its text up to about six lines and scrolls.
-  const [contentHeight, setContentHeight] = useState(0);
-  const inputHeight = Math.min(132, Math.max(36, contentHeight + 16));
+  // The height comes from a hidden copy of the text at the field's width. The field's own
+  // content size can't be used: on web it is the textarea's scroll height, which never drops
+  // below the field's current height, so the field grew on every keystroke and never shrank.
+  const [textHeight, setTextHeight] = useState(0);
+  const inputHeight = Math.min(132, Math.max(36, Math.ceil(textHeight)));
+  // Scroll (the field's default) only past the cap: a classic scrollbar narrows the field, so its text wraps
+  // onto more lines than the measuring copy and the last line gets cut off.
+  const inputOverflow = textHeight > 132 ? undefined : "hidden";
+  // Once the field scrolls, keep the send button clear of its scrollbar. Paseo styles web scrollbars
+  // `thin` (11px in Chromium); native scrollbars overlay the text, so the button stays put there.
+  const sendRight = Platform.OS === "web" && inputOverflow === undefined ? 15 : 4;
   const mutation = useMutation({
     mutationFn: (input: { verb: "action" | "done" | "drop" | "reply"; actionId?: string }) =>
       act({ workspaceId: ask.workspaceId, id: ask.id, note, ...input }),
@@ -997,15 +1006,23 @@ function AskDetail({
       )}
       <View style={styles.replyRow}>
         <View style={styles.replyField}>
+          <Text
+            accessible={false}
+            aria-hidden
+            pointerEvents="none"
+            style={[styles.input, styles.inputMeasure]}
+            onLayout={(event) => setTextHeight(event.nativeEvent.layout.height)}
+          >
+            {`${note}\u200b`}
+          </Text>
           <TextInput
             value={note}
             onChangeText={setNote}
             placeholder="Reply to the agent…"
             placeholderTextColor={styles.placeholder.color}
-            style={[styles.input, { height: note ? inputHeight : 36 }]}
+            style={[styles.input, { height: inputHeight, overflow: inputOverflow }]}
             multiline
             numberOfLines={1}
-            onContentSizeChange={(event) => setContentHeight(event.nativeEvent.contentSize.height)}
             onKeyPress={(event) => {
               // Desktop/web: Enter sends the reply, Shift+Enter adds a line. Native keeps Return as newline.
               const e = event.nativeEvent as typeof event.nativeEvent & {
@@ -1023,7 +1040,7 @@ function AskDetail({
               accessibilityLabel="Send reply"
               disabled={busy}
               onPress={reply}
-              style={styles.send}
+              style={[styles.send, { right: sendRight }]}
             >
               <Icon name="SendHorizontal" size={16} color={theme.colors.accentForeground} />
             </Pressable>
@@ -1293,8 +1310,7 @@ function makeStyles(theme: PluginTheme, compact: boolean) {
     replyField: { flex: 1, flexDirection: "row" as const, alignItems: "flex-end" as const },
     send: {
       position: "absolute" as const,
-      right: 6,
-      bottom: 6,
+      bottom: 4,
       padding: 6,
       borderRadius: 6,
       backgroundColor: colors.accent,
@@ -1326,6 +1342,18 @@ function makeStyles(theme: PluginTheme, compact: boolean) {
       maxHeight: 132,
       flex: 1,
       fontSize: 13,
+      lineHeight: 18,
+    },
+    inputMeasure: {
+      position: "absolute" as const,
+      top: 0,
+      left: 0,
+      right: 0,
+      // One pixel past the field's cap, so overflow shows as a height above 132 without the copy
+      // spilling far out of the row. (`undefined` doesn't lift the cap on web.)
+      maxHeight: 133,
+      opacity: 0,
+      borderColor: "transparent",
     },
     placeholder: { color: colors.foregroundMuted },
     badge: { fontSize: 11 },
