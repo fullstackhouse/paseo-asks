@@ -1,14 +1,17 @@
 import { existsSync } from "node:fs";
+import { delimiter, join } from "node:path";
 import { OPEN_STATUSES, prUrlOf, type Ask, type Deployment, type PrState } from "../shared/asks";
 import { fetchDeployments } from "./deployments";
 import { RateLimited, type Gh } from "./gh";
 import type { HostChangeRequestRead } from "./host-sdk";
 
-// The daemon is often launched from the Dock with a bare PATH, so look where gh usually lives.
+// The daemon is often launched from the Dock with a bare PATH, so after PATH look where gh usually lives.
 const GH_CANDIDATES = ["/opt/homebrew/bin/gh", "/usr/local/bin/gh", "/usr/bin/gh"];
 
-export function findGh(): string | null {
-  return GH_CANDIDATES.find((path) => existsSync(path)) ?? null;
+/** The daemon's own gh first, as the host's PR reads use it, then the usual install locations. */
+export function findGh(path = process.env.PATH ?? ""): string | null {
+  const onPath = path.split(delimiter).filter(Boolean).map((dir) => join(dir, "gh"));
+  return [...onPath, ...GH_CANDIDATES].find((candidate) => existsSync(candidate)) ?? null;
 }
 
 /**
