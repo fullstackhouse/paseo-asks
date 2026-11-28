@@ -34,6 +34,7 @@ import { openLink } from "./open-link";
 import { useRevealInScroll } from "./reveal";
 import { askQueue, nextWaitingAsk, type QueueFilter } from "./queue";
 import { useSnoozedWorkspaceIds } from "./snoozed";
+import { useUndoToast } from "./undo";
 
 export const POLL_MS = 4000;
 
@@ -683,10 +684,12 @@ function InProgressDetail({
   const toast = useToast();
   const [bodyOpened, setBodyOpened] = useState(false);
   const [bodyHeight, setBodyHeight] = useState(0);
+  const undoToast = useUndoToast();
   const mutation = useMutation({
     mutationFn: (verb: "reopen" | "remind") => act({ workspaceId: ask.workspaceId, id: ask.id, verb }),
-    onSuccess: (_, verb) => {
+    onSuccess: ({ notified }, verb) => {
       if (verb === "reopen") onTakenBack();
+      undoToast(ask, verb, { notified });
       void queryClient.invalidateQueries({ queryKey: ["asks"] });
       asksChanged();
     },
@@ -857,6 +860,7 @@ function AskDetail({
   const queryClient = useQueryClient();
   const toast = useToast();
   const [note, setNote] = useDraft(ask.workspaceId, ask.id);
+  const undoToast = useUndoToast();
   const [bodyOpened, setBodyOpened] = useState(false);
   const bodyShown = !foldBody || bodyOpened;
   // One line when empty, then the field follows its text up to about six lines and scrolls.
@@ -874,12 +878,9 @@ function AskDetail({
   const mutation = useMutation({
     mutationFn: (input: { verb: "action" | "done" | "drop" | "reply"; actionId?: string }) =>
       act({ workspaceId: ask.workspaceId, id: ask.id, note, ...input }),
-    onSuccess: ({ notified }) => {
+    onSuccess: ({ notified }, { verb, actionId }) => {
+      undoToast(ask, verb, { actionId, note, notified });
       setNote("");
-      if (!notified)
-        toast.show(`${ask.id} closed; its agent is gone, so nobody was told.`, {
-          variant: "warning",
-        });
       onAnswered?.();
       void queryClient.invalidateQueries({ queryKey: ["asks"] });
       asksChanged();
