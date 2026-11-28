@@ -1,0 +1,3 @@
+#!/bin/sh
+# The fake GitHub CLI on the sandbox PATH; see gh.mjs.
+exec node "$(dirname "$0")/gh.mjs" "$@"

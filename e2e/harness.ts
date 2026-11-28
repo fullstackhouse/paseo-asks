@@ -1,5 +1,5 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -28,7 +28,13 @@ const AGENTS: Record<Provider, { provider: string; model: string; mode: string }
   codex: { provider: "codex", model: "gpt-6-luna", mode: "full-access" },
 };
 
-export type Ask = { id: string; title: string; kind: string; status: string; ownerAgentId?: string; actions: { id: string; label: string; kind: string }[] };
+/**
+ * What a scenario adds to the sandbox: directories put first on the agents' PATH (fakes of CLIs), skills by name, and
+ * the Claude model its agents run on (a Claude Code alias; Haiku unless set).
+ */
+export type SandboxOptions = { path?: string[]; skills?: Record<string, string>; claudeModel?: string };
+
+export type Ask = { id: string; workspaceId: string; title: string; kind: string; status: string; ownerAgentId?: string; actions: { id: string; label: string; kind: string }[] };
 
 /**
  * A throwaway Paseo daemon with this plugin installed, in its own home, talking to the
@@ -41,9 +47,10 @@ export class Sandbox {
     private readonly paseoHome: string,
     private readonly daemon: ChildProcess,
     private readonly proxy: Proxy,
+    private readonly claudeModel: string,
   ) {}
 
-  static async start(name: string): Promise<Sandbox> {
+  static async start(name: string, options: SandboxOptions = {}): Promise<Sandbox> {
     const root = realpathSync(mkdtempSync(join(tmpdir(), "paseo-asks-e2e-")));
     const home = join(root, "home");
     const paseoHome = join(root, "paseo");
@@ -52,6 +59,8 @@ export class Sandbox {
     // Agents commit, and git's output lands in what the model sees: give the sandbox's git a fixed identity and
     // branch, and keep the machine's global and system config (e.g. init.defaultBranch) out of it.
     writeFileSync(join(home, ".gitconfig"), "[user]\n\tname = e2e\n\temail = e2e@example.com\n");
+    // User-scope skills, which Claude Code loads into every agent's Skill tool.
+    for (const [skill, dir] of Object.entries(options.skills ?? {})) cpSync(dir, join(home, ".claude", "skills", skill), { recursive: true });
     await exec("git", ["init", "-q", "-b", "main"], { cwd: project, env: { ...process.env, HOME: home, GIT_CONFIG_NOSYSTEM: "1" } });
 
     const upstream = MODE === "record" ? upstreamFromEnv(process.env) : undefined;
@@ -68,16 +77,16 @@ export class Sandbox {
     );
 
     const daemon = spawn(PASEO, ["daemon", "run", "--home", paseoHome], {
-      env: daemonEnv({ home, proxy: proxy.url }),
+      env: daemonEnv({ home, proxy: proxy.url, path: options.path ?? [] }),
       stdio: ["ignore", "pipe", "pipe"],
     });
     const log: string[] = [];
     daemon.stdout!.on("data", (chunk) => log.push(String(chunk)));
     daemon.stderr!.on("data", (chunk) => log.push(String(chunk)));
 
-    const sandbox = new Sandbox(root, project, paseoHome, daemon, proxy);
+    const sandbox = new Sandbox(root, project, paseoHome, daemon, proxy, options.claudeModel ?? AGENTS.claude.model);
     try {
-      await waitFor("daemon listening", async () => (await sandbox.paseo("daemon", "status")).includes("running"), 30_000);
+      await waitFor("daemon listening", async () => (await sandbox.paseo("daemon", "status")).includes("running"), 90_000);
       await sandbox.paseo("plugin", "install", PLUGIN);
       await waitFor("plugin running", async () => /paseo-asks\s+running/.test(await sandbox.paseo("plugin", "ls")), 30_000);
     } catch (error) {
@@ -87,17 +96,22 @@ export class Sandbox {
     return sandbox;
   }
 
+  /** The agents' HOME. */
+  get home(): string {
+    return join(this.root, "home");
+  }
+
   /** Runs the paseo CLI against this sandbox's daemon. */
   async paseo(...args: string[]): Promise<string> {
     const { stdout } = await exec(PASEO, [...args, "--home", this.paseoHome], { maxBuffer: 16 << 20, env: cliEnv() });
     return stdout;
   }
 
-  /** Starts an agent (Haiku unless told otherwise) in the sandbox project and waits for its first turn to end. */
+  /** Starts an agent (Claude on the sandbox's model unless told otherwise) in the sandbox project and waits for its first turn to end. */
   async run(prompt: string, provider: Provider = "claude"): Promise<string> {
     const agent = AGENTS[provider];
     const out = await this.paseo(
-      "run", "--cwd", this.project, "--provider", agent.provider, "--model", agent.model,
+      "run", "--cwd", this.project, "--provider", agent.provider, "--model", provider === "claude" ? this.claudeModel : agent.model,
       "--mode", agent.mode, "--wait-timeout", "3m", "--json", prompt,
     );
     return JSON.parse(out.slice(out.indexOf("{"))).agentId;
@@ -134,12 +148,13 @@ export class Sandbox {
   }
 
   /** What a button press in Paseo does, through the plugin's terminal endpoint. */
-  async act(askId: string, input: { verb: "action" | "done" | "drop" | "reply"; actionId?: string; note?: string }): Promise<unknown> {
+  async act(askId: string, input: { verb: "action" | "done" | "drop" | "reply"; actionId?: string; note?: string; workspaceId?: string }): Promise<unknown> {
     const { port, token } = JSON.parse(readFileSync(join(this.paseoHome, "plugin-data", "asks", "server.json"), "utf8"));
     const res = await fetch(`http://127.0.0.1:${port}/act`, {
       method: "POST",
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-      body: JSON.stringify({ workspaceId: this.workspaceOf(askId), id: askId, ...input }),
+      // Ask ids are per workspace: pass workspaceId when several workspaces hold asks.
+      body: JSON.stringify({ workspaceId: input.workspaceId ?? this.workspaceOf(askId), id: askId, ...input }),
     });
     if (!res.ok) throw new Error(`/act ${res.status}: ${await res.text()}`);
     return res.json();
@@ -253,7 +268,7 @@ function cliEnv(): NodeJS.ProcessEnv {
   return Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("PASEO_")));
 }
 
-function daemonEnv({ home, proxy }: { home: string; proxy: string }): NodeJS.ProcessEnv {
+function daemonEnv({ home, proxy, path }: { home: string; proxy: string; path: string[] }): NodeJS.ProcessEnv {
   // Start from a clean slate so the developer's Claude and Paseo settings cannot leak in.
   const env: NodeJS.ProcessEnv = {};
   for (const name of ["PATH", "TMPDIR", "LANG", "TERM", "USER", "SHELL"]) if (process.env[name]) env[name] = process.env[name];
@@ -262,7 +277,7 @@ function daemonEnv({ home, proxy }: { home: string; proxy: string }): NodeJS.Pro
     // land in tool output: fixed, so a recording made on a zsh machine replays in CI.
     SHELL: "/bin/bash",
     HOME: home,
-    PATH: `${BIN}:${env.PATH ?? "/usr/bin:/bin"}`,
+    PATH: [...path, BIN, env.PATH ?? "/usr/bin:/bin"].join(":"),
     ANTHROPIC_BASE_URL: proxy,
     // The proxy holds the real credentials; agents get the same dummy key in record and replay.
     ANTHROPIC_API_KEY: "e2e-dummy",
@@ -277,6 +292,28 @@ function daemonEnv({ home, proxy }: { home: string; proxy: string }): NodeJS.Pro
     PASEO_VOICE_MODE_ENABLED: "false",
   });
   return env;
+}
+
+/**
+ * A skill directory from a GitHub repo at a pinned commit, downloaded once into e2e/node_modules/.skills. The commit
+ * pins the content, so any change to the skill is a new pin and a re-record.
+ */
+export async function pinnedSkill(repo: string, sha: string, path: string): Promise<string> {
+  const dir = join(E2E, "node_modules", ".skills", `${repo.replace("/", "-")}@${sha}`);
+  if (!existsSync(dir)) {
+    const url = `https://codeload.github.com/${repo}/tar.gz/${sha}`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Download of ${url} failed: ${response.status}`);
+    mkdirSync(dirname(dir), { recursive: true });
+    const tmp = mkdtempSync(join(dirname(dir), ".download-"));
+    writeFileSync(join(tmp, "repo.tgz"), Buffer.from(await response.arrayBuffer()));
+    await exec("tar", ["-xzf", "repo.tgz", "--strip-components=1"], { cwd: tmp });
+    rmSync(join(tmp, "repo.tgz"));
+    renameSync(tmp, dir);
+  }
+  const skill = join(dir, path);
+  if (!existsSync(join(skill, "SKILL.md"))) throw new Error(`No SKILL.md at ${path} in ${repo}@${sha}`);
+  return skill;
 }
 
 export async function waitFor(what: string, check: () => Promise<boolean> | boolean, timeoutMs: number): Promise<void> {
