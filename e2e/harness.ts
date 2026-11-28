@@ -28,8 +28,11 @@ const AGENTS: Record<Provider, { provider: string; model: string; mode: string }
   codex: { provider: "codex", model: "gpt-6-luna", mode: "full-access" },
 };
 
-/** What a scenario adds to the sandbox: directories put first on the agents' PATH (fakes of CLIs), and skills by name. */
-export type SandboxOptions = { path?: string[]; skills?: Record<string, string> };
+/**
+ * What a scenario adds to the sandbox: directories put first on the agents' PATH (fakes of CLIs), skills by name, and
+ * the Claude model its agents run on (a Claude Code alias; Haiku unless set).
+ */
+export type SandboxOptions = { path?: string[]; skills?: Record<string, string>; claudeModel?: string };
 
 export type Ask = { id: string; workspaceId: string; title: string; kind: string; status: string; ownerAgentId?: string; actions: { id: string; label: string; kind: string }[] };
 
@@ -44,6 +47,7 @@ export class Sandbox {
     private readonly paseoHome: string,
     private readonly daemon: ChildProcess,
     private readonly proxy: Proxy,
+    private readonly claudeModel: string,
   ) {}
 
   static async start(name: string, options: SandboxOptions = {}): Promise<Sandbox> {
@@ -80,7 +84,7 @@ export class Sandbox {
     daemon.stdout!.on("data", (chunk) => log.push(String(chunk)));
     daemon.stderr!.on("data", (chunk) => log.push(String(chunk)));
 
-    const sandbox = new Sandbox(root, project, paseoHome, daemon, proxy);
+    const sandbox = new Sandbox(root, project, paseoHome, daemon, proxy, options.claudeModel ?? AGENTS.claude.model);
     try {
       await waitFor("daemon listening", async () => (await sandbox.paseo("daemon", "status")).includes("running"), 90_000);
       await sandbox.paseo("plugin", "install", PLUGIN);
@@ -103,11 +107,11 @@ export class Sandbox {
     return stdout;
   }
 
-  /** Starts an agent (Haiku unless told otherwise) in the sandbox project and waits for its first turn to end. */
+  /** Starts an agent (Claude on the sandbox's model unless told otherwise) in the sandbox project and waits for its first turn to end. */
   async run(prompt: string, provider: Provider = "claude"): Promise<string> {
     const agent = AGENTS[provider];
     const out = await this.paseo(
-      "run", "--cwd", this.project, "--provider", agent.provider, "--model", agent.model,
+      "run", "--cwd", this.project, "--provider", agent.provider, "--model", provider === "claude" ? this.claudeModel : agent.model,
       "--mode", agent.mode, "--wait-timeout", "3m", "--json", prompt,
     );
     return JSON.parse(out.slice(out.indexOf("{"))).agentId;

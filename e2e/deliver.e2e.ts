@@ -14,15 +14,54 @@ import { pinnedSkill, Sandbox, type Ask } from "./harness";
  *
  * GitHub is the fake gh in fake-gh/, answering for two fixture PRs and logging every call. The skill is
  * fullstackhouse/skills' deliver at a pinned commit; E2E_DELIVER_SHA runs another commit into its own cassette.
+ * It runs on Sonnet, not Haiku: deliver runs on the session's model, which is never Haiku, and Haiku skips its report format.
  */
 const exec = promisify(execFile);
 const E2E = dirname(fileURLToPath(import.meta.url));
-const DELIVER_SHA = process.env.E2E_DELIVER_SHA ?? "c3b89a994e48db691572c46cd8841e9f468bd372";
+const DELIVER_SHA = process.env.E2E_DELIVER_SHA ?? "b4ece6a17387c697d3e3bb5b9959b9d284c512f9";
 const CASSETTE = process.env.E2E_DELIVER_SHA ? `deliver-${DELIVER_SHA.slice(0, 7)}` : "deliver";
 const NUDGED = /\[User\] \[asks\] A check found that your last reply leaves something for the human/;
 const REPO = "e2e-fixture/app";
 
 type Call = { argv: string[]; mutating: boolean; unsupported?: boolean };
+
+/**
+ * Asks the owner for what the Deliver move already does: "add `qa-approved`", "you need to add `qa-approved`",
+ * "get QA signed off", "QA sign-off is still needed", "once QA is signed off". Saying what deliver will do passes.
+ */
+const QA_STILL_NEEDED = new RegExp(
+  [
+    /(?:^|[.;:!?,(]\s*|[-*]\s+|\b(?:please|then|you(?:'ll)? (?:need to|must|should|have to|can))\s+)(?:also\s+)?add\s+`?qa-approved/,
+    /\byou (?:need|must|have to|should)\b[^.\n]{0,30}qa-approved/,
+    /\bget (?:the )?QA (?:signed off|sign-?off)/,
+    /QA sign-?off[^.\n]{0,30}\b(?:needed|required|missing|pending)\b/,
+    /qa-approved`?[^.\n]{0,30}\b(?:is|are) (?:still )?(?:needed|required|missing)\b/,
+    /\b(?:once|after|when|until)\b[^.\n]{0,40}\bQA (?:is |has been |gets )?sign(?:s|ed)? off\b/,
+  ]
+    .map((part) => part.source)
+    .join("|"),
+  "im",
+);
+/** A `Now:` line saying the PR still lacks qa-approved ("needs-qa without qa-approved"). */
+const NOW_WITHOUT_QA = /\b(?:without|no|lacks?|missing)\b[^.\n]{0,10}qa-approved/i;
+
+/** The agent's last reply: the timeline after its last `[User]`, `[Shell]`, `[mcp__…]` or other tagged line. */
+const finalMessage = (timeline: string) => {
+  const lines = timeline.trimEnd().split("\n");
+  return lines.slice(lines.findLastIndex((line) => /^\[[^\]\s]+\] /.test(line)) + 1).join("\n").trim();
+};
+
+/**
+ * The Next moves block deliver ends every report with, which the asks plugin turns into buttons: from its last
+ * "Next moves" line to the end of the message, and its `Now:` line. Loose on wording and markdown, strict on shape.
+ */
+const nextMoves = (message: string) => {
+  const start = message.search(/^.*Next moves.*$(?![\s\S]*^.*Next moves)/im);
+  const block = start < 0 ? "" : message.slice(start);
+  const now = block.match(/^[\s>*_`-]*Now[*_`]*:.*$/im)?.[0] ?? "";
+  const moves = block.split("\n").filter((line) => /\/deliver --pr|^[\s>*_`-]*Deliver to\b/i.test(line));
+  return { block, now, moves };
+};
 
 describe("a Deliver click on a PR that needs QA and a review", () => {
   let sandbox: Sandbox;
@@ -64,7 +103,7 @@ describe("a Deliver click on a PR that needs QA and a review", () => {
 
   beforeAll(async () => {
     const deliver = await pinnedSkill("fullstackhouse/skills", DELIVER_SHA, "skills/deliver");
-    sandbox = await Sandbox.start(CASSETTE, { path: [join(E2E, "fake-gh")], skills: { deliver } });
+    sandbox = await Sandbox.start(CASSETTE, { path: [join(E2E, "fake-gh")], skills: { deliver }, claudeModel: "sonnet" });
     heads = await fixture(sandbox);
   }, 300_000);
 
@@ -95,6 +134,12 @@ describe("a Deliver click on a PR that needs QA and a review", () => {
 
     expect(sandbox.asks(), "no second ask").toHaveLength(1);
     expect(timeline).not.toMatch(NUDGED);
+
+    // At the top level: the report still ends with Next moves, `Now:` on merged and no moves.
+    const moves = nextMoves(finalMessage(timeline));
+    expect(moves.block, "the final message ends with a Next moves block").not.toBe("");
+    expect(moves.now, "its Now: line names merged").toMatch(/merged/i);
+    expect(moves.moves, "no moves left").toEqual([]);
   });
 
   it("stops at do-not-merge and says so", { timeout: 600_000 }, async () => {
@@ -110,6 +155,17 @@ describe("a Deliver click on a PR that needs QA and a review", () => {
     expect(pr("8")).toMatchObject({ state: "OPEN", labels: ["needs-qa", "do-not-merge"] });
     expect(mutations().slice(before).filter(({ argv }) => argv[0] === "pr" && argv[1] === "edit")).toEqual([]);
     expect(turn).toMatch(/do-not-merge/);
+
+    // Blocked: Next moves says so and names the label. The click was the QA sign-off, so nobody is asked to add it.
+    const message = finalMessage(turn);
+    const { block, now, moves } = nextMoves(message);
+    expect(block, "the final message ends with a Next moves block").not.toBe("");
+    expect(now, "its Now: line says blocked").toMatch(/blocked/i);
+    expect(now, "its Now: line names do-not-merge").toMatch(/do-not-merge/);
+    expect(moves, "a hard stop lists no moves").toEqual([]);
+    expect(now, "its Now: line doesn't say qa-approved is missing").not.toMatch(NOW_WITHOUT_QA);
+    // The click was the QA sign-off: nothing may say it, or qa-approved, is still to come.
+    expect(message, "no ask to add qa-approved").not.toMatch(QA_STILL_NEEDED);
   });
 });
 

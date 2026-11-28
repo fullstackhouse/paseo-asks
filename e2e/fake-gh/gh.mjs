@@ -216,6 +216,8 @@ function restGet(path) {
   const prefix = `repos/${slug}`;
   if (path === "user") return { login: state.viewer, type: "User" };
   if (path === "rate_limit") return { resources: { core: { remaining: 5000 }, graphql: { remaining: 5000, reset: 0 } } };
+  // An unset $SLUG gives `repos//…`: GitHub answers 404, and so does the fake.
+  if (path.startsWith("repos//")) return null;
   if (path === prefix)
     return { full_name: slug, name: repo.name, owner: { login: repo.owner }, private: repo.visibility === "PRIVATE", visibility: repo.visibility.toLowerCase(), default_branch: repo.defaultBranch, permissions: { admin: true, maintain: true, push: true, triage: true, pull: true } };
   if (!path.startsWith(prefix + "/")) return undefined;

@@ -275,6 +275,8 @@ function scrubText(text: string, root: string): string {
     // `ls -l` lines: keep the type and name; owner, size and mtime differ between machines and runs.
     .replace(/^([-dl])[rwxsStT-]{9}[@+.]?\s+\d+\s+\S+\s+\S+\s+\d+\s+\w{3}\s+\d{1,2}\s+[\d:]{4,5}\s+(.*)$/gm, "$1 $2")
     .replace(/^total \d+$/gm, "total <n>")
+    // Node prefixes its warnings with the process id: "(node:57894) [MODULE_TYPELESS_PACKAGE_JSON] Warning: …".
+    .replace(/\(node:\d+\)/g, "(node:<pid>)")
     // A mis-quoted command's error: bash 3.2 (macOS) and bash 5 (CI) word it, and exit with it, differently.
     .replace(/(?:^\/bin\/bash: (?:eval: )?line \d+: (?:unexpected EOF|syntax error)[^\n]*(?:\n|$))+/gm, "<shell syntax error>\n")
     // Then bash echoes the offending line, numbered 0 by bash 3.2 and 1 by bash 5.
