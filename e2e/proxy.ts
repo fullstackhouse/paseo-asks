@@ -277,6 +277,8 @@ function scrubText(text: string, root: string): string {
     .replace(/^total \d+$/gm, "total <n>")
     // A mis-quoted command's error: bash 3.2 (macOS) and bash 5 (CI) word it, and exit with it, differently.
     .replace(/(?:^\/bin\/bash: (?:eval: )?line \d+: (?:unexpected EOF|syntax error)[^\n]*(?:\n|$))+/gm, "<shell syntax error>\n")
+    // Then bash echoes the offending line, numbered 0 by bash 3.2 and 1 by bash 5.
+    .replace(/^<shell syntax error>\n(?:\/bin\/bash: (?:eval: )?line \d+: `[^\n]*(?:\n|$))+/gm, "<shell syntax error>\n")
     .replace(/^Exit code \d+\n<shell syntax error>/gm, "Exit code <n>\n<shell syntax error>")
     // Codex's exec tool output: a random chunk id and the time the command took.
     .replace(/"chunk_id":"[0-9a-f]+"/g, '"chunk_id":"<id>"')
