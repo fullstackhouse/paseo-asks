@@ -17,7 +17,7 @@ import { pinnedSkill, Sandbox, type Ask } from "./harness";
  */
 const exec = promisify(execFile);
 const E2E = dirname(fileURLToPath(import.meta.url));
-const DELIVER_SHA = process.env.E2E_DELIVER_SHA ?? "642811a9f1b5fa6f90bb9ae0d7cb2b331eac8c8a";
+const DELIVER_SHA = process.env.E2E_DELIVER_SHA ?? "c3b89a994e48db691572c46cd8841e9f468bd372";
 const CASSETTE = process.env.E2E_DELIVER_SHA ? `deliver-${DELIVER_SHA.slice(0, 7)}` : "deliver";
 const NUDGED = /\[User\] \[asks\] A check found that your last reply leaves something for the human/;
 const REPO = "e2e-fixture/app";
