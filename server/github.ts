@@ -1,7 +1,5 @@
 import { existsSync } from "node:fs";
-import { OPEN_STATUSES, prUrlOf, type Ask, type Deployment, type PrState } from "../shared/asks";
-import { fetchDeployments } from "./deployments";
-import { RateLimited, type Gh } from "./gh";
+import { OPEN_STATUSES, prUrlOf, type Ask, type PrState } from "../shared/asks";
 import type { HostChangeRequestRead } from "./host-sdk";
 
 // The daemon is often launched from the Dock with a bare PATH, so look where gh usually lives.
@@ -17,13 +15,10 @@ export function findGh(): string | null {
  */
 export type FetchPrs = (urls: readonly string[], previous: ReadonlyMap<string, PrState>) => Promise<Map<string, PrState | Error>>;
 
-/** `paseo.changeRequests.read` (typed in `host-sdk.ts`). */
-export type ReadPrs = (urls: string[]) => Promise<HostChangeRequestRead[]>;
-
 /** The host reports its own failure for this URL, such as a forge it can't read. */
 export class PrReadFailed extends Error {}
 
-/** No PR can be read this pass: no daemon session yet, or a host older than `changeRequests.read`. */
+/** No PR can be read this pass: no daemon session yet, or a host older than `changeRequests.subscribe`. */
 export class PrReadsUnavailable extends Error {}
 
 /**
@@ -50,59 +45,6 @@ export function prStateOf(read: Extract<HostChangeRequestRead, { ok: true }>, fe
     mergeable: MERGEABLE[read.mergeable ?? "unknown"],
     checks: read.checksState,
     fetchedAt: fetchedAt.toISOString(),
-  };
-}
-
-/** Deployments are looked up again at least this often while nothing else says they changed. */
-export const DEPLOYMENTS_RECHECK_MS = 10 * 60_000;
-
-/**
- * Whether a PR's deployments need a `gh` lookup this pass. Deployments belong to the head commit: a new commit, a
- * deployment still running, or checks still running (deploys often start with them) can change them; otherwise the last
- * lookup stands for `DEPLOYMENTS_RECHECK_MS`. Merged and closed PRs keep what they had.
- */
-export function needsDeploymentsLookup(read: Extract<HostChangeRequestRead, { ok: true }>, previous: PrState | undefined, now: number): boolean {
-  if (read.state !== "open") return false;
-  if (!previous?.deployments || !previous.deploymentsAt || previous.headSha !== read.headSha) return true;
-  if (read.checksState === "pending" || previous.deployments.some((deployment) => deployment.state === "deploying")) return true;
-  return now - Date.parse(previous.deploymentsAt) >= DEPLOYMENTS_RECHECK_MS;
-}
-
-/**
- * PR state from the host, all of a pass's PRs in one read (the host batches, rate-limits and caches it for every
- * plugin); deployments still come from `gh` (the host doesn't read them), only when `needsDeploymentsLookup` says so.
- * Without `gh` the snapshot has no deployments.
- */
-export function hostFetcher(readPrs: ReadPrs, gh: Gh | null, now: () => number = Date.now): FetchPrs {
-  return async (urls, previous) => {
-    const reads = urls.length ? await readPrs([...urls]) : [];
-    const paused = reads.find((read) => !read.ok && read.reason === "paused");
-    if (paused && !paused.ok) throw new PrReadsPaused(paused.retryAt);
-    const results = new Map<string, PrState | Error>();
-    await Promise.all(
-      urls.map(async (url, index) => {
-        const read = reads[index];
-        if (!read) return void results.set(url, new PrReadFailed("the host returned no result"));
-        if (!read.ok) return void results.set(url, new PrReadFailed(read.error));
-        const before = previous.get(url);
-        const at = now();
-        const state: PrState = { ...prStateOf(read, new Date(at)), headSha: read.headSha };
-        if (!gh || !needsDeploymentsLookup(read, before, at)) {
-          // The last lookup still describes this head commit; a different commit's deployments are dropped.
-          const kept = before?.headSha === read.headSha ? before : undefined;
-          return void results.set(url, kept?.deployments ? { ...state, deployments: kept.deployments, deploymentsAt: kept.deploymentsAt } : state);
-        }
-        // Deployments are extra: a failed lookup leaves them unset, not the PR line broken.
-        const deployments = await fetchDeployments(gh, url).catch((error): Deployment[] | undefined => {
-          if (!(error instanceof RateLimited)) {
-            console.error(`[asks] deployments lookup failed for ${url}`, error instanceof Error ? error.message : error);
-          }
-          return undefined;
-        });
-        results.set(url, deployments ? { ...state, deployments, deploymentsAt: new Date(at).toISOString() } : state);
-      }),
-    );
-    return results;
   };
 }
 

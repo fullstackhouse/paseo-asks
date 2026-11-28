@@ -41,6 +41,8 @@ export class Outbox {
   private entries: Delivery[];
   private flushing: Promise<void> = Promise.resolve();
   private seq = 0;
+  /** Ids on their way to the agent: too late to cancel. */
+  private readonly sending = new Set<string>();
 
   constructor(
     root: string,
@@ -69,6 +71,18 @@ export class Outbox {
     return delivery;
   }
 
+  /** Takes back those of `ids` that have not gone out. Returns the rest: sent, on their way, or no longer kept. */
+  cancel(ids: readonly string[]): Delivery[] {
+    const taken = new Set(
+      ids.filter((id) => this.entries.some((entry) => entry.id === id && entry.state === "pending" && !this.sending.has(id))),
+    );
+    if (taken.size) {
+      this.entries = this.entries.filter((entry) => !taken.has(entry.id));
+      this.save();
+    }
+    return ids.filter((id) => !taken.has(id)).flatMap((id) => this.entries.filter((entry) => entry.id === id));
+  }
+
   /** Delivers what can be delivered now. Calls are serialized so nothing is sent twice. */
   flush(agentId?: string): Promise<void> {
     this.flushing = this.flushing.then(() => this.flushNow(agentId)).catch((error) => {
@@ -82,15 +96,18 @@ export class Outbox {
     for (const entry of this.pending(agentId)) {
       byAgent.set(entry.agentId, [...(byAgent.get(entry.agentId) ?? []), entry]);
     }
-    for (const [target, batch] of byAgent) {
+    for (const [target, queued] of byAgent) {
       const state = await this.courier.state(target).catch(() => "idle" as const);
-      if (state === "running") continue;
+      // Cancelled while the state was read.
+      const batch = queued.filter((entry) => this.entries.includes(entry));
+      if (state === "running" || !batch.length) continue;
       if (state === "gone") {
         for (const entry of batch) Object.assign(entry, { state: "failed", error: "agent is gone" });
         this.save();
         await this.onUndeliverable(batch, "gone");
         continue;
       }
+      for (const entry of batch) this.sending.add(entry.id);
       try {
         await this.courier.send(target, batch.map((entry) => entry.text).join("\n"), batch[0]!.id);
         for (const entry of batch) entry.state = "sent";
@@ -104,6 +121,8 @@ export class Outbox {
         const failed = batch.filter((entry) => entry.state === "failed");
         if (failed.length) await this.onUndeliverable(failed, "failed");
         continue;
+      } finally {
+        for (const entry of batch) this.sending.delete(entry.id);
       }
       this.save();
     }

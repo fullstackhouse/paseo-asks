@@ -12,7 +12,7 @@ export type NewAsk = Pick<Ask, "workspaceId" | "ownerAgentId" | "kind" | "title"
 };
 
 export type AskPatch = Partial<
-  Pick<Ask, "title" | "body" | "links" | "status" | "outcome" | "orphaned" | "ownerAgentId" | "subscribe" | "pr" | "discussionAgentId" | "discussionWorkspaceId" | "remindedAt" | "lastCall" | "waitingOn">
+  Pick<Ask, "title" | "body" | "links" | "status" | "outcome" | "orphaned" | "ownerAgentId" | "subscribe" | "pr" | "discussionAgentId" | "discussionWorkspaceId" | "remindedAt" | "lastCall" | "waitingOn" | "undo">
 > & {
   actions?: Omit<Action, "id">[];
 };
@@ -67,6 +67,7 @@ export class AskStore {
   /**
    * `touch: false` for bookkeeping (a PR snapshot) that should not count as the ask changing. `waitingOn` and `takenAt`
    * describe an ask in progress, so every way out of in progress clears them, and every way in stamps `takenAt`.
+   * A change that counts (`touch`) ends the chance to undo the human's last act, unless it records that act.
    */
   update(workspaceId: string, id: string, patch: AskPatch, { touch = true } = {}): Promise<Ask> {
     return this.mutate(workspaceId, (file) => {
@@ -79,10 +80,24 @@ export class AskStore {
         actions: patch.actions ? withIds(patch.actions) : current.actions,
         updatedAt: touch ? this.now().toISOString() : current.updatedAt,
       };
+      if (touch && !patch.undo) delete next.undo;
       if (next.status !== "in_progress") {
         delete next.waitingOn;
         delete next.takenAt;
       } else if (current.status !== "in_progress") next.takenAt = this.now().toISOString();
+      file.asks[index] = next;
+      return next;
+    });
+  }
+
+  /** Puts back what the human's last act changed, as `undo.prev` recorded it, and forgets the act. */
+  restore(workspaceId: string, id: string): Promise<Ask> {
+    return this.mutate(workspaceId, (file) => {
+      const index = file.asks.findIndex((ask) => ask.id === id);
+      const current = file.asks[index];
+      if (!current?.undo) throw new Error(`No ask ${id} to undo in this workspace`);
+      const { undo, outcome, remindedAt, waitingOn, takenAt, ...rest } = current;
+      const next: Ask = { ...rest, ...undo.prev };
       file.asks[index] = next;
       return next;
     });

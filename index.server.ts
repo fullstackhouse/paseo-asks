@@ -5,7 +5,8 @@ import { AgentDirectory, pickCaller } from "./server/agents";
 import { installBridge } from "./server/bridge";
 import { Discussions } from "./server/discuss";
 import { Gh, ghExec } from "./server/gh";
-import { findGh, hostFetcher, PrReadsUnavailable } from "./server/github";
+import { findGh } from "./server/github";
+import { PrFeed } from "./server/pr-feed";
 import { LastOutputs } from "./server/last-output";
 import { HumanMessages } from "./server/human-messages";
 import { listen } from "./server/listener";
@@ -23,7 +24,8 @@ import { isWorking, Outbox, type Courier } from "./server/outbox";
 import { checkFilePaths, diskPathEnv } from "./server/file-paths";
 import { dataDir } from "./server/paths";
 import { isAsksPermission } from "./server/permissions";
-import { ghPrReviewOf } from "./server/review-buttons";
+import { toolGrantSupport } from "./server/tool-grants";
+import { ghPrReviewOf, hostPrReviewOf } from "./server/review-buttons";
 import { AsksService, TOOLS } from "./server/service";
 import { instructions } from "./shared/instructions";
 import { AskStore } from "./server/store";
@@ -35,7 +37,11 @@ import { activeWorkspaces, isBackground } from "./server/workspaces";
 import { agentSettings, displaySettings, reviewSettings } from "./shared/settings";
 
 const FLUSH_EVERY_MS = 20_000;
-const PR_EVERY_MS = 120_000;
+// PR changes are pushed by the host's PR service; this backstop pass only re-checks which PRs open asks watch (asks
+// closed or archived since) and catches a missed push. It reads no GitHub state of its own.
+const PR_EVERY_MS = 10 * 60_000;
+// Pushed updates for several PRs arrive together; one watcher pass handles them.
+const PR_PUSH_DEBOUNCE_MS = 200;
 const STALE_EVERY_MS = 60 * 60 * 1000;
 
 type SubscriptionHandle = (
@@ -63,8 +69,12 @@ export default function contribute(server: PluginServerContext) {
   const mcp = installBridge(dir);
   // The daemon session behind `paseo` lives as long as this subprocess; any hook or handler hands it over.
   let paseo: PaseoApi | null = null;
+  // Set once the PR watcher exists: its first pass needs a session to follow PRs with.
+  let onSession: () => void = () => undefined;
   const capture = (api: PaseoApi) => {
-    paseo ??= api;
+    if (paseo) return;
+    paseo = api;
+    onSession();
   };
   const requirePaseo = () => {
     if (!paseo) throw new Error("No daemon session yet");
@@ -116,7 +126,7 @@ export default function contribute(server: PluginServerContext) {
     }
   });
   const ghPath = findGh();
-  if (!ghPath) console.error("[asks] gh not found; PR asks will show no preview deployments or review-button checks");
+  if (!ghPath) console.error("[asks] gh not found; review-button checks need it on hosts without the PR service");
   // One Gh for every call, so a spent rate limit pauses them all.
   const gh = ghPath ? new Gh(ghExec(ghPath)) : null;
   const service = new AsksService(
@@ -130,24 +140,29 @@ export default function contribute(server: PluginServerContext) {
       const workspace = paseo ? await paseo.workspaces.ref(workspaceId).refresh() : null;
       return workspace?.workspaceDirectory ? checkFilePaths(body, workspace.workspaceDirectory, diskPathEnv) : { body, notes: [] };
     },
-    gh ? ghPrReviewOf((args) => gh.run(args)) : null,
+    hostPrReviewOf(
+      () => (paseo?.changeRequests ? (urls: string[]) => paseo!.changeRequests!.read(urls) : null),
+      gh ? ghPrReviewOf((args) => gh.run(args)) : null,
+    ),
   );
   const lastOutputs = new LastOutputs(dir);
   const humanMessages = new HumanMessages(dir);
   // Until a hook or RPC hands over a daemon session (e.g. right after a reload), every workspace is polled.
   const liveWorkspaces = async () => (paseo ? new Set((await activeWorkspaces(paseo)).keys()) : null);
-  // PR state comes from the host (`changeRequests.read`), which reads for every plugin under one rate limit.
-  let warnedOldHost = false;
-  const readPrs = async (urls: string[]) => {
-    if (!paseo) throw new PrReadsUnavailable("No daemon session yet");
-    if (!paseo.changeRequests) {
-      if (!warnedOldHost) console.error("[asks] this Paseo can't read pull requests for plugins; update it for live PR status on asks");
-      warnedOldHost = true;
-      throw new PrReadsUnavailable("Host lacks changeRequests.read");
-    }
-    return paseo.changeRequests.read(urls);
-  };
-  const watcher = new PrWatcher(store, service, hostFetcher(readPrs, gh), actOnReviewChanges, liveWorkspaces);
+  // PR state comes from the host's PR service, pushed: one subscription per watched PR, deployments included.
+  let pushedPass: ReturnType<typeof setTimeout> | undefined;
+  const feed = new PrFeed(
+    () => paseo,
+    () => {
+      pushedPass ??= setTimeout(() => {
+        pushedPass = undefined;
+        void watcher.refresh();
+      }, PR_PUSH_DEBOUNCE_MS);
+    },
+  );
+  const watcher = new PrWatcher(store, service, feed.fetch, actOnReviewChanges, liveWorkspaces, (urls) => feed.retain(urls));
+  // The start-up pass below runs before any hook hands over a session and can't follow anything; this one can.
+  onSession = () => void watcher.refresh();
   // Short-lived classifier agents the plugin starts itself; its hooks leave them alone.
   const helpers = new Set<string>();
   const classifierFor = paseoClassifier(requirePaseo, helpers, async () =>
@@ -204,7 +219,8 @@ export default function contribute(server: PluginServerContext) {
   });
   // Plan mode (the side chat's read-only mode) and Codex prompt even for preapproved MCP tools. The asks
   // tools only touch asks, so answer those prompts here instead of interrupting the human.
-  server.on("agent.permission_requested", async ({ agent, request }, { paseo: api }) => {
+  server.on("agent.permission_requested", async (event, { paseo: api }) => {
+    const { agent, request } = event;
     capture(api);
     // A classifier only needs to answer; never let it put a prompt in front of the human.
     if (helpers.has(agent.id)) {
@@ -214,7 +230,7 @@ export default function contribute(server: PluginServerContext) {
       });
       return;
     }
-    if (!isAsksPermission(request)) return;
+    if (!isAsksPermission(request, (event as { tool?: { server: string } }).tool)) return;
     await api.agents
       .ref(agent.id)
       .respondToPermission({ requestId: request.id, response: { behavior: "allow" } });
@@ -276,11 +292,15 @@ export default function contribute(server: PluginServerContext) {
     return service.refresh(agentId);
   });
   const discussions = new Discussions();
+  const exactToolGrants = toolGrantSupport(async () => {
+    if (!paseo) throw new Error("no daemon session yet");
+    return paseo.providers.snapshot();
+  });
   const startDiscussion = (api: PaseoApi, workspaceId: string, id: string, note?: string) => {
     const ask = store.get(workspaceId, id);
     if (!ask) throw new Error(`No ask ${id} in this workspace`);
     return discussions.start(
-      { paseo: api, store, mcp, lastOutput: (agentId) => lastOutputs.get(agentId), log: console.log },
+      { paseo: api, store, mcp, lastOutput: (agentId) => lastOutputs.get(agentId), log: console.log, exactToolGrants },
       ask,
       note,
     );
@@ -309,7 +329,7 @@ export default function contribute(server: PluginServerContext) {
         name,
         args,
       );
-      // Shows a newly linked PR's state now rather than at the next poll.
+      // Follows a newly linked PR now, so its state shows at once.
       if (result.ask && (name === "ask_create" || name === "ask_update")) void watcher.refresh(result.ask);
       return { text: result.text, isError: result.isError };
     },
@@ -338,6 +358,8 @@ export default function contribute(server: PluginServerContext) {
   return async () => {
     clearInterval(timer);
     clearInterval(prTimer);
+    if (pushedPass) clearTimeout(pushedPass);
+    await feed.close();
     clearInterval(staleTimer);
     clearTimeout(firstStale);
     (await listening).close();
