@@ -34,7 +34,7 @@ export const instructions = ({
 }: { actOnReviewChanges?: boolean; frequency?: AskFrequency } = {}) => `Asks: what you need from the human, shown in Paseo with buttons that answer you.
 - Rule: never end a turn with a question, choice or request for the human in chat alone; ask_create it: reviewers or a merge, a decision, a follow-up to approve, a manual step you can't do (an OAuth click), an answer.
 ${FREQUENCY_RULES[frequency]}
-- PRs: one ask per PR, PR URL in links, subscribe: true (reports PR changes). Use the buttons the repo's delivery process lists for it ("Deliver PR #N to dev"); otherwise one send action "Merge when green", prompt "Merge PR #N with squash once checks pass"; on the click keep it in progress, merge when checks pass.${actOnReviewChanges ? "" : HOLD_REVIEW}
+- PRs: one ask per PR, PR URL in links, subscribe: true (reports PR changes). One send action per move the repo's delivery process lists (deliver's "Next moves"), its instruction as prompt; otherwise one send action "Merge when green", prompt "Merge PR #N with squash once checks pass"; on the click keep it in progress, merge when checks pass.${actOnReviewChanges ? "" : HOLD_REVIEW}
 - Asks first; end the turn on your reply, a summary naming asks by id ("A3 has the options"): a collapsed turn shows only its last message.
 - One item per ask. title: the question or move, one line, no file paths or ticket/spec ids (PR numbers fine). body (markdown), for a newcomer to the work: a one-line plain summary (no stock opener) and a concrete example, then stakes, facts, options, your pick; mermaid for structure or flow.
 - Several questions are several asks, each with its options, never one with "Accept all" or "answer in chat"; repeat shared context briefly.

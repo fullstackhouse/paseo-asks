@@ -608,7 +608,7 @@ describe("phase 2", () => {
     for (const rules of [instructions(), instructions({ actOnReviewChanges: false })]) {
       const pr = rules.split("\n").find((line) => line.startsWith("- PRs:"))!;
       expect(pr).toContain("one ask per PR, PR URL in links, subscribe: true");
-      expect(pr).toContain("Use the buttons the repo's delivery process lists for it");
+      expect(pr).toContain("One send action per move the repo's delivery process lists");
       expect(pr).toContain('otherwise one send action "Merge when green"');
       expect(pr.split(/\s+/).length).toBeLessThanOrEqual(60);
       expect(rules).not.toContain("REVIEW_REQUIRED");
